@@ -1,4 +1,4 @@
-# LUVIA Score Studio
+# JaeWoo Score Studio
 
 Logic Pro에서 내보낸 MusicXML 악보를 브라우저에서 열고 정리해 PDF로 저장하는 정적 웹앱입니다. 파일은 서버에 업로드되지 않습니다. 사이트 소스는 공개 저장소에 있지만 사용자가 연 파일은 브라우저 메모리에서만 처리합니다.
 

@@ -8,49 +8,47 @@ const MAX_XML = 35 * 1024 * 1024;
 const app = document.querySelector('#app');
 
 app.innerHTML = `
-  <header class="topbar">
-    <a class="brand" href="./" aria-label="LUVIA Score Studio 홈"><span class="brand-staff" aria-hidden="true">𝄞</span><span>LUVIA <b>SCORE</b></span></a>
-    <span class="top-note">작곡 파일에서, 읽기 좋은 악보로.</span>
-    <a class="guide-link" href="#guide">사용 방법</a>
-  </header>
-  <main>
-    <section class="intro">
-      <div class="intro-copy">
-        <div class="intro-kicker"><span class="kicker-line"></span> LOGIC PRO → MUSICXML → PDF</div>
-        <h1>음악을 쓴 다음,<br><em>악보를 다듬을 시간.</em></h1>
-        <p>Logic Pro에서 내보낸 악보 파일을 열고, 제목과 파트 이름을 정리하세요. 화면에서 확인한 뒤 PDF로 저장할 수 있습니다.</p>
-        <div class="intro-actions">
-          <button class="button button-primary" id="open-file" type="button">악보 파일 열기 <span aria-hidden="true">↗</span></button>
-          <button class="button button-text" id="try-sample" type="button">예시 악보 보기</button>
-        </div>
-        <p class="privacy-note"><span aria-hidden="true">◈</span> 파일은 이 브라우저에서만 처리하며 서버로 전송하지 않습니다.</p>
-      </div>
-      <div class="hero-score" aria-hidden="true"><div class="hero-score-label">A WORKSPACE FOR THE SCORE</div><div class="hero-stave"><span>♪</span><span>♩</span><span>♫</span><span>♩</span></div><div class="hero-score-bottom"><span>Preview / Refine / Print</span><span>01—04</span></div></div>
-    </section>
-
-    <section class="workspace" id="workspace">
-      <div class="section-heading"><div><span class="section-index">작업 공간</span><h2>악보 정리</h2></div><span id="file-status" class="file-status">파일을 열어 시작하세요</span></div>
-      <div class="work-grid">
-        <aside class="controls">
-          <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="MusicXML 파일 선택"><span class="drop-icon">↥</span><strong>파일을 끌어놓거나 선택</strong><small>.musicxml · .xml · .mxl</small><span class="drop-link">파일 선택</span></div>
-          <input id="file-input" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" hidden />
-          <div id="editor-controls" class="editor-controls" hidden>
-            <div class="control-group"><div class="control-heading"><span>기본 정보</span><span class="tiny-number">01</span></div><label for="score-title">곡 제목</label><input id="score-title" type="text" maxlength="120" placeholder="곡 제목" /><label for="score-composer">작곡가</label><input id="score-composer" type="text" maxlength="120" placeholder="작곡가" /></div>
-            <div class="control-group"><div class="control-heading"><span>파트</span><span class="tiny-number">02</span></div><p class="control-hint">이름은 저장 파일에도 반영됩니다. 눈 아이콘은 미리보기·PDF에만 적용됩니다.</p><div id="parts-list" class="parts-list"></div></div>
-            <div class="control-group"><div class="control-heading"><span>보기 설정</span><span class="tiny-number">03</span></div><label for="zoom">확대 <span id="zoom-value">100%</span></label><input id="zoom" type="range" min="60" max="140" value="100" step="10" /><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
+  <div class="site-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="JaeWoo Score 홈"><span class="brand-mark" aria-hidden="true">J.</span><span>JAEWOO SCORE</span></a>
+      <nav class="topnav" aria-label="주 메뉴"><a href="#workspace">STUDIO</a><a href="#guide">HOW IT WORKS</a></nav>
+      <div class="top-right"><span class="nav-note">FOR THE MUSIC YOU MAKE</span><button id="open-file" class="top-open" type="button">OPEN SCORE <span aria-hidden="true">↗</span></button></div>
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="hero-title">
+        <div class="intro-eyebrow"><span>JAEWOO SCORE STUDIO — 001</span><span>COMPOSITION / NOTATION / PRINT</span></div>
+        <h1 id="hero-title"><span>MUSIC TO</span><span>SCORE<span class="hero-period">.</span></span></h1>
+        <div class="intro-bottom"><p>Logic Pro에서 내보낸 MusicXML을<br>읽기 좋은 악보로 정리하세요.</p><span class="local-only">파일은 브라우저 안에서만 처리</span></div>
+        <div class="process-line" aria-label="작업 순서"><span>01&nbsp; IMPORT MUSICXML</span><i>↗</i><span>02&nbsp; REVIEW PARTS</span><i>↗</i><span>03&nbsp; EXPORT PDF</span><i>↗</i><span>YOUR MUSIC, YOUR FILE.</span></div>
+      </section>
+      <section class="workspace" id="workspace" aria-labelledby="workspace-title">
+        <div class="workspace-heading"><span>01 / YOUR SCORE WORKSPACE</span><span>PREVIEW · A4 PORTRAIT</span></div>
+        <div class="work-grid">
+          <aside class="controls">
+            <span class="workspace-kicker">A WORKSPACE FOR JAEWOO</span>
+            <h2 id="workspace-title">악보의<br>마지막 정리.</h2>
+            <p class="workspace-description">곡 정보와 파트를 확인하고, PDF 또는 MusicXML로 저장합니다.</p>
+            <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="MusicXML 파일 선택"><span class="drop-index">OPEN DOCUMENT</span><strong>악보 파일을 여기에 놓거나 선택</strong><small>.musicxml · .xml · .mxl</small><span class="drop-link">+ 파일 선택</span></div>
+            <input id="file-input" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" hidden />
+            <div class="sample-action"><button id="try-sample" type="button">예시 악보 보기 <span aria-hidden="true">↗</span></button></div>
+            <div id="editor-controls" class="editor-controls" hidden>
+              <div class="control-group"><div class="control-heading"><span>곡 정보</span><span>01</span></div><label for="score-title">곡 제목</label><input id="score-title" type="text" maxlength="120" placeholder="곡 제목" /><label for="score-composer">작곡가</label><input id="score-composer" type="text" maxlength="120" placeholder="작곡가" /></div>
+              <div class="control-group"><div class="control-heading"><span>파트</span><span>02</span></div><p class="control-hint">이름은 저장 파일에도 반영됩니다. 체크 해제는 미리보기·PDF에만 적용됩니다.</p><div id="parts-list" class="parts-list"></div></div>
+              <div class="control-group"><div class="control-heading"><span>보기 설정</span><span>03</span></div><label for="zoom">확대 <span id="zoom-value">100%</span></label><input id="zoom" type="range" min="60" max="140" value="100" step="10" /><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
+            </div>
+            <div class="privacy-note"><span aria-hidden="true">●</span> 곡 파일은 서버로 전송하지 않습니다.</div>
+          </aside>
+          <div class="preview-column">
+            <div class="preview-toolbar"><div class="preview-summary"><span class="preview-indicator"></span><strong>악보 미리보기</strong><span id="score-info" class="score-info">파일을 열면 악보가 표시됩니다</span></div><div id="output-actions" class="output-actions" hidden><button id="download-xml" type="button">MusicXML 저장</button><button id="print-score" type="button">PDF로 인쇄 ↗</button></div></div>
+            <div id="preview-shell" class="preview-shell"><div id="empty-preview" class="empty-preview"><div class="empty-heading"><span>DEMO SCORE / SELECT A FILE</span><span>1 / 1</span></div><div class="empty-sheet"><div class="empty-score-title"><strong>새벽의 스케치</strong><span>Sketch at Dawn</span></div><span class="empty-composer">박재우</span><svg class="score-svg" viewBox="0 0 620 360" xmlns="http://www.w3.org/2000/svg" aria-label="악보 구성 예시"><g fill="none" stroke="#252932" stroke-width="1.1"><path d="M40 36H610M40 49H610M40 62H610M40 75H610M40 88H610M40 163H610M40 176H610M40 189H610M40 202H610M40 215H610M40 290H610M40 303H610M40 316H610M40 329H610M40 342H610"/><path d="M40 36V88M40 163V215M40 290V342M235 290V342M430 290V342M610 290V342M235 36V88M430 36V88M610 36V88M235 163V215M430 163V215M610 163V215"/></g><g fill="#252932" font-family="Georgia,serif"><text x="48" y="87" font-size="62">𝄞</text><text x="90" y="61" font-size="17">4</text><text x="90" y="83" font-size="17">4</text><text x="48" y="214" font-size="62">𝄞</text><text x="90" y="188" font-size="17">4</text><text x="90" y="210" font-size="17">4</text></g><g fill="#252932" stroke="#252932" stroke-width="1.5"><ellipse cx="139" cy="75" rx="7" ry="4.5" transform="rotate(-24 139 75)"/><path d="M145 73V37"/><ellipse cx="180" cy="62" rx="7" ry="4.5" transform="rotate(-24 180 62)"/><path d="M186 60V24"/><ellipse cx="271" cy="55" rx="7" ry="4.5" transform="rotate(-24 271 55)"/><path d="M277 53V17"/><ellipse cx="320" cy="62" rx="7" ry="4.5" transform="rotate(-24 320 62)"/><path d="M326 60V24"/><ellipse cx="375" cy="68" rx="7" ry="4.5" transform="rotate(-24 375 68)"/><path d="M381 66V30"/><ellipse cx="477" cy="62" rx="7" ry="4.5" transform="rotate(-24 477 62)"/><path d="M483 60V24"/><ellipse cx="524" cy="49" rx="7" ry="4.5" transform="rotate(-24 524 49)"/><path d="M530 47V11"/><ellipse cx="565" cy="56" rx="7" ry="4.5" transform="rotate(-24 565 56)"/><path d="M571 54V18"/><ellipse cx="138" cy="202" rx="7" ry="4.5" transform="rotate(-24 138 202)"/><path d="M144 200V164"/><ellipse cx="178" cy="189" rx="7" ry="4.5" transform="rotate(-24 178 189)"/><path d="M184 187V151"/><ellipse cx="275" cy="196" rx="7" ry="4.5" transform="rotate(-24 275 196)"/><path d="M281 194V158"/><ellipse cx="320" cy="202" rx="7" ry="4.5" transform="rotate(-24 320 202)"/><path d="M326 200V164"/><ellipse cx="375" cy="189" rx="7" ry="4.5" transform="rotate(-24 375 189)"/><path d="M381 187V151"/><ellipse cx="477" cy="183" rx="7" ry="4.5" transform="rotate(-24 477 183)"/><path d="M483 181V145"/><ellipse cx="525" cy="190" rx="7" ry="4.5" transform="rotate(-24 525 190)"/><path d="M531 188V152"/><ellipse cx="136" cy="329" rx="7" ry="4.5" transform="rotate(-24 136 329)"/><path d="M142 327V291"/><ellipse cx="179" cy="316" rx="7" ry="4.5" transform="rotate(-24 179 316)"/><path d="M185 314V278"/><ellipse cx="279" cy="309" rx="7" ry="4.5" transform="rotate(-24 279 309)"/><path d="M285 307V271"/><ellipse cx="327" cy="316" rx="7" ry="4.5" transform="rotate(-24 327 316)"/><path d="M333 314V278"/><ellipse cx="479" cy="322" rx="7" ry="4.5" transform="rotate(-24 479 322)"/><path d="M485 320V284"/><ellipse cx="535" cy="309" rx="7" ry="4.5" transform="rotate(-24 535 309)"/><path d="M541 307V271"/></g><g fill="#7b828d" font-size="9" font-family="Arial,sans-serif"><text x="0" y="69">Piano</text><text x="23" y="192">Pno.</text><text x="15" y="320">3</text></g></svg><div class="empty-sheet-foot">예시 악보 · 실제 파일을 열면 교체됩니다</div></div></div><div id="score-container" class="score-container"></div></div>
+            <p id="message" class="message" role="status" aria-live="polite"></p>
           </div>
-        </aside>
-        <div class="preview-column">
-          <div class="preview-toolbar"><div><span class="preview-indicator"></span><strong>미리보기</strong><span id="score-info" class="score-info">MusicXML을 열면 악보가 표시됩니다</span></div><div id="output-actions" class="output-actions" hidden><button id="download-xml" type="button">MusicXML 저장</button><button id="print-score" class="button button-primary compact" type="button">PDF로 인쇄</button></div></div>
-          <div id="preview-shell" class="preview-shell"><div id="empty-preview" class="empty-preview"><div class="empty-stave">𝄞  ♩  ♫  ♩</div><strong>여기에 악보가 펼쳐집니다</strong><p>먼저 MusicXML 파일을 열어주세요.<br>Logic Pro의 프로젝트 파일(.logicx)은 직접 열 수 없습니다.</p></div><div id="score-container" class="score-container"></div></div>
-          <p id="message" class="message" role="status" aria-live="polite"></p>
         </div>
-      </div>
-    </section>
-
-    <section class="guide" id="guide"><div class="guide-heading"><span class="section-index">시작하기 전에</span><h2>필요한 것은<br>MusicXML 한 파일.</h2></div><div class="guide-steps"><div><span>1</span><h3>Logic Pro에서 내보내기</h3><p>악보 편집기에서 <b>파일 → 내보내기 → 악보를 MusicXML로</b>를 선택하세요. MIDI 노트가 있는 트랙을 악보로 옮길 수 있습니다.</p></div><div><span>2</span><h3>정보와 파트 정리</h3><p>제목·작곡가·악기 이름을 수정하고, 인쇄할 파트만 표시하세요. 실제 음표와 리듬은 원본을 유지합니다.</p></div><div><span>3</span><h3>저장하거나 PDF로 인쇄</h3><p>정리한 MusicXML을 내려받거나, 브라우저 인쇄 창에서 PDF로 저장하세요. PDF 저장 위치는 사용자가 선택합니다.</p></div></div></section>
-  </main>
-  <footer><span>LUVIA SCORE STUDIO</span><span>로컬 파일 처리 · 외부 업로드 없음</span></footer>
+      </section>
+      <section class="guide" id="guide"><div class="guide-heading"><span>HOW IT WORKS — 001</span><h2>세 단계로,<br>완성된 악보까지.</h2></div><div class="guide-steps"><div><span>01 / IMPORT</span><h3>MusicXML 열기</h3><p>Logic Pro에서 내보낸 .musicxml, .xml, .mxl 파일을 불러옵니다. .logicx 프로젝트는 직접 열 수 없습니다.</p></div><div><span>02 / REVIEW</span><h3>곡과 파트 정리</h3><p>제목·작곡가·악기 이름을 수정하고 표시할 파트를 선택합니다. 음표와 리듬은 원본을 유지합니다.</p></div><div><span>03 / EXPORT</span><h3>악보 저장</h3><p>수정한 MusicXML을 내려받거나 브라우저 인쇄 창에서 PDF로 저장합니다.</p></div></div></section>
+    </main>
+    <footer><span>JAEWOO SCORE STUDIO</span><span>YOUR MUSIC, YOUR FILE. &nbsp; / &nbsp; LOCAL PROCESSING ONLY</span></footer>
+  </div>
 `;
 
 const $ = (id) => document.getElementById(id);
@@ -101,7 +99,9 @@ function showLoaded() {
   $('editor-controls').hidden = false;
   $('output-actions').hidden = false;
   $('empty-preview').hidden = true;
-  $('file-status').textContent = state.filename;
+  $('drop-zone').classList.add('has-file');
+  $('drop-zone').querySelector('strong').textContent = state.filename;
+  $('drop-zone').querySelector('.drop-link').textContent = '+ 다른 파일 열기';
   const root = state.doc.documentElement;
   $('score-title').value = childText(root, 'movement-title') || childText(directChild(root, 'work') ?? root, 'work-title');
   const identification = directChild(root, 'identification');
