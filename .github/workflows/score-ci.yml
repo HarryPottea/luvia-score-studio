@@ -21,6 +21,7 @@ jobs:
       - run: node --check src/notation-review.js
       - run: node --check src/layout-profile.js
       - run: node --check src/pdf-batch.js
+      - run: node --check src/pdf-bytes.js
       - run: node --check src/v2-controls.js
       - run: node --test tests/*.test.mjs
       - run: npm run build
