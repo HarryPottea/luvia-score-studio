@@ -190,7 +190,14 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       return box.width>0&&box.height>0&&event.clientX>=box.left-pad&&event.clientX<=box.right+pad
         &&event.clientY>=box.top-pad&&event.clientY<=box.bottom+pad;
     });
-    console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'hit',found:hit.length}));
+    console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'hit',found:hit.length,point:[event.clientX,event.clientY],
+      nearest:targets.map(item=>{
+        const b=item.element.getBoundingClientRect();
+        return {staff:item.staff,measure:item.measureIndex,event:item.eventIndex,
+          same:stave===item.element.closest?.('.vf-stavenote'),
+          rect:[Math.round(b.left),Math.round(b.top),Math.round(b.width),Math.round(b.height)],
+          distance:Math.round(Math.hypot(event.clientX-(b.left+b.right)/2,event.clientY-(b.top+b.bottom)/2))};
+      }).sort((a,b)=>a.distance-b.distance).slice(0,4)}));
     if(!hit.length)return;
     const explicit=hit.filter(item=>item.element===event.target||item.element.contains?.(event.target));
     let item=null;
