@@ -3,6 +3,7 @@ import { buildPartZip, baseScoreName, safeFileName } from './part-export.js';
 import { scanScoreRhythm, applySafeRestCleanup } from './rhythm-dom.js';
 import { applyLayoutPreset } from './layout-profile.js';
 import { mountV2Controls } from './v2-controls.js';
+import { mountV3Controls } from './v3-controls.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { sampleScore } from './sample.js';
 import './style.css';
@@ -30,8 +31,8 @@ app.innerHTML = `
         <div class="work-grid">
           <aside class="controls">
             <span class="workspace-kicker">A WORKSPACE FOR JAEWOO</span>
-            <h2 id="workspace-title">악보의<br>마지막 정리.</h2>
-            <p class="workspace-description">곡 정보와 파트를 확인하고, PDF 또는 MusicXML로 저장합니다.</p>
+            <h2 id="workspace-title">악보를<br>직접 다듬다.</h2>
+            <p class="workspace-description">음표·쉼표·가사부터 파트별 악보 출력까지 편집합니다.</p>
             <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="MusicXML 파일 선택"><span class="drop-index">OPEN DOCUMENT</span><strong>악보 파일을 여기에 놓거나 선택</strong><small>.musicxml · .xml · .mxl</small><span class="drop-link">+ 파일 선택</span></div>
             <input id="file-input" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" hidden />
             <div class="sample-action"><button id="try-sample" type="button">예시 악보 보기 <span aria-hidden="true">↗</span></button></div>
@@ -117,6 +118,7 @@ function showLoaded() {
   renderPartInputs();
   refreshRhythmReport();
   v2.refresh();
+  v3.reset();
   $('score-info').textContent = `${parts.length}개 파트 · ${state.doc.querySelectorAll('part > measure').length}개 마디`;
 }
 
@@ -166,7 +168,7 @@ function renderPartInputs() {
     const name = document.createElement('input'); name.type = 'text'; name.maxLength = 80; name.value = part.name; name.setAttribute('aria-label', `${i + 1}번 파트 이름`);
     name.addEventListener('change', () => {
       ensureChild(part.element, 'part-name').textContent = name.value.trim() || part.name;
-      invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo();
+      invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo(); v3.externalChanged();
       const priorSelection = selector.value;
       renderPartInputs();
       selector.value = priorSelection;
@@ -244,7 +246,7 @@ $('score-title').addEventListener('change', () => {
   const root = state.doc.documentElement; const title = $('score-title').value.trim();
   ensureChild(ensureChild(root, 'work'), 'work-title').textContent = title;
   ensureChild(root, 'movement-title').textContent = title;
-  invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo();
+  invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo(); v3.externalChanged();
   renderScore(); v2.refresh();
 });
 $('score-composer').addEventListener('change', () => {
@@ -252,7 +254,7 @@ $('score-composer').addEventListener('change', () => {
   const identification = ensureChild(state.doc.documentElement, 'identification');
   let creator = [...identification.children].find(el => el.localName === 'creator' && el.getAttribute('type') === 'composer');
   if (!creator) { creator = state.doc.createElement('creator'); creator.setAttribute('type', 'composer'); identification.appendChild(creator); }
-  creator.textContent = $('score-composer').value.trim(); invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo(); renderScore(); v2.refresh();
+  creator.textContent = $('score-composer').value.trim(); invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo(); v3.externalChanged(); renderScore(); v2.refresh();
 });
 $('zoom').addEventListener('input', () => { $('zoom-value').textContent = `${$('zoom').value}%`; if (state.osmd) { state.osmd.zoom = Number($('zoom').value) / 100; state.osmd.render(); } });
 $('measure-numbers').addEventListener('change', renderScore);
@@ -280,7 +282,7 @@ $('apply-rhythm').addEventListener('click', async () => {
       setMessage('변경 후 미리보기를 표시할 수 없어 쉼표 정리를 취소했습니다. 원본 상태를 유지합니다.', true);
       return;
     }
-    v2.refresh();
+    v2.refresh(); v3.externalChanged();
     setMessage(`${result.changes}쌍의 쉼표를 병합했습니다. 음표의 길이와 총 연주시간은 변경하지 않았습니다. 결과를 검수해 주세요.`);
   } catch (error) { setMessage(`쉼표 정리를 적용하지 않았습니다: ${error.message || '검사 오류'}`, true); }
 });
@@ -288,7 +290,7 @@ $('undo-rhythm').addEventListener('click', async () => {
   if (!state.undoRhythmDoc) return;
   state.doc = state.undoRhythmDoc;
   state.undoRhythmDoc = null;
-  refreshRhythmReport(); state.showBaseline = false; v2.refresh();
+  refreshRhythmReport(); state.showBaseline = false; v2.refresh(); v3.externalChanged();
   await renderScore();
   setMessage('쉼표 정리를 되돌렸습니다.');
 });
@@ -364,4 +366,6 @@ $('download-all-parts-zip').addEventListener('click', async () => {
 $('print-score').addEventListener('click', () => { if (state.doc) window.print(); });
 
 // Install the unified workspace after the existing score editor has initialized.
-const v2 = mountV2Controls({ state, $, scoreParts, renderScore, refreshRhythmReport, invalidateRhythmUndo, setMessage });
+const v2 = mountV2Controls({ state, $, scoreParts, renderScore, refreshRhythmReport, invalidateRhythmUndo, setMessage,
+  onExternalDocChange: () => v3.externalChanged(), onViewChange: () => v3.refresh() });
+const v3 = mountV3Controls({ state, renderScore, refreshRhythmReport, refreshV2: () => {v2.invalidateUndo();v2.refresh();}, invalidateRhythmUndo, setMessage });
