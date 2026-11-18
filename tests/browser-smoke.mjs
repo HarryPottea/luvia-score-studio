@@ -69,6 +69,7 @@ try {
   console.log('BROWSER_STAGE=SVG_TARGET_DIAGNOSTIC '+JSON.stringify(diagnostic));
   assert.ok(diagnostic.count>0,'No mapped SVG note targets after redo');
   const notehead=page.locator('#score-container .jwoo-note-target').first();
+  await notehead.scrollIntoViewIfNeeded();
   const box=await notehead.boundingBox();
   assert.ok(box&&box.width>0&&box.height>0);
   const beforeDrag=await page.locator('#v3-events .v3-event').first().textContent();
