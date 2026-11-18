@@ -155,20 +155,13 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     el.setAttribute('role','button');
     el.setAttribute('aria-label',(item.measureIndex+1)+'마디 '+item.voice+'성부 '+item.staff+'보표 음표');
     addHitArea(el);
-    function down(event) {
-      if(disposed||event.button!==0||event.isPrimary===false)return;
-      selected=item;select(item);highlight();
-      const box=el.getBoundingClientRect();
-      drag={item,y:event.clientY,pointerId:event.pointerId,unit:Math.max(7,Math.min(18,box.height*.6))};
-      event.preventDefault();event.stopPropagation();
-    }
     function key(event) {
       if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
       event.preventDefault();selected=item;select(item);highlight();
       if(event.key==='ArrowUp'||event.key==='ArrowDown')movePitch(item,event.key==='ArrowUp'?1:-1);
     }
-    el.addEventListener('pointerdown',down);el.addEventListener('keydown',key);
-    cleanups.push(()=>{el.removeEventListener('pointerdown',down);el.removeEventListener('keydown',key);});
+    el.addEventListener('keydown',key);
+    cleanups.push(()=>el.removeEventListener('keydown',key));
   }
   function remap(){
     if(disposed)return;
@@ -179,6 +172,28 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     for(const item of targets)attach(item);
     highlight();announce?.(targets.length);
   }
+  // VexFlow's chord/stavenote SVG groups can receive pointerdown even when
+  // elementFromPoint reports an underlying notehead. Resolve inside exactly
+  // one source-verified stave note and one notehead hitbox; never guess.
+  function rootDown(event){
+    if(disposed||event.button!==0||event.isPrimary===false)return;
+    const stave=event.target?.closest?.('.vf-stavenote');
+    if(!stave)return;
+    const hit=targets.filter(item=>{
+      if(item.element.closest?.('.vf-stavenote')!==stave)return false;
+      const box=item.element.getBoundingClientRect();
+      const pad=4;
+      return box.width>0&&box.height>0&&event.clientX>=box.left-pad&&event.clientX<=box.right+pad
+        &&event.clientY>=box.top-pad&&event.clientY<=box.bottom+pad;
+    });
+    if(hit.length!==1)return;
+    const item=hit[0];
+    selected=item;select(item);highlight();
+    const box=item.element.getBoundingClientRect();
+    drag={item,y:event.clientY,pointerId:event.pointerId,unit:Math.max(7,Math.min(18,box.height*.6))};
+    event.preventDefault();event.stopPropagation();
+  }
+  host?.addEventListener('pointerdown',rootDown,true);
   document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancel);
   // Observe subtree replacements only; class/attribute changes are not watched.
   // addHitArea modifies childList once, but remap's identity check prevents loops.
@@ -189,6 +204,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     dispose(){
       if(disposed)return;disposed=true;
       observer?.disconnect();clearHandlers();
+      host?.removeEventListener('pointerdown',rootDown,true);
       document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);
     }};
 }
