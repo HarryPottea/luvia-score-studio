@@ -45,7 +45,14 @@ try {
       staffLineBounds:group?.getBoundingClientRect().toJSON()};
   });
   console.log('BROWSER_STAGE=A4_PORTRAIT_GEOMETRY '+JSON.stringify(a4Portrait));
-  console.log('BROWSER_STAGE=A4_STAFFLINE_STRUCTURE '+(await page.locator('#score-container .staffline').first().evaluate(e=>e.outerHTML.slice(0,2100))));
+  const staffHeightPx=await page.locator('#score-container .staffline .vf-measure').first().evaluate(group=>{
+    const lines=[...group.children].filter(el=>el.localName==='path'&&/^M[-\d.]+ [-\d.]+L[-\d.]+ [-\d.]+$/.test(el.getAttribute('d')||'')).slice(0,5);
+    if(lines.length!==5)throw new Error('The five staffline paths could not be identified');
+    return lines[4].getBoundingClientRect().top-lines[0].getBoundingClientRect().top;
+  });
+  assert.ok(Math.abs(staffHeightPx/(96/25.4)-7)<0.4,'Printed single-staff size must be approximately 7mm');
+  console.log('BROWSER_STAGE=A4_STAFF_MEASURED '+staffHeightPx.toFixed(3)+'px');
+
   assert.ok(Math.abs(a4Portrait.containerWidth-210*96/25.4)<2,'A4 page should have a fixed physical CSS width');
   assert.ok(Math.abs(a4Portrait.svgWidth-a4Portrait.containerWidth)<2,'Rendered SVG should fill A4 width');
   assert.ok(Math.abs(a4Portrait.svgHeight-a4Portrait.containerWidth*297/210)<3,'Rendered SVG should have A4 aspect ratio');
@@ -142,6 +149,14 @@ try {
   // Real OSMD SVG mapping: grand staff with chord, tuplet and concurrent voices.
   const polyphonicTargets=await page.locator('#score-container .jwoo-note-target').count();
   assert.match(await page.locator('#a4-size-info').textContent(),/오선 6.5mm 고정/);
+  const pianoStaffHeightPx=await page.locator('#score-container .staffline .vf-measure').first().evaluate(group=>{
+    const lines=[...group.children].filter(el=>el.localName==='path'&&/^M[-\d.]+ [-\d.]+L[-\d.]+ [-\d.]+$/.test(el.getAttribute('d')||'')).slice(0,5);
+    if(lines.length!==5)throw new Error('Piano staff lines not found');
+    return lines[4].getBoundingClientRect().top-lines[0].getBoundingClientRect().top;
+  });
+  assert.ok(Math.abs(pianoStaffHeightPx/(96/25.4)-6.5)<0.4,'Piano staff must be approximately 6.5mm');
+  console.log('BROWSER_STAGE=A4_PIANO_STAFF_MEASURED '+pianoStaffHeightPx.toFixed(3)+'px');
+
   console.log('BROWSER_STAGE=POLYPHONIC_GRAPHIC_TARGETS '+JSON.stringify({
     count:polyphonicTargets,hint:await page.locator('#v3-graphic-hint').textContent()
   }));
