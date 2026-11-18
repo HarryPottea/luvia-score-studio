@@ -23,5 +23,8 @@ jobs:
       - run: node --check src/pdf-batch.js
       - run: node --check src/pdf-bytes.js
       - run: node --check src/v2-controls.js
+      - run: node --check src/editor-core.js
+      - run: node --check src/editor-history.js
+      - run: node --check src/v3-controls.js
       - run: node --test tests/*.test.mjs
       - run: npm run build
