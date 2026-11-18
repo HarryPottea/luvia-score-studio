@@ -50,11 +50,6 @@ function decomposeDuration(value, divisions) {
   if (remainder !== 0) throw new Error('쉼표로 정확히 분해할 수 없는 길이입니다.');
   return result;
 }
-function plainRest(note) {
-  return !!DIRECT(note, 'rest') && !DIRECT(note,'pitch') && !DIRECT(note,'lyric')
-    && ![...note.children].some(el => ['notations','tie','beam','time-modification','staff','dot','chord','grace','cue'].includes(el.localName))
-    && !DIRECT(note,'voice') || false;
-}
 // Individual rest eligibility is stricter than general note interpretation.
 function consumableRest(note) {
   if (!note || !DIRECT(note,'rest') || DIRECT(note,'pitch')) return false;
