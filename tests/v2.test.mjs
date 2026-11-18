@@ -87,6 +87,7 @@ test('PDF writer produces valid xref offsets and A4 per-page objects',()=>{
 
 test('PDF writer rejects missing, oversize and malformed image data',()=>{
   assert.throws(()=>makePdfFromJpegPages([]),/올바르지/);
+  assert.throws(()=>makePdfFromJpegPages([{jpeg:new Uint8Array([1,2,3,4]),width:1,height:1}]),/올바르지/);
   assert.throws(()=>makePdfFromJpegPages([{jpeg:new Uint8Array(),width:0,height:1}]),/올바르지/);
   assert.throws(()=>makePdfFromJpegPages([{jpeg:new Uint8Array([1]),width:1,height:1}],'not-a-size'),/올바르지/);
 });
