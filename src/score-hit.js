@@ -55,7 +55,7 @@ export function graphicalTargets(osmd,doc,visibleParts){
       const candidates=[...(Array.isArray(heads)&&heads.length===1?heads:[]),group].filter(Boolean);
       // OSMD may return a rendered glyph reference detached from the live SVG tree.
       // Never attach handlers to invisible/detached nodes; prefer a connected group.
-      const head=candidates.find(el=>el.isConnected===true) || candidates.find(el=>el.isConnected===undefined && typeof el.addEventListener==='function');
+      const head=candidates.find(el=>el.isConnected===true) || candidates.find(el=>typeof el.addEventListener==='function');
       if(!head||typeof head.addEventListener!=='function'||elements.has(head)){valid=false;break;}
       elements.add(head);
       matches.push({partId,measureIndex:measure.index,eventIndex:i,element:head});
@@ -66,7 +66,28 @@ export function graphicalTargets(osmd,doc,visibleParts){
 }
 // Attach user interactions only to a verified, uniquely mapped graphical note.
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce}) {
-  const targets=graphicalTargets(osmd,doc,visibleParts),bindings=[];
+  const graphical=graphicalTargets(osmd,doc,visibleParts);
+  const live=graphical.map(item=>{
+    if(item.element.isConnected===true)return item;
+    const id=item.element.id;
+    const match=id && [...document.querySelectorAll('#score-container svg [id]')].filter(node=>node.id===id);
+    return match?.length===1?{...item,element:match[0]}:null;
+  });
+  let targets=live.every(Boolean)?live:[];
+  // Conservative last resort for legacy VexFlow SVG: 1:1 monophonic noteheads,
+  // only if *every* MusicXML event is matched and exactly one live glyph exists per event.
+  if(!targets.length && graphical.length && visibleParts.length===1){
+    const model=inspectScore(doc).parts.find(part=>part.id===visibleParts[0]);
+    const expected=model?.measures.reduce((sum,measure)=>sum+measure.events.length,0);
+    const glyphs=[...document.querySelectorAll('#score-container svg .vf-notehead')];
+    if(expected===graphical.length && glyphs.length===graphical.length &&
+       glyphs.every(el=>el.isConnected && el.getBoundingClientRect().width>0 &&
+          el.getBoundingClientRect().height>0)) {
+      targets=graphical.map((item,i)=>({...item,element:glyphs[i]}));
+    }
+  }
+  if(targets.length && new Set(targets.map(item=>item.element)).size!==targets.length)targets=[];
+  const bindings=[];
   function highlight(selection){
     if(targets.length>320)return {count:0,highlight(){},dispose(){}};
   for(const item of targets){
