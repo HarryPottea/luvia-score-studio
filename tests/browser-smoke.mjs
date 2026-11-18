@@ -139,11 +139,18 @@ try {
   const rect=await complexHead.boundingBox();
   assert.ok(rect&&rect.width>0&&rect.height>0);
   const center={x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+  console.log('BROWSER_STAGE=COMPLEX_HIT_DIAG '+JSON.stringify(await page.evaluate(({x,y})=>{
+    const el=document.elementFromPoint(x,y);
+    return {x,y,viewport:{w:innerWidth,h:innerHeight},rect:document.querySelector('#score-container .jwoo-note-target')?.getBoundingClientRect().toJSON(),
+      tag:el?.tagName,cls:el?.getAttribute('class'),parent:el?.parentElement?.getAttribute('class'),
+      targetCount:document.querySelectorAll('#score-container .jwoo-note-target').length};
+  },center)));
   await page.mouse.move(center.x,center.y);
   await page.mouse.down();
   await page.mouse.move(center.x,center.y-Math.max(22,rect.height*1.5),{steps:5});
   await page.mouse.up();
-  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('악보 음표 위아래 이동 완료'),{timeout:30000});
+  console.log('BROWSER_STAGE=COMPLEX_POST_DRAG '+JSON.stringify({message:await page.locator('#message').textContent(),selection:await page.locator('#v3-selection').textContent()}));
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('악보 음표 위아래 이동 완료'),{timeout:6000});
   await page.click('#v3-undo');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('되돌리기'));
   console.log('BROWSER_STAGE=POLYPHONIC_NOTE_DRAG_AND_UNDO');
