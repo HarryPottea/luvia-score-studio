@@ -73,9 +73,10 @@ function noteHead(gn,host) {
   const group=gn?.getSVGGElement?.();
   const heads=gn?.getNoteheadSVGs?.()||[];
   const valid=el=>el&&el.isConnected===true&&host.contains(el);
-  if(Array.isArray(heads)&&heads.length===1&&valid(heads[0]))return heads[0];
+  const hit=el=>el?.closest?.('.vf-notehead')||el;
+  if(Array.isArray(heads)&&heads.length===1&&valid(heads[0]))return hit(heads[0]);
   const idx=gn?.vfnoteIndex;
-  if(Array.isArray(heads)&&heads.length>1&&Number.isInteger(idx)&&valid(heads[idx]))return heads[idx];
+  if(Array.isArray(heads)&&heads.length>1&&Number.isInteger(idx)&&valid(heads[idx]))return hit(heads[idx]);
   const live=group?.querySelectorAll?.('.vf-notehead');
   if(live?.length===1&&valid(live[0]))return live[0];
   if(live?.length>1&&Number.isInteger(idx)&&valid(live[idx]))return live[idx];
