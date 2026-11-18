@@ -91,7 +91,12 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     return glyphs.length;
   }
   function findEvent(event){
-    const element=event.target?.closest?.('.vf-notehead');
+    let element=event.target?.closest?.('.vf-notehead');
+    if(!element){
+      const noteGroup=event.target?.closest?.('.vf-stavenote');
+      const inside=noteGroup?.querySelectorAll?.('.vf-notehead');
+      if(inside?.length===1) element=inside[0];
+    }
     const glyphs=elements();
     if(!element||!glyphs.length)return null;
     const i=glyphs.indexOf(element);
