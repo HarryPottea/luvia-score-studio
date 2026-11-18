@@ -227,16 +227,16 @@ $('view-all-parts').addEventListener('click', () => {
 });
 function downloadXmlDocument(doc, filename) {
   const serialized = new XMLSerializer().serializeToString(doc);
-  const xml = /^\\s*<\\?xml\\b/i.test(serialized) ? serialized : `<?xml version="1.0" encoding="utf-8"?>\\n${serialized}`;
+  const xml = /^\s*<\?xml\b/i.test(serialized) ? serialized : `<?xml version="1.0" encoding="utf-8"?>\n${serialized}`;
   const url = URL.createObjectURL(new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' }));
   const link = document.createElement('a');
   link.href = url; link.download = filename; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
-function safeFileName(name) { return String(name).replace(/[\\\\/:*?"<>|]/g, '_').trim().slice(0, 80) || 'score'; }
+function safeFileName(name) { return String(name).replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 80) || 'score'; }
 $('download-xml').addEventListener('click', () => {
   if (!state.doc) return;
-  const base = state.filename.replace(/\\.(musicxml|xml|mxl)$/i, '') || 'score';
+  const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
   downloadXmlDocument(state.doc, `${safeFileName(base)}-정리.musicxml`);
   setMessage('전체 MusicXML 파일을 저장했습니다.');
 });
@@ -245,7 +245,7 @@ $('download-part-xml').addEventListener('click', () => {
   const id = $('export-part').value;
   const part = scoreParts().find(item => item.id === id);
   if (!part) { setMessage('내보낼 파트를 선택해주세요.', true); return; }
-  const base = state.filename.replace(/\\.(musicxml|xml|mxl)$/i, '') || 'score';
+  const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
   downloadXmlDocument(filteredDocument(new Set([id])), `${safeFileName(base)}-${safeFileName(part.name)}.musicxml`);
   setMessage(`${part.name} 파트를 MusicXML로 저장했습니다. 인쇄하려면 ‘선택 파트 보기’ 후 PDF로 인쇄를 누르세요.`);
 });
