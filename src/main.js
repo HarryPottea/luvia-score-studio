@@ -226,7 +226,9 @@ async function renderScore() {
 async function openScore(raw, filename) {
   try {
     state.doc = parseXml(raw); state.originalDoc = state.doc.cloneNode(true); state.filename = filename; state.undoRhythmDoc = null; state.showBaseline = false; v2.invalidateUndo();
-    showLoaded(); await renderScore();
+    showLoaded();
+    const rendered = await renderScore();
+    if (!rendered) return false;
     $('workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
     return true;
   } catch (error) { setMessage(error.message || '파일을 열지 못했습니다.', true); return false; }
