@@ -27,5 +27,8 @@ jobs:
       - run: node --check src/editor-history.js
       - run: node --check src/v3-controls.js
       - run: node --check src/midi-import.js
+      - run: node --check src/advanced-score.js
+      - run: node --check src/advanced-controls.js
+      - run: node --check src/score-hit.js
       - run: node --test tests/*.test.mjs
       - run: npm run build
