@@ -122,6 +122,25 @@ try {
   await page.setInputFiles('#file-input',{name:'complex-voices-original.musicxml',mimeType:'application/xml',buffer:fixture});
   await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('1개 파트 · 1개 마디'),{timeout:30000});
   await page.locator('#v3-advanced-report').waitFor();
+  // Real OSMD SVG mapping: grand staff with chord, tuplet and concurrent voices.
+  const polyphonicTargets=await page.locator('#score-container .jwoo-note-target').count();
+  console.log('BROWSER_STAGE=POLYPHONIC_GRAPHIC_TARGETS '+JSON.stringify({
+    count:polyphonicTargets,hint:await page.locator('#v3-graphic-hint').textContent()
+  }));
+  assert.ok(polyphonicTargets>=2,'Grand-staff fixture did not expose distinct editable noteheads');
+  const complexHead=page.locator('#score-container .jwoo-note-target').first();
+  await complexHead.scrollIntoViewIfNeeded();
+  const rect=await complexHead.boundingBox();
+  assert.ok(rect&&rect.width>0&&rect.height>0);
+  const center={x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+  await page.mouse.move(center.x,center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x,center.y-Math.max(22,rect.height*1.5),{steps:5});
+  await page.mouse.up();
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('악보 음표 위아래 이동 완료'),{timeout:30000});
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('되돌리기'));
+  console.log('BROWSER_STAGE=POLYPHONIC_NOTE_DRAG_AND_UNDO');
   const advancedReport=await page.locator('#v3-advanced-report').textContent();
   assert.match(advancedReport,/성부 1/);
   assert.equal(await page.locator('#v3-advanced-pitch').isEnabled(),true);
