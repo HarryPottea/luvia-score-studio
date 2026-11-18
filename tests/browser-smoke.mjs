@@ -34,6 +34,21 @@ try {
   await page.click('#try-sample');
   await page.locator('#score-container svg').first().waitFor({timeout:30000});
   console.log('BROWSER_STAGE=SCORE_RENDERED');
+  assert.equal(await page.locator('#zoom').count(),0,'Legacy zoom slider must not control print size');
+  assert.match(await page.locator('#a4-size-info').textContent(),/오선 7mm 고정/);
+  const a4Portrait=await page.evaluate(()=>{
+    const host=document.querySelector('#score-container');
+    const svg=host?.querySelector('svg');
+    const group=svg?.querySelector('.staffline');
+    return {containerWidth:host?.getBoundingClientRect().width,
+      svgWidth:svg?.getBoundingClientRect().width,svgHeight:svg?.getBoundingClientRect().height,
+      staffLineBounds:group?.getBoundingClientRect().toJSON()};
+  });
+  console.log('BROWSER_STAGE=A4_PORTRAIT_GEOMETRY '+JSON.stringify(a4Portrait));
+  assert.ok(Math.abs(a4Portrait.containerWidth-210*96/25.4)<2,'A4 page should have a fixed physical CSS width');
+  assert.ok(Math.abs(a4Portrait.svgWidth-a4Portrait.containerWidth)<2,'Rendered SVG should fill A4 width');
+  assert.ok(Math.abs(a4Portrait.svgHeight-a4Portrait.containerWidth*297/210)<3,'Rendered SVG should have A4 aspect ratio');
+
   await page.locator('#v3-events .v3-event').first().waitFor();
   assert.ok((await page.locator('#v3-events .v3-event').count())>0);
   const info=await page.locator('#v3-meter').textContent();
@@ -112,6 +127,7 @@ try {
   assert.equal(pdfFiles.length,1);
   const pdf=await pdfFiles[0].async('uint8array');
   assert.equal(new TextDecoder().decode(pdf.subarray(0,8)),'%PDF-1.4');
+  assert.ok(new TextDecoder('latin1').decode(pdf).includes('/MediaBox [0 0 595.28 841.89]'),'PDF physical size must be A4 portrait');
   await fs.writeFile(output+'/sample-part.pdf',pdf);
   console.log('BROWSER_STAGE=PDF_EXPORTED');
   await page.screenshot({path:output+'/sample-workspace.png',fullPage:true});
@@ -124,6 +140,7 @@ try {
   await page.locator('#v3-advanced-report').waitFor();
   // Real OSMD SVG mapping: grand staff with chord, tuplet and concurrent voices.
   const polyphonicTargets=await page.locator('#score-container .jwoo-note-target').count();
+  assert.match(await page.locator('#a4-size-info').textContent(),/오선 6.5mm 고정/);
   console.log('BROWSER_STAGE=POLYPHONIC_GRAPHIC_TARGETS '+JSON.stringify({
     count:polyphonicTargets,hint:await page.locator('#v3-graphic-hint').textContent()
   }));
