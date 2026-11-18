@@ -67,6 +67,7 @@ function readTracks(bytes) {
         const meta=r.u8(),length=r.vlq(),data=r.chunk(length);
         if(meta===0x03 && !name)name=textDecoder.decode(data).slice(0,80);
         if(meta===0x58) {
+          if(tick!==0)fail('곡 중간의 박자 변경은 지원하지 않습니다.');
           if(length<2)fail('MIDI 박자 메타데이터가 불완전합니다.');
           const newMeter={beats:data[0],beatType:2**data[1]};
           if(![2,3,4,6].includes(newMeter.beats)||![4,8].includes(newMeter.beatType))fail('지원하지 않는 MIDI 박자입니다.');
@@ -95,7 +96,7 @@ function readTracks(bytes) {
             }
           }
         } else if(command===0xb0&&a===64&&b>=64)fail('서스테인 페달 MIDI는 추가 해석이 필요하여 변환하지 않습니다.');
-        else if(command===0xe0&&((a|b)!==64)) {
+        else if(command===0xe0) {
           // Pitch-bend values are semantically important, so avoid losing them.
           if(a!==0||b!==64)fail('피치벤드가 포함된 MIDI는 지원하지 않습니다.');
         }
