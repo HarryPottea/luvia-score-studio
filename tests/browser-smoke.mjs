@@ -74,6 +74,11 @@ try {
   const beforeDrag=await page.locator('#v3-events .v3-event').first().textContent();
   const point={x:box.x+box.width/2,y:box.y+box.height/2};
   await page.mouse.move(point.x,point.y);
+  const hit=await page.evaluate(({x,y})=>{
+    const el=document.elementFromPoint(x,y);
+    return {tag:el?.tagName,cls:el?.getAttribute('class'),parent:el?.parentElement?.getAttribute('class')};
+  },point);
+  console.log('BROWSER_STAGE=SVG_HIT_TARGET '+JSON.stringify(hit));
   await page.mouse.down();
   await page.mouse.move(point.x,point.y-Math.max(22,box.height*1.5),{steps:5});
   await page.mouse.up();
