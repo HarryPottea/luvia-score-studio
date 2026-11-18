@@ -60,7 +60,11 @@ try {
     const first=targets[0],rect=first?.getBoundingClientRect();
     return {count:targets.length,hint:document.querySelector('#v3-graphic-hint')?.textContent,
       first:first?{tag:first.tagName,width:rect?.width,height:rect?.height,display:getComputedStyle(first).display}:null,
-      graphics:document.querySelectorAll('#score-container svg').length};
+      graphics:document.querySelectorAll('#score-container svg').length,
+      allJwoo:document.querySelectorAll('.jwoo-note-target').length,
+      insideGlyph:document.querySelectorAll('#score-container svg .vf-notehead').length,
+      allGlyph:document.querySelectorAll('.vf-notehead').length,
+      glyphSamples:[...document.querySelectorAll('#score-container svg [class]')].slice(0,40).map(el=>({tag:el.tagName,cls:el.getAttribute('class'),connected:el.isConnected}))};
   });
   console.log('BROWSER_STAGE=SVG_TARGET_DIAGNOSTIC '+JSON.stringify(diagnostic));
   assert.ok(diagnostic.count>0,'No mapped SVG note targets after redo');
