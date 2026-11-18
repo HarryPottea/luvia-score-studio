@@ -196,7 +196,7 @@ function updatePrintPageSize() {
 }
 
 async function renderScore() {
-  if (!state.doc) return;
+  if (!state.doc) return false;
   const token = ++state.renderToken;
   const container = $('score-container'); container.replaceChildren();
   updatePrintPageSize();
@@ -204,12 +204,14 @@ async function renderScore() {
     const osmd = new OpenSheetMusicDisplay(container, { autoResize: true, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value });
     osmd.zoom = Number($('zoom').value) / 100;
     await osmd.load(previewDocument());
-    if (token !== state.renderToken) return;
+    if (token !== state.renderToken) return false;
     osmd.render(); state.osmd = osmd;
     setMessage('악보가 준비되었습니다. 변경 사항은 MusicXML 저장에 반영됩니다.');
+    return true;
   } catch (error) {
-    if (token !== state.renderToken) return;
+    if (token !== state.renderToken) return false;
     setMessage(`악보 렌더링에 실패했습니다: ${error.message || '지원하지 않는 표기일 수 있습니다.'}`, true);
+    return false;
   }
 }
 
@@ -263,7 +265,16 @@ $('apply-rhythm').addEventListener('click', async () => {
     state.undoRhythmDoc = before;
     state.doc = result.doc;
     refreshRhythmReport();
-    await renderScore();
+    const rendered = await renderScore();
+    if (state.doc !== result.doc) return; // A newer file superseded this result.
+    if (!rendered) {
+      state.doc = before;
+      state.undoRhythmDoc = null;
+      refreshRhythmReport();
+      await renderScore();
+      setMessage('변경 후 미리보기를 표시할 수 없어 쉼표 정리를 취소했습니다. 원본 상태를 유지합니다.', true);
+      return;
+    }
     setMessage(`${result.changes}쌍의 쉼표를 병합했습니다. 음표의 길이와 총 연주시간은 변경하지 않았습니다. 결과를 검수해 주세요.`);
   } catch (error) { setMessage(`쉼표 정리를 적용하지 않았습니다: ${error.message || '검사 오류'}`, true); }
 });
