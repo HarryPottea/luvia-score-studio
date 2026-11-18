@@ -1,8 +1,8 @@
-// Strict bridge between OSMD graphical SVG notes and editable MusicXML positions.
-// Whenever graphical/source-note counts or voice structure disagree, skip binding.
-// The bridge never guesses coordinates for polyphonic, multi-staff or chord measures.
-import { inspectScore } from './editor-core.js';
+// Safe graphical MusicXML editing: bind individual SVG noteheads, not SVG order.
+// Concurrent voices, multiple staves and chords are permitted only with unique identity.
+import { listAdvancedMeasures } from './advanced-score.js';
 const STEPS='CDEFGAB';
+const close=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<1e-6;
 export function shiftDiatonicPitch({step,alter=0,octave},diatonicSteps){
   if(!STEPS.includes(step)||step.length!==1||!Number.isInteger(diatonicSteps)||Math.abs(diatonicSteps)>8||!Number.isInteger(octave))throw new Error('음정 이동 단계가 올바르지 않습니다.');
   const absolute=octave*7+STEPS.indexOf(step)+diatonicSteps;
@@ -10,163 +10,166 @@ export function shiftDiatonicPitch({step,alter=0,octave},diatonicSteps){
   if(nextOctave<1||nextOctave>8)throw new Error('지원하는 옥타브 범위를 벗어났습니다.');
   return {step:nextStep,alter,octave:nextOctave};
 }
-export function graphicalTargets(osmd,doc,visibleParts){
-  if(!osmd?.GraphicSheet||!doc||!Array.isArray(visibleParts)||visibleParts.length!==1)return [];
-  const partId=visibleParts[0];
-  const part=inspectScore(doc).parts.find(p=>p.id===partId);
-  if(!part)return [];
-  const matrices=osmd.GraphicSheet.MeasureList;
-  if(!Array.isArray(matrices)||matrices.length<part.measures.length)return [];
-  const targets=[];
-  for(const measure of part.measures){
-    if(measure.reason || !measure.events.length||measure.events.some(e=>e.complex||e.rest||!e.editable))continue;
-    const row=matrices[measure.index];
-    if(!Array.isArray(row)||row.length!==1||!row[0])continue;
-    const entries=row[0].staffEntries;
-    if(!Array.isArray(entries))continue;
-    const graphical=[];
-    for(const entry of entries){
-      const voices=entry?.graphicalVoiceEntries;
-      if(!Array.isArray(voices)||voices.length!==1)continue;
-      const notes=voices[0]?.notes;
-      if(!Array.isArray(notes))continue;
-      graphical.push(...notes);
+const direct=(node,name)=>node&&[...node.children].find(x=>x.localName===name);
+const all=(node,name)=>node?[...node.children].filter(x=>x.localName===name):[];
+function staffCount(part) {
+  let declared=[];
+  let largest=1;
+  for(const measure of all(part,'measure')) {
+    for(const attrs of all(measure,'attributes')) {
+      const staves=direct(attrs,'staves');
+      if(staves)declared.push(Number(staves.textContent));
     }
-    if(graphical.length!==measure.events.length)continue;
-    const sourceFirst=graphical[0]?.sourceNote;
-    const firstTimestamp=sourceFirst?.getAbsoluteTimestamp?.()?.RealValue;
-    if(!Number.isFinite(firstTimestamp))continue;
-    const elements=new Set(),matches=[];
-    let valid=true;
-    for(let i=0;i<graphical.length;i++){
-      const gn=graphical[i];
-      if(!gn?.sourceNote||typeof gn.sourceNote.isRest!=='function'||gn.sourceNote.isRest()) {valid=false;break;}
-      const sourceNote=gn.sourceNote, event=measure.events[i];
-      const name=sourceNote.Pitch?.ToStringShort?.();
-      const duration=sourceNote.Length?.RealValue;
-      const absolute=sourceNote.getAbsoluteTimestamp?.()?.RealValue;
-      const expectedLength=event.duration/(measure.divisions*4);
-      const expectedDelta=(event.start-measure.events[0].start)/(measure.divisions*4);
-      if(typeof name!=='string'||name[0]?.toUpperCase()!==event.step||
-        !Number.isFinite(duration)||Math.abs(duration-expectedLength)>1e-6||
-        !Number.isFinite(absolute)||Math.abs((absolute-firstTimestamp)-expectedDelta)>1e-6){valid=false;break;}
-      const heads=typeof gn.getNoteheadSVGs==='function'?gn.getNoteheadSVGs():[];
-      const group=typeof gn.getSVGGElement==='function'?gn.getSVGGElement():null;
-      const candidates=[...(Array.isArray(heads)&&heads.length===1?heads:[]),group].filter(Boolean);
-      // OSMD may return a rendered glyph reference detached from the live SVG tree.
-      // Never attach handlers to invisible/detached nodes; prefer a connected group.
-      const head=candidates.find(el=>el.isConnected===true) || candidates.find(el=>typeof el.addEventListener==='function');
-      if(!head||typeof head.addEventListener!=='function'||elements.has(head)){valid=false;break;}
-      elements.add(head);
-      matches.push({partId,measureIndex:measure.index,eventIndex:i,element:head});
+    for(const note of all(measure,'note')) {
+      const staff=direct(note,'staff');
+      if(staff)largest=Math.max(largest,Number(staff.textContent));
     }
-    if(valid)targets.push(...matches);
   }
-  return targets;
+  const count=Math.max(largest,...declared,1);
+  // A changing number of staves cannot be indexed into a fixed graphical row.
+  return Number.isSafeInteger(count)&&count<=8&&declared.every(x=>x===count)?count:null;
 }
-// Attach user interactions only to a verified, uniquely mapped graphical note.
+function staffOffsets(doc,visibleParts) {
+  const wanted=new Set(visibleParts);
+  const parts=all(doc?.documentElement,'part').filter(n=>wanted.has(n.getAttribute('id')));
+  if(parts.length!==wanted.size||!parts.length)return null;
+  const offsets=new Map();
+  let total=0;
+  for(const part of parts) {
+    const count=staffCount(part);
+    if(!count)return null;
+    offsets.set(part.getAttribute('id'),{offset:total,count});
+    total+=count;
+  }
+  return {offsets,total};
+}
+const signature=e=>e&&e.step&&Number.isInteger(e.alter)&&Number.isInteger(e.octave)&&Number.isInteger(e.start)&&Number.isInteger(e.duration)
+  ?[e.start,e.duration,e.step,e.alter,e.octave].join('/') : null;
+// Do not infer voice identities from sequence order: duplicated identities stay read-only.
+export function matchScoreEvents(events,graphics) {
+  const source=new Map(),visual=new Map();
+  for(const [list,store] of [[events,source],[graphics,visual]]) {
+    for(const e of list) {
+      const key=signature(e);
+      if(key){const items=store.get(key)||[];items.push(e);store.set(key,items);}
+    }
+  }
+  const matches=[];
+  for(const [key,items] of source) {
+    const seen=visual.get(key)||[];
+    if(items.length===1&&seen.length===1)matches.push({event:items[0],graphic:seen[0]});
+  }
+  return matches;
+}
+function sourcePitch(source) {
+  const short=source?.Pitch?.ToStringShort?.();
+  if(typeof short!=='string')return null;
+  const match=/^([A-G])((?:#{1,2}|b{1,2}|x)?)(-?\d+)$/i.exec(short.trim());
+  if(!match)return null;
+  const alter=match[2].toLowerCase()==='x'?2:(match[2].match(/#/g)||[]).length-(match[2].match(/b/gi)||[]).length;
+  return {step:match[1].toUpperCase(),alter,octave:Number(match[3])};
+}
+function noteHead(gn,host) {
+  const group=gn?.getSVGGElement?.();
+  const heads=gn?.getNoteheadSVGs?.()||[];
+  const valid=el=>el&&el.isConnected===true&&host.contains(el);
+  if(Array.isArray(heads)&&heads.length===1&&valid(heads[0]))return heads[0];
+  const idx=gn?.vfnoteIndex;
+  if(Array.isArray(heads)&&heads.length>1&&Number.isInteger(idx)&&valid(heads[idx]))return heads[idx];
+  const live=group?.querySelectorAll?.('.vf-notehead');
+  if(live?.length===1&&valid(live[0]))return live[0];
+  if(live?.length>1&&Number.isInteger(idx)&&valid(live[idx]))return live[idx];
+  return null;
+}
+export function graphicalTargets(osmd,doc,visibleParts,host) {
+  if(!osmd?.GraphicSheet||!doc||!Array.isArray(visibleParts)||!host)return [];
+  const layout=staffOffsets(doc,visibleParts);
+  const matrix=osmd.GraphicSheet.MeasureList;
+  if(!layout||!Array.isArray(matrix))return [];
+  const found=[],used=new Set();
+  for(const part of listAdvancedMeasures(doc)) {
+    const location=layout.offsets.get(part.id);
+    if(!location)continue;
+    for(const measure of part.measures) {
+      if(measure.reason||!measure.divisions)continue;
+      const row=matrix[measure.index];
+      if(!Array.isArray(row)||row.length!==layout.total)continue;
+      for(let staff=1;staff<=location.count;staff++) {
+        const staffEntries=row[location.offset+staff-1]?.staffEntries;
+        if(!Array.isArray(staffEntries))continue;
+        const expected=measure.events.filter(e=>Number(e.staff)===staff&&e.editablePitch&&!e.protectedMarkup);
+        const drawn=[];
+        for(const entry of staffEntries)for(const voice of entry.graphicalVoiceEntries||[])for(const gn of voice.notes||[]) {
+          const src=gn?.sourceNote;
+          if(!src||src.isRest?.()!==false)continue;
+          const pitch=sourcePitch(src),time=src.ParentVoiceEntry?.Timestamp?.RealValue,duration=src.Length?.RealValue;
+          if(!pitch||!Number.isFinite(time)||!Number.isFinite(duration))continue;
+          const start=Math.round(time*measure.divisions*4),length=Math.round(duration*measure.divisions*4);
+          if(!close(start/(measure.divisions*4),time)||!close(length/(measure.divisions*4),duration))continue;
+          drawn.push({...pitch,start,duration:length,gn});
+        }
+        for(const pair of matchScoreEvents(expected,drawn)) {
+          const element=noteHead(pair.graphic.gn,host);
+          if(!element||used.has(element))continue;
+          used.add(element);
+          found.push({partId:part.id,measureIndex:measure.index,eventIndex:pair.event.eventIndex,
+            voice:pair.event.voice,staff,element});
+        }
+      }
+    }
+  }
+  return found;
+}
+function addHitArea(element) {
+  const target=element.matches?.('.vf-notehead')?element:(element.closest?.('.vf-notehead')||element);
+  if(!target||target.querySelector?.(':scope > .jwoo-hit-area')||typeof target.getBBox!=='function')return;
+  let box;
+  try{box=target.getBBox();}catch{return;}
+  if(!box||![box.x,box.y,box.width,box.height].every(Number.isFinite)||box.width<=0||box.height<=0)return;
+  const overlay=target.ownerDocument.createElementNS('http://www.w3.org/2000/svg','rect');
+  for(const [key,val] of Object.entries({x:box.x-3,y:box.y-3,width:box.width+6,height:box.height+6,fill:'transparent','pointer-events':'all'}))
+    overlay.setAttribute(key,String(val));
+  overlay.classList.add('jwoo-hit-area');target.appendChild(overlay);
+}
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce}) {
-  const graphical=graphicalTargets(osmd,doc,visibleParts);
   const host=document.getElementById('score-container');
-  const model=visibleParts.length===1?inspectScore(doc).parts.find(part=>part.id===visibleParts[0]):null;
-  const allNotes=model?.measures.reduce((total,measure)=>total+measure.events.length,0);
-  // Never attach based on a subset or to another document's detached glyph nodes.
-  const enabled=!!host&&graphical.length>0&&graphical.length<=320&&graphical.length===allNotes;
+  const targets=graphicalTargets(osmd,doc,visibleParts,host);
+  const cleanups=[];
   let selected=null,drag=null,disposed=false;
-  const elements=()=> {
-    if(!enabled||disposed)return [];
-    const glyphs=[...host.querySelectorAll('svg .vf-notehead')];
-    return glyphs.length===graphical.length && glyphs.every(el=>host.contains(el)) ? glyphs : [];
-  };
-  function ensureHitArea(group){
-    if(group.querySelector?.(':scope > .jwoo-hit-area'))return;
-    if(typeof group.getBBox!=='function')return;
-    let bounds;
-    try {bounds=group.getBBox();}catch{return;}
-    if(!bounds||!Number.isFinite(bounds.x)||!Number.isFinite(bounds.y)||
-       !Number.isFinite(bounds.width)||!Number.isFinite(bounds.height)||
-       bounds.width<=0||bounds.height<=0)return;
-    // A transparent, pointer-enabled box covers the complete music glyph, including
-    // the empty-looking middle of a notehead. Appended only once per rendered SVG.
-    const doc=group.ownerDocument;
-    const box=doc.createElementNS('http://www.w3.org/2000/svg','rect');
-    const pad=4;
-    box.setAttribute('x',String(bounds.x-pad));
-    box.setAttribute('y',String(bounds.y-pad));
-    box.setAttribute('width',String(bounds.width+pad*2));
-    box.setAttribute('height',String(bounds.height+pad*2));
-    box.setAttribute('fill','transparent');
-    box.setAttribute('stroke','none');
-    box.setAttribute('pointer-events','all');
-    box.classList.add('jwoo-hit-area');
-    group.appendChild(box);
+  const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
+  function refresh(){for(const item of targets)item.element.classList.toggle('jwoo-note-selected',!!same(selected,item));}
+  function up(event) {
+    if(disposed||!drag||drag.pointerId!==event.pointerId)return;
+    const item=drag.item,unit=drag.unit;
+    const steps=Math.max(-8,Math.min(8,Math.round((drag.y-event.clientY)/unit)));
+    drag=null;
+    if(steps)movePitch(item,steps);
   }
-  function update(){
-    const glyphs=elements();
-    for(const [i,el] of glyphs.entries()){
-      const item=graphical[i];
-      ensureHitArea(el);
-      el.classList.add('jwoo-note-target');
-      el.setAttribute('tabindex','0');
-      el.setAttribute('role','button');
-      el.setAttribute('aria-label','악보 '+(item.measureIndex+1)+'마디 '+(item.eventIndex+1)+'번째 음표 선택');
-      el.classList.toggle('jwoo-note-selected',!!selected&&selected.partId===item.partId&&selected.measureIndex===item.measureIndex&&selected.eventIndex===item.eventIndex);
+  function cancel(event){if(drag?.pointerId===event.pointerId)drag=null;}
+  for(const item of targets) {
+    const el=item.element;
+    el.classList.add('jwoo-note-target');el.setAttribute('tabindex','0');
+    el.setAttribute('role','button');
+    el.setAttribute('aria-label',(item.measureIndex+1)+'마디 '+item.voice+'성부 '+item.staff+'보표 음표');
+    addHitArea(el);
+    function down(event){
+      if(disposed||event.button!==0||event.isPrimary===false)return;
+      selected=item;select(item);refresh();
+      const rect=el.getBoundingClientRect();
+      drag={item,y:event.clientY,pointerId:event.pointerId,unit:Math.max(7,Math.min(18,rect.height*.6))};
+      event.preventDefault();event.stopPropagation();
     }
-    return glyphs.length;
-  }
-  function findEvent(event){
-    let element=event.target?.closest?.('.vf-notehead');
-    if(!element){
-      const noteGroup=event.target?.closest?.('.vf-stavenote');
-      const inside=noteGroup?.querySelectorAll?.('.vf-notehead');
-      if(inside?.length===1) element=inside[0];
+    function key(event){
+      if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
+      event.preventDefault();selected=item;select(item);refresh();
+      if(event.key==='ArrowUp'||event.key==='ArrowDown')movePitch(item,event.key==='ArrowUp'?1:-1);
     }
-    const glyphs=elements();
-    if(!element||!glyphs.length)return null;
-    const i=glyphs.indexOf(element);
-    return i>=0?{element,item:graphical[i]}:null;
+    el.addEventListener('pointerdown',down);el.addEventListener('keydown',key);
+    cleanups.push(()=>{el.removeEventListener('pointerdown',down);el.removeEventListener('keydown',key);});
   }
-  function pointerDown(event){
-    if(event.button!==0)return;
-    const found=findEvent(event);
-    if(!found)return;
-    const rect=found.element.getBoundingClientRect();
-    drag={id:event.pointerId,y:event.clientY,unit:Math.max(7,Math.min(18,rect.height*.6)),item:found.item};
-    selected={partId:found.item.partId,measureIndex:found.item.measureIndex,eventIndex:found.item.eventIndex};
-    select(selected);
-    update();
-    event.preventDefault();
-  }
-  function pointerUp(event){
-    if(!drag||drag.id!==event.pointerId)return;
-    const steps=Math.max(-8,Math.min(8,Math.round((drag.y-event.clientY)/drag.unit)));
-    const item=drag.item;drag=null;
-    if(steps!==0)movePitch(item,steps);
-  }
-  function keyDown(event){
-    if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
-    const found=findEvent(event);
-    if(!found)return;
-    event.preventDefault();
-    selected={partId:found.item.partId,measureIndex:found.item.measureIndex,eventIndex:found.item.eventIndex};
-    select(selected);update();
-    if(event.key==='ArrowUp'||event.key==='ArrowDown')movePitch(found.item,event.key==='ArrowUp'?1:-1);
-  }
-  host?.addEventListener('pointerdown',pointerDown);
-  host?.addEventListener('keydown',keyDown);
-  document.addEventListener('pointerup',pointerUp);
-  const observer=enabled?new MutationObserver(()=>{if(!disposed)update();}):null;
-  observer?.observe(host,{childList:true,subtree:true});
-  const count=update();
-  announce?.(count);
-  return {
-    count,
-    highlight(nextSelection){selected=nextSelection;update();},
-    dispose(){
-      disposed=true;observer?.disconnect();
-      host?.removeEventListener('pointerdown',pointerDown);
-      host?.removeEventListener('keydown',keyDown);
-      document.removeEventListener('pointerup',pointerUp);
-    },
-  };
+  document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancel);
+  announce?.(targets.length);
+  return {count:targets.length,highlight(next){selected=next;refresh();},
+    dispose(){if(disposed)return;disposed=true;drag=null;for(const off of cleanups)off();
+      document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);}};
 }
