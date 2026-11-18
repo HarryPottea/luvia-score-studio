@@ -133,45 +133,62 @@ function addHitArea(element) {
     overlay.setAttribute(key,String(val));
   overlay.classList.add('jwoo-hit-area');target.appendChild(overlay);
 }
+// OSMD autoResize replaces SVG nodes. Rebind after a DOM replacement instead of
+// assuming one-off graphical objects survive responsive re-rendering.
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce}) {
   const host=document.getElementById('score-container');
-  const targets=graphicalTargets(osmd,doc,visibleParts,host);
-  const cleanups=[];
-  let selected=null,drag=null,disposed=false;
+  let targets=[],cleanups=[],selected=null,drag=null,disposed=false;
   const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
-  function refresh(){for(const item of targets)item.element.classList.toggle('jwoo-note-selected',!!same(selected,item));}
+  function highlight(){for(const item of targets)item.element.classList.toggle('jwoo-note-selected',!!same(selected,item));}
   function up(event) {
     if(disposed||!drag||drag.pointerId!==event.pointerId)return;
-    const item=drag.item,unit=drag.unit;
-    const steps=Math.max(-8,Math.min(8,Math.round((drag.y-event.clientY)/unit)));
+    const {item,unit,y}=drag;
     drag=null;
+    const steps=Math.max(-8,Math.min(8,Math.round((y-event.clientY)/unit)));
     if(steps)movePitch(item,steps);
   }
   function cancel(event){if(drag?.pointerId===event.pointerId)drag=null;}
-  for(const item of targets) {
+  function clearHandlers(){for(const off of cleanups)off();cleanups=[];drag=null;}
+  function attach(item){
     const el=item.element;
     el.classList.add('jwoo-note-target');el.setAttribute('tabindex','0');
     el.setAttribute('role','button');
     el.setAttribute('aria-label',(item.measureIndex+1)+'마디 '+item.voice+'성부 '+item.staff+'보표 음표');
     addHitArea(el);
-    function down(event){
+    function down(event) {
       if(disposed||event.button!==0||event.isPrimary===false)return;
-      selected=item;select(item);refresh();
-      const rect=el.getBoundingClientRect();
-      drag={item,y:event.clientY,pointerId:event.pointerId,unit:Math.max(7,Math.min(18,rect.height*.6))};
+      selected=item;select(item);highlight();
+      const box=el.getBoundingClientRect();
+      drag={item,y:event.clientY,pointerId:event.pointerId,unit:Math.max(7,Math.min(18,box.height*.6))};
       event.preventDefault();event.stopPropagation();
     }
-    function key(event){
+    function key(event) {
       if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
-      event.preventDefault();selected=item;select(item);refresh();
+      event.preventDefault();selected=item;select(item);highlight();
       if(event.key==='ArrowUp'||event.key==='ArrowDown')movePitch(item,event.key==='ArrowUp'?1:-1);
     }
     el.addEventListener('pointerdown',down);el.addEventListener('keydown',key);
     cleanups.push(()=>{el.removeEventListener('pointerdown',down);el.removeEventListener('keydown',key);});
   }
+  function remap(){
+    if(disposed)return;
+    const next=graphicalTargets(osmd,doc,visibleParts,host);
+    if(next.length===targets.length&&next.every((v,i)=>v.element===targets[i].element))return;
+    clearHandlers();
+    targets=next;
+    for(const item of targets)attach(item);
+    highlight();announce?.(targets.length);
+  }
   document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancel);
-  announce?.(targets.length);
-  return {count:targets.length,highlight(next){selected=next;refresh();},
-    dispose(){if(disposed)return;disposed=true;drag=null;for(const off of cleanups)off();
-      document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);}};
+  // Observe subtree replacements only; class/attribute changes are not watched.
+  // addHitArea modifies childList once, but remap's identity check prevents loops.
+  const observer=host?new MutationObserver(remap):null;
+  observer?.observe(host,{childList:true,subtree:true});
+  remap();
+  return {get count(){return targets.length;},highlight(next){selected=next;highlight();},
+    dispose(){
+      if(disposed)return;disposed=true;
+      observer?.disconnect();clearHandlers();
+      document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);
+    }};
 }
