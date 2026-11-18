@@ -6,7 +6,7 @@ export function makePdfFromJpegPages(pages, pageFormat='A4_P') {
   if (!Array.isArray(pages) || !pages.length || pages.length>MAX_TOTAL_PAGES || !A4[pageFormat]) throw new Error('PDF 페이지 정보가 올바르지 않습니다.');
   let bytes=0;
   for (const p of pages) {
-    if (!(p.jpeg instanceof Uint8Array) || !p.jpeg.length || !Number.isSafeInteger(p.width) || !Number.isSafeInteger(p.height) || p.width<=0 || p.height<=0) throw new Error('PDF 이미지 데이터가 올바르지 않습니다.');
+    if (!(p.jpeg instanceof Uint8Array) || p.jpeg.length<4 || p.jpeg[0]!==255 || p.jpeg[1]!==216 || p.jpeg[p.jpeg.length-2]!==255 || p.jpeg[p.jpeg.length-1]!==217 || !Number.isSafeInteger(p.width) || !Number.isSafeInteger(p.height) || p.width<=0 || p.height<=0) throw new Error('PDF 이미지 데이터가 올바르지 않습니다.');
     bytes+=p.jpeg.length;
   }
   if(bytes>70*1024*1024) throw new Error('PDF 결과가 너무 큽니다.');
