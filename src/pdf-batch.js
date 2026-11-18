@@ -21,7 +21,7 @@ function singlePartDoc(source, partId) {
 
 async function svgToJpeg(svg,pageFormat) {
   const svgSource=new XMLSerializer().serializeToString(svg);
-  if(/<image\b/i.test(svgSource) || /(?:href|url)\s*=\s*["']https?:/i.test(svgSource)) throw new Error('외부 이미지가 포함된 악보는 자동 PDF로 출력할 수 없습니다.');
+  if(/<(?:image|script|foreignObject)\b|@import\b|url\(\s*['\"]?(?:https?:|\/\/)|\bhref\s*=\s*['\"](?:https?:|\/\/)/i.test(svgSource)) throw new Error('외부 파일 참조 또는 지원하지 않는 SVG 요소가 있어 자동 PDF를 차단했습니다.');
   const blob=new Blob([svgSource],{type:'image/svg+xml;charset=utf-8'});
   const src=URL.createObjectURL(blob);
   try {
