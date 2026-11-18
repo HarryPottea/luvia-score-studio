@@ -20,7 +20,8 @@ const TEMPLATE = [
   '<option value="whole">온음표</option><option value="half">2분</option><option value="quarter">4분</option>',
   '<option value="eighth">8분</option><option value="16th">16분</option><option value="32nd">32분</option></select></div></div>',
   '<div class="v3-actions"><button id="v3-pitch" type="button">음정 변경 / 음표 넣기</button>',
-  '<button id="v3-duration" type="button">길이 변경</button><button id="v3-delete" type="button">음표 → 쉼표</button></div>',
+  '<button id="v3-duration" type="button">길이 변경</button><button id="v3-delete" type="button">음표 → 쉼표</button>',
+  '<button id="v3-tie" type="button">다음 음표와 붙임줄 연결/해제</button></div>',
   '<label for="v3-lyric">선택 음표의 가사</label><input id="v3-lyric" type="text" maxlength="80" placeholder="가사 한 음절" />',
   '<button id="v3-lyric-save" class="v3-save-lyric" type="button">가사 수정</button>',
   '<div class="v3-actions v3-history-actions"><button id="v3-undo" type="button" disabled>↶ 되돌리기</button>',
@@ -94,6 +95,9 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     $('v3-duration').disabled=!editable||event.rest;
     $('v3-delete').disabled=!editable||event.rest||!!event.lyric;
     $('v3-lyric-save').disabled=!editable||event.rest;
+    const next=measure?.events[selection.eventIndex+1];
+    const samePitch=!!event&&!event.rest&&!!next&&!next.rest&&event.step===next.step&&event.alter===next.alter&&event.octave===next.octave;
+    $('v3-tie').disabled=!!busy||!!state.showBaseline||!!measure?.reason||!samePitch;
     $('v3-selection').textContent=event?
       (selection.eventIndex+1)+'번째 '+(event.rest?'쉼표':'음표')+' · 시작 '+event.start+'/'+(measure.divisions??'?')+' · 길이 '+event.duration+' · '+(editable?'수정 가능':'보호된 표기 (원본 유지)')
       :'마디에 음표·쉼표가 없습니다.';
@@ -157,6 +161,7 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
   });
   $('v3-duration').addEventListener('click',()=>commit('duration',{type:$('v3-length').value},'음표 길이 편집'));
   $('v3-delete').addEventListener('click',()=>commit('to-rest',{},'음표를 쉼표로 대체'));
+  $('v3-tie').addEventListener('click',()=>commit('tie',{},'인접 음표 붙임줄 연결/해제'));
   $('v3-lyric-save').addEventListener('click',()=>commit('lyric',{text:$('v3-lyric').value},'가사 수정'));
   $('v3-undo').addEventListener('click',()=>travel('undo'));
   $('v3-redo').addEventListener('click',()=>travel('redo'));
