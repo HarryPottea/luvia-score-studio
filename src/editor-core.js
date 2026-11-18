@@ -59,7 +59,7 @@ function consumableRest(note) {
     && !note.attributes?.length && INT(TEXT(note,'duration')) !== null && EDIT_TYPES.includes(TEXT(note,'type'));
 }
 function noteProtected(note, action) {
-  const forbidden = action === 'lyric' ? ['chord','grace','cue','time-modification','staff'] : [...BLOCKED_NOTES,'beam'];
+  const forbidden = action === 'lyric' ? ['chord','grace','cue','time-modification','staff'] : action === 'tie' ? ['chord','grace','cue','time-modification','staff','beam'] : [...BLOCKED_NOTES,'beam'];
   return [...note.children].some(el => forbidden.includes(el.localName));
 }
 function eligibleMeasure(measure, divisions, beats, beatType) {
@@ -217,13 +217,57 @@ function editLyric(note,text) {
   else lyric.appendChild(make(lyric,'text',value));
   if(!DIRECT(lyric,'syllabic')) lyric.insertBefore(make(lyric,'syllabic','single'),lyric.firstChild);
 }
+function pitchSignature(note) {
+  const p=DIRECT(note,'pitch');
+  return p ? [TEXT(p,'step'),TEXT(p,'alter')||'0',TEXT(p,'octave')].join(':') : '';
+}
+function tieType(note) {
+  const ties=MANY(note,'tie');
+  const notations=MANY(note,'notations');
+  if(ties.length>1||notations.length>1) throw new Error('여러 붙임줄 또는 복합 기보가 있어 변경하지 않습니다.');
+  if(notations[0]&&[...notations[0].children].some(el=>el.localName!=='tied')) throw new Error('붙임줄 외 다른 기보가 있어 변경하지 않습니다.');
+  const tied=notations[0]?MANY(notations[0],'tied'):[];
+  if(tied.length>1) throw new Error('여러 붙임줄이 겹친 기보입니다.');
+  const a=ties[0]?.getAttribute('type')||'';
+  const b=tied[0]?.getAttribute('type')||'';
+  if(a!==b) throw new Error('붙임줄 데이터가 불일치합니다.');
+  return a;
+}
+function makeTie(note,type) {
+  const next=make(note,'tie');
+  next.setAttribute('type',type);
+  note.insertBefore(next,DIRECT(note,'type'));
+  const notations=make(note,'notations');
+  const tied=make(note,'tied');tied.setAttribute('type',type);
+  notations.appendChild(tied);note.appendChild(notations);
+}
+function removeTie(note) {
+  for(const tie of MANY(note,'tie'))note.removeChild(tie);
+  for(const block of MANY(note,'notations')) {
+    for(const tied of MANY(block,'tied'))block.removeChild(tied);
+    if(!block.children.length)note.removeChild(block);
+  }
+}
+function toggleTie(measure,selectedEventIndex) {
+  const notes=MANY(measure,'note');
+  const first=notes[selectedEventIndex],second=notes[selectedEventIndex+1];
+  if(!first||!second||!pitchSignature(first)||pitchSignature(first)!==pitchSignature(second)) throw new Error('같은 높이의 인접 음표 두 개만 붙임줄로 연결할 수 있습니다.');
+  if(noteProtected(first,'tie')||noteProtected(second,'tie')) throw new Error('연결할 수 없는 복합 기보가 포함되어 있습니다.');
+  const a=tieType(first),b=tieType(second);
+  if(!a&&!b){makeTie(first,'start');makeTie(second,'stop');return 'tie-added';}
+  if(a==='start'&&b==='stop'){removeTie(first);removeTie(second);return 'tie-removed';}
+  throw new Error('다른 붙임줄이 연결되어 있어 변경하지 않습니다.');
+}
+
 export function editScoreEvent(source, operation) {
   if(!source || !operation || typeof operation!=='object') throw new Error('악보 편집 요청이 올바르지 않습니다.');
   const action=operation.action;
-  if(!['pitch','duration','to-rest','from-rest','lyric'].includes(action)) throw new Error('지원하지 않는 편집 명령입니다.');
+  if(!['pitch','duration','to-rest','from-rest','lyric','tie'].includes(action)) throw new Error('지원하지 않는 편집 명령입니다.');
   const doc=source.cloneNode(true);
   const {measure,note,view,event}=getEditable(doc,operation,action==='lyric'?'lyric':'note');
-  if(action==='pitch') {
+  if(action==='tie') {
+    toggleTie(measure,operation.eventIndex);
+  } else if(action==='pitch') {
     if(event.rest) throw new Error('쉼표의 음정을 수정할 수 없습니다.');
     swapPitch(note,operation.step,operation.alter,operation.octave);
   } else if(action==='to-rest') {
