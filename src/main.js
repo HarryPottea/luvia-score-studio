@@ -49,7 +49,7 @@ app.innerHTML = `
           </div>
         </div>
       </section>
-      <section class="guide" id="guide"><div class="guide-heading"><span>HOW IT WORKS — 001</span><h2>세 단계로,<br>완성된 악보까지.</h2></div><div class="guide-steps"><div><span>01 / IMPORT</span><h3>MusicXML 열기</h3><p>Logic Pro에서 내보낸 .musicxml, .xml, .mxl 파일을 불러옵니다. .logicx 프로젝트는 직접 열 수 없습니다.</p></div><div><span>02 / REVIEW</span><h3>곡과 파트 정리</h3><p>제목·작곡가·악기 이름을 수정하고 표시할 파트를 선택합니다. 음표와 리듬은 원본을 유지합니다.</p></div><div><span>03 / EXPORT</span><h3>악보 저장</h3><p>수정한 MusicXML을 내려받거나 브라우저 인쇄 창에서 PDF로 저장합니다.</p></div></div></section>
+      <section class="guide" id="guide"><div class="guide-heading"><span>HOW IT WORKS — 001</span><h2>세 단계로,<br>완성된 악보까지.</h2></div><div class="guide-steps"><div><span>01 / IMPORT</span><h3>MusicXML 열기</h3><p>Logic Pro에서 내보낸 .musicxml, .xml, .mxl 파일을 불러옵니다. .logicx 프로젝트는 직접 열 수 없습니다.</p></div><div><span>02 / REVIEW</span><h3>곡과 파트 정리</h3><p>제목·작곡가·악기 이름을 수정하고 표시할 파트를 선택합니다. 음표는 원본을 유지하며, 안전한 쉼표 정리는 사용자 선택 시에만 적용됩니다.</p></div><div><span>03 / EXPORT</span><h3>악보 저장</h3><p>수정한 MusicXML을 내려받거나 브라우저 인쇄 창에서 PDF로 저장합니다.</p></div></div></section>
     </main>
     <footer><span>JAEWOO SCORE STUDIO</span><span>YOUR MUSIC, YOUR FILE. &nbsp; / &nbsp; LOCAL PROCESSING ONLY</span></footer>
   </div>
