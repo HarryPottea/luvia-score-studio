@@ -45,6 +45,7 @@ try {
       staffLineBounds:group?.getBoundingClientRect().toJSON()};
   });
   console.log('BROWSER_STAGE=A4_PORTRAIT_GEOMETRY '+JSON.stringify(a4Portrait));
+  console.log('BROWSER_STAGE=A4_STAFFLINE_STRUCTURE '+(await page.locator('#score-container .staffline').first().evaluate(e=>e.outerHTML.slice(0,2100))));
   assert.ok(Math.abs(a4Portrait.containerWidth-210*96/25.4)<2,'A4 page should have a fixed physical CSS width');
   assert.ok(Math.abs(a4Portrait.svgWidth-a4Portrait.containerWidth)<2,'Rendered SVG should fill A4 width');
   assert.ok(Math.abs(a4Portrait.svgHeight-a4Portrait.containerWidth*297/210)<3,'Rendered SVG should have A4 aspect ratio');
@@ -147,7 +148,8 @@ try {
   assert.ok(polyphonicTargets>=2,'Grand-staff fixture did not expose distinct editable noteheads');
   // Playwright hover waits for the SVG target to become stable and scrolls
   // it into view; manual smooth scrolling would leave moving coordinates.
-  const complexHead=page.locator('#score-container .jwoo-note-target').first();
+  // Select a non-chord notehead: chord tones can overlap at 6.5mm staff size.
+  const complexHead=page.locator('#score-container .jwoo-note-target').nth(3);
   await complexHead.hover({timeout:12000});
   const rect=await complexHead.boundingBox();
   assert.ok(rect&&rect.width>0&&rect.height>0);
