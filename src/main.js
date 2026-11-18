@@ -1,6 +1,8 @@
 import JSZip from 'jszip';
 import { buildPartZip, baseScoreName, safeFileName } from './part-export.js';
 import { scanScoreRhythm, applySafeRestCleanup } from './rhythm-dom.js';
+import { applyLayoutPreset } from './layout-profile.js';
+import { mountV2Controls } from './v2-controls.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { sampleScore } from './sample.js';
 import './style.css';
@@ -56,7 +58,7 @@ app.innerHTML = `
 `;
 
 const $ = (id) => document.getElementById(id);
-const state = { doc: null, filename: '', visible: new Set(), osmd: null, renderToken: 0, undoRhythmDoc: null };
+const state = { doc: null, originalDoc: null, filename: '', visible: new Set(), osmd: null, renderToken: 0, undoRhythmDoc: null, showBaseline: false };
 const input = $('file-input');
 const drop = $('drop-zone');
 
@@ -114,6 +116,7 @@ function showLoaded() {
   state.visible = new Set(parts.map(part => part.id));
   renderPartInputs();
   refreshRhythmReport();
+  v2.refresh();
   $('score-info').textContent = `${parts.length}개 파트 · ${state.doc.querySelectorAll('part > measure').length}개 마디`;
 }
 
@@ -163,19 +166,19 @@ function renderPartInputs() {
     const name = document.createElement('input'); name.type = 'text'; name.maxLength = 80; name.value = part.name; name.setAttribute('aria-label', `${i + 1}번 파트 이름`);
     name.addEventListener('change', () => {
       ensureChild(part.element, 'part-name').textContent = name.value.trim() || part.name;
-      invalidateRhythmUndo();
+      invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo();
       const priorSelection = selector.value;
       renderPartInputs();
       selector.value = priorSelection;
-      renderScore();
+      renderScore(); v2.refresh();
     });
     row.append(toggle, name); list.append(row);
   });
   if ([...selector.options].some(option => option.value === selectedId)) selector.value = selectedId;
 }
 
-function filteredDocument(visibleIds) {
-  const copy = state.doc.cloneNode(true);
+function filteredDocument(visibleIds, sourceDoc = state.doc) {
+  const copy = sourceDoc.cloneNode(true);
   for (const part of [...copy.querySelectorAll('part')]) if (!visibleIds.has(part.getAttribute('id'))) part.remove();
   for (const def of [...copy.querySelectorAll('part-list > score-part')]) if (!visibleIds.has(def.getAttribute('id'))) def.remove();
   // Part-group markers describe multi-part braces. A filtered score can leave their boundaries unmatched.
@@ -203,8 +206,10 @@ async function renderScore() {
   try {
     const osmd = new OpenSheetMusicDisplay(container, { autoResize: true, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value });
     osmd.zoom = Number($('zoom').value) / 100;
-    await osmd.load(previewDocument());
+    const renderedDoc = state.showBaseline && state.originalDoc ? filteredDocument(state.visible, state.originalDoc) : previewDocument();
+    await osmd.load(renderedDoc);
     if (token !== state.renderToken) return false;
+    applyLayoutPreset(osmd, $('v2-layout')?.value || 'standard', renderedDoc);
     osmd.render(); state.osmd = osmd;
     setMessage('악보가 준비되었습니다. 변경 사항은 MusicXML 저장에 반영됩니다.');
     return true;
@@ -217,7 +222,7 @@ async function renderScore() {
 
 async function openScore(raw, filename) {
   try {
-    state.doc = parseXml(raw); state.filename = filename; state.undoRhythmDoc = null;
+    state.doc = parseXml(raw); state.originalDoc = state.doc.cloneNode(true); state.filename = filename; state.undoRhythmDoc = null; state.showBaseline = false; v2.invalidateUndo();
     showLoaded(); await renderScore();
     $('workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) { setMessage(error.message || '파일을 열지 못했습니다.', true); }
@@ -239,15 +244,15 @@ $('score-title').addEventListener('change', () => {
   const root = state.doc.documentElement; const title = $('score-title').value.trim();
   ensureChild(ensureChild(root, 'work'), 'work-title').textContent = title;
   ensureChild(root, 'movement-title').textContent = title;
-  invalidateRhythmUndo();
-  renderScore();
+  invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo();
+  renderScore(); v2.refresh();
 });
 $('score-composer').addEventListener('change', () => {
   if (!state.doc) return;
   const identification = ensureChild(state.doc.documentElement, 'identification');
   let creator = [...identification.children].find(el => el.localName === 'creator' && el.getAttribute('type') === 'composer');
   if (!creator) { creator = state.doc.createElement('creator'); creator.setAttribute('type', 'composer'); identification.appendChild(creator); }
-  creator.textContent = $('score-composer').value.trim(); invalidateRhythmUndo(); renderScore();
+  creator.textContent = $('score-composer').value.trim(); invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo(); renderScore(); v2.refresh();
 });
 $('zoom').addEventListener('input', () => { $('zoom-value').textContent = `${$('zoom').value}%`; if (state.osmd) { state.osmd.zoom = Number($('zoom').value) / 100; state.osmd.render(); } });
 $('measure-numbers').addEventListener('change', renderScore);
@@ -263,7 +268,7 @@ $('apply-rhythm').addEventListener('click', async () => {
     const result = applySafeRestCleanup(before);
     if (!result.changes) { refreshRhythmReport(); setMessage('정리할 쉼표가 없습니다.'); return; }
     state.undoRhythmDoc = before;
-    state.doc = result.doc;
+    state.doc = result.doc; state.showBaseline = false; v2.invalidateUndo();
     refreshRhythmReport();
     const rendered = await renderScore();
     if (state.doc !== result.doc) return; // A newer file superseded this result.
@@ -275,6 +280,7 @@ $('apply-rhythm').addEventListener('click', async () => {
       setMessage('변경 후 미리보기를 표시할 수 없어 쉼표 정리를 취소했습니다. 원본 상태를 유지합니다.', true);
       return;
     }
+    v2.refresh();
     setMessage(`${result.changes}쌍의 쉼표를 병합했습니다. 음표의 길이와 총 연주시간은 변경하지 않았습니다. 결과를 검수해 주세요.`);
   } catch (error) { setMessage(`쉼표 정리를 적용하지 않았습니다: ${error.message || '검사 오류'}`, true); }
 });
@@ -282,7 +288,7 @@ $('undo-rhythm').addEventListener('click', async () => {
   if (!state.undoRhythmDoc) return;
   state.doc = state.undoRhythmDoc;
   state.undoRhythmDoc = null;
-  refreshRhythmReport();
+  refreshRhythmReport(); state.showBaseline = false; v2.refresh();
   await renderScore();
   setMessage('쉼표 정리를 되돌렸습니다.');
 });
@@ -356,3 +362,6 @@ $('download-all-parts-zip').addEventListener('click', async () => {
 });
 
 $('print-score').addEventListener('click', () => { if (state.doc) window.print(); });
+
+// Install the unified workspace after the existing score editor has initialized.
+const v2 = mountV2Controls({ state, $, scoreParts, renderScore, refreshRhythmReport, invalidateRhythmUndo, setMessage });
