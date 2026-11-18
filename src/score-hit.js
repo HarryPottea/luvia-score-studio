@@ -81,8 +81,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     const expected=model?.measures.reduce((sum,measure)=>sum+measure.events.length,0);
     const glyphs=[...document.querySelectorAll('#score-container svg .vf-notehead')];
     if(expected===graphical.length && glyphs.length===graphical.length &&
-       glyphs.every(el=>el.isConnected && el.getBoundingClientRect().width>0 &&
-          el.getBoundingClientRect().height>0)) {
+       glyphs.every(el=>el.isConnected)) {
       targets=graphical.map((item,i)=>({...item,element:glyphs[i]}));
     }
   }
