@@ -122,6 +122,46 @@ try {
   await page.setInputFiles('#file-input',{name:'complex-voices-original.musicxml',mimeType:'application/xml',buffer:fixture});
   await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('1개 파트 · 1개 마디'),{timeout:30000});
   await page.locator('#v3-advanced-report').waitFor();
+  // Real OSMD SVG mapping: grand staff with chord, tuplet and concurrent voices.
+  const polyphonicTargets=await page.locator('#score-container .jwoo-note-target').count();
+  console.log('BROWSER_STAGE=POLYPHONIC_GRAPHIC_TARGETS '+JSON.stringify({
+    count:polyphonicTargets,hint:await page.locator('#v3-graphic-hint').textContent()
+  }));
+  assert.ok(polyphonicTargets>=2,'Grand-staff fixture did not expose distinct editable noteheads');
+  // Playwright hover waits for the SVG target to become stable and scrolls
+  // it into view; manual smooth scrolling would leave moving coordinates.
+  const complexHead=page.locator('#score-container .jwoo-note-target').first();
+  await complexHead.hover({timeout:12000});
+  const rect=await complexHead.boundingBox();
+  assert.ok(rect&&rect.width>0&&rect.height>0);
+  const center={x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+  console.log('BROWSER_STAGE=COMPLEX_HIT_DIAG '+JSON.stringify(await page.evaluate(({x,y})=>{
+    const el=document.elementFromPoint(x,y);
+    return {x,y,viewport:{w:innerWidth,h:innerHeight},rect:document.querySelector('#score-container .jwoo-note-target')?.getBoundingClientRect().toJSON(),
+      tag:el?.tagName,cls:el?.getAttribute('class'),parent:el?.parentElement?.getAttribute('class'),
+      targetCount:document.querySelectorAll('#score-container .jwoo-note-target').length};
+  },center)));
+  await page.evaluate(()=>{
+    window.__pointerTrace=[];
+    for(const type of ['pointerdown','pointerup','pointercancel'])
+      document.addEventListener(type,ev=>window.__pointerTrace.push({
+        type,id:ev.pointerId,x:ev.clientX,y:ev.clientY,
+        target:ev.target?.getAttribute?.('class'),
+        parent:ev.target?.parentElement?.getAttribute?.('class')
+      }),true);
+  });
+  await page.mouse.move(center.x,center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x,center.y-Math.max(22,rect.height*1.5),{steps:5});
+  await page.mouse.up();
+  console.log('BROWSER_STAGE=COMPLEX_POST_DRAG '+JSON.stringify({message:await page.locator('#message').textContent(),selection:await page.locator('#v3-selection').textContent(),trace:await page.evaluate(()=>window.__pointerTrace)}));
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('악보 음표 위아래 이동 완료'),null,{timeout:12000});
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('되돌리기'));
+  console.log('BROWSER_STAGE=POLYPHONIC_NOTE_DRAG_AND_UNDO');
+  // The drag can select either member of a closely spaced piano chord.
+  // Explicitly select the first XML event for the subsequent independent edit check.
+  await page.locator('#v3-events .v3-event').first().click();
   const advancedReport=await page.locator('#v3-advanced-report').textContent();
   assert.match(advancedReport,/성부 1/);
   assert.equal(await page.locator('#v3-advanced-pitch').isEnabled(),true);

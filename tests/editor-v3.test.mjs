@@ -237,34 +237,32 @@ test('diatonic drag calculations move exact staff steps and reject invalid octav
   assert.deepEqual(shiftDiatonicPitch({step:'C',alter:0,octave:4},-1),{step:'B',alter:0,octave:3});
   assert.throws(()=>shiftDiatonicPitch({step:'C',octave:8},8),/옥타브/);
 });
-test('graphical note binding requires exact single-staff, single-voice note correspondence',()=>{
+test('graphical binding requires exact score and live SVG notehead correspondence',()=>{
   const doc=score([note(),note(),note(),note()]);
-  const targets=Array.from({length:4},()=>({
-    addEventListener(){},
-    classList:{add(){},toggle(){}},
-    setAttribute(){},
-  }));
+  const host={contains:()=>true};
+  const targets=Array.from({length:4},()=>({isConnected:true,addEventListener(){},classList:{add(){},toggle(){}},setAttribute(){}}));
   const graphical=targets.map((element,index)=>({
-    sourceNote:{isRest:()=>false,Pitch:{ToStringShort:()=>['C4','C4','C4','C4'][index]},
-      Length:{RealValue:.25},getAbsoluteTimestamp:()=>({RealValue:index*.25})},
+    sourceNote:{
+      isRest:()=>false,Pitch:{ToStringShort:(offset=0)=>'C'+String(1+offset)},Length:{RealValue:.25},
+      ParentVoiceEntry:{Timestamp:{RealValue:index*.25}},
+    },
     getNoteheadSVGs:()=>[element],
   }));
-  const graph={GraphicSheet:{MeasureList:[[{staffEntries:graphical.map(note=>({
-    graphicalVoiceEntries:[{notes:[note]}],
+  const graph={GraphicSheet:{MeasureList:[[{staffEntries:graphical.map(n=>({
+    graphicalVoiceEntries:[{notes:[n]}],
   }))}]]}};
-  const found=graphicalTargets(graph,doc,['P1']);
+  const found=graphicalTargets(graph,doc,['P1'],host);
   assert.equal(found.length,4);
-  assert.deepEqual(found[2].measureIndex,0);
-  assert.deepEqual(found[2].eventIndex,2);
-  assert.equal(graphicalTargets(graph,doc,[]).length,0);
-  assert.equal(graphicalTargets(graph,doc,['P1','P2']).length,0);
-  const duplicateStaff={staffEntries:[{graphicalVoiceEntries:[{notes:graphical}]}]};
-  const polyphonic={GraphicSheet:{MeasureList:[[duplicateStaff,duplicateStaff]]}};
-  assert.equal(graphicalTargets(polyphonic,doc,['P1']).length,0);
-  const withRest=score([rest(),note(),note(),note()]);
-  assert.equal(graphicalTargets(graph,withRest,['P1']).length,0);
-  const shifted=[...graphical];
-  shifted[2]={...graphical[2],sourceNote:{...graphical[2].sourceNote,getAbsoluteTimestamp:()=>({RealValue:.9})}};
-  const mismatch={GraphicSheet:{MeasureList:[[{staffEntries:shifted.map(note=>({graphicalVoiceEntries:[{notes:[note]}]}))}]]}};
-  assert.equal(graphicalTargets(mismatch,doc,['P1']).length,0);
+  assert.equal(found[2].eventIndex,2);
+  assert.equal(graphicalTargets(graph,doc,[],host).length,0);
+  assert.equal(graphicalTargets(graph,doc,['P1','P2'],host).length,0);
+  assert.equal(graphicalTargets(graph,doc,['P1']).length,0);
+  const wrongStaff={GraphicSheet:{MeasureList:[[graph.GraphicSheet.MeasureList[0][0],graph.GraphicSheet.MeasureList[0][0]]]}};
+  assert.equal(graphicalTargets(wrongStaff,doc,['P1'],host).length,0);
+  const shifted=graphical.map((g,i)=>i===2?{...g,sourceNote:{...g.sourceNote,ParentVoiceEntry:{Timestamp:{RealValue:.9}}}}:g);
+  const mismatch={GraphicSheet:{MeasureList:[[{staffEntries:shifted.map(n=>({graphicalVoiceEntries:[{notes:[n]}]}))}]]}};
+  assert.equal(graphicalTargets(mismatch,doc,['P1'],host).length,3);
+  const disconnected=graphical.map((g,i)=>i===1?{...g,getNoteheadSVGs:()=>[{isConnected:false}]}:g);
+  const detached={GraphicSheet:{MeasureList:[[{staffEntries:disconnected.map(n=>({graphicalVoiceEntries:[{notes:[n]}]}))}]]}};
+  assert.equal(graphicalTargets(detached,doc,['P1'],host).length,3);
 });
