@@ -230,3 +230,36 @@ test('malformed backup and overlapping voices are rejected, preserving source',(
   assert.match(inspectAdvancedMeasure(doc,'P1',0).reason,/벗어났습니다/);
   assert.throws(()=>editAdvancedScore(doc,{partId:'P1',measureIndex:0,eventIndex:0,action:'pitch',step:'D',alter:0,octave:4}),/벗어났습니다/);
 });
+
+import { shiftDiatonicPitch, graphicalTargets } from '../src/score-hit.js';
+test('diatonic drag calculations move exact staff steps and reject invalid octaves',()=>{
+  assert.deepEqual(shiftDiatonicPitch({step:'B',alter:1,octave:4},1),{step:'C',alter:1,octave:5});
+  assert.deepEqual(shiftDiatonicPitch({step:'C',alter:0,octave:4},-1),{step:'B',alter:0,octave:3});
+  assert.throws(()=>shiftDiatonicPitch({step:'C',octave:8},8),/옥타브/);
+});
+test('graphical note binding requires exact single-staff, single-voice note correspondence',()=>{
+  const doc=score([note(),note(),note(),note()]);
+  const targets=Array.from({length:4},()=>({
+    addEventListener(){},
+    classList:{add(){},toggle(){}},
+    setAttribute(){},
+  }));
+  const graphical=targets.map(element=>({
+    sourceNote:{isRest:()=>false},
+    getNoteheadSVGs:()=>[element],
+  }));
+  const graph={GraphicSheet:{MeasureList:[[{staffEntries:graphical.map(note=>({
+    graphicalVoiceEntries:[{notes:[note]}],
+  }))}]]}};
+  const found=graphicalTargets(graph,doc,['P1']);
+  assert.equal(found.length,4);
+  assert.deepEqual(found[2].measureIndex,0);
+  assert.deepEqual(found[2].eventIndex,2);
+  assert.equal(graphicalTargets(graph,doc,[]).length,0);
+  assert.equal(graphicalTargets(graph,doc,['P1','P2']).length,0);
+  const polyphonic={GraphicSheet:{MeasureList:[[{staffEntries:[{graphicalVoiceEntries:[{notes:graphical}]}]},
+    {staffEntries:[{graphicalVoiceEntries:[{notes:graphical}]}]}]]]}};
+  assert.equal(graphicalTargets(polyphonic,doc,['P1']).length,0);
+  const withRest=score([rest(),note(),note(),note()]);
+  assert.equal(graphicalTargets(graph,withRest,['P1']).length,0);
+});
