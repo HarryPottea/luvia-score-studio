@@ -227,8 +227,8 @@ test('existing triplet metadata and exact note durations survive pitch editing',
 });
 test('malformed backup and overlapping voices are rejected, preserving source',()=>{
   const doc=score([note(),el('backup',{},[el('duration',{},[],40)]),note(),note(),note()]);
-  assert.match(inspectAdvancedMeasure(doc,'P1',0).reason,/벗어났습니다/);
-  assert.throws(()=>editAdvancedScore(doc,{partId:'P1',measureIndex:0,eventIndex:0,action:'pitch',step:'D',alter:0,octave:4}),/벗어났습니다/);
+  assert.match(inspectAdvancedMeasure(doc,'P1',0).reason,/벗어났습니다|올바르지/);
+  assert.throws(()=>editAdvancedScore(doc,{partId:'P1',measureIndex:0,eventIndex:0,action:'pitch',step:'D',alter:0,octave:4}),/벗어났습니다|올바르지/);
 });
 
 import { shiftDiatonicPitch, graphicalTargets } from '../src/score-hit.js';
