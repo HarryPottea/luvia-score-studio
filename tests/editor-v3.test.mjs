@@ -244,8 +244,9 @@ test('graphical note binding requires exact single-staff, single-voice note corr
     classList:{add(){},toggle(){}},
     setAttribute(){},
   }));
-  const graphical=targets.map(element=>({
-    sourceNote:{isRest:()=>false},
+  const graphical=targets.map((element,index)=>({
+    sourceNote:{isRest:()=>false,Pitch:{ToStringShort:()=>['C4','C4','C4','C4'][index]},
+      Length:{RealValue:.25},getAbsoluteTimestamp:()=>({RealValue:index*.25})},
     getNoteheadSVGs:()=>[element],
   }));
   const graph={GraphicSheet:{MeasureList:[[{staffEntries:graphical.map(note=>({
@@ -262,4 +263,8 @@ test('graphical note binding requires exact single-staff, single-voice note corr
   assert.equal(graphicalTargets(polyphonic,doc,['P1']).length,0);
   const withRest=score([rest(),note(),note(),note()]);
   assert.equal(graphicalTargets(graph,withRest,['P1']).length,0);
+  const shifted=[...graphical];
+  shifted[2]={...graphical[2],sourceNote:{...graphical[2].sourceNote,getAbsoluteTimestamp:()=>({RealValue:.9})}};
+  const mismatch={GraphicSheet:{MeasureList:[[{staffEntries:shifted.map(note=>({graphicalVoiceEntries:[{notes:[note]}]}))}]]}};
+  assert.equal(graphicalTargets(mismatch,doc,['P1']).length,0);
 });
