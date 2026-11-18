@@ -8,6 +8,7 @@ const TEMPLATE = [
   '<label for="v3-measure">마디</label><select id="v3-measure"></select>',
   '<div id="v3-meter" class="v3-meter" aria-live="polite">악보를 열면 마디가 표시됩니다.</div>',
   '<div id="v3-events" class="v3-events" role="group" aria-label="마디의 음표·쉼표 목록"></div>',
+  '<p id="v3-graphic-hint" class="control-hint" aria-live="polite">미리보기에서 단일 파트를 선택하면 악보 음표 직접 선택 가능 여부를 확인합니다.</p>',
   '<p id="v3-selection" class="control-hint" aria-live="polite"></p>',
   '<div class="v3-note-tools">',
   '<div><label for="v3-step">음이름</label><select id="v3-step">',
