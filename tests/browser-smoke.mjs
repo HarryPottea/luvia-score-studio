@@ -70,6 +70,7 @@ try {
   assert.ok(diagnostic.count>0,'No mapped SVG note targets after redo');
   const notehead=page.locator('#score-container .jwoo-note-target').first();
   await notehead.scrollIntoViewIfNeeded();
+  await notehead.hover({timeout:10000});
   const box=await notehead.boundingBox();
   assert.ok(box&&box.width>0&&box.height>0);
   const beforeDrag=await page.locator('#v3-events .v3-event').first().textContent();
@@ -79,7 +80,8 @@ try {
     const el=document.elementFromPoint(x,y);
     return {tag:el?.tagName,cls:el?.getAttribute('class'),parent:el?.parentElement?.getAttribute('class')};
   },point);
-  console.log('BROWSER_STAGE=SVG_HIT_TARGET '+JSON.stringify(hit));
+  console.log('BROWSER_STAGE=SVG_HIT_TARGET '+JSON.stringify({...hit,point,box,
+    viewport:await page.evaluate(()=>({width:innerWidth,height:innerHeight,scrollY:window.scrollY}))}));
   await page.mouse.down();
   await page.mouse.move(point.x,point.y-Math.max(22,box.height*1.5),{steps:5});
   await page.mouse.up();
