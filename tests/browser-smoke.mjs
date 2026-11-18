@@ -28,6 +28,7 @@ try {
   page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
   const errors=[];
   page.on('pageerror',error=>errors.push(String(error)));
+  page.on('console',message=>{if(message.text().startsWith('J_WOO_POINTER_DBG'))console.log(message.text());});
   await page.goto(url,{waitUntil:'domcontentloaded'});
   console.log('BROWSER_STAGE=PAGE_OPEN');
   assert.ok((await page.title()).includes('JaeWoo'));
