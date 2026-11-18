@@ -7,12 +7,17 @@ const html=[
 '<div class="control-heading"><span>화음·다성부·셋잇단음</span><span>10</span></div>',
 '<p class="control-hint">기존 박자·성부·셋잇단음 길이를 유지한 채 개별 음정과 단순 화음 음을 편집합니다. 복잡한 기보 자체의 길이·구성 변경은 보호됩니다.</p>',
 '<div id="v3-advanced-report" class="v3-meter" aria-live="polite">악보를 불러오면 고급 구조 검사를 표시합니다.</div>',
+'<div class="v3-note-tools">',
+'<div><label for="v3-advanced-step">음이름</label><select id="v3-advanced-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div>',
+'<div><label for="v3-advanced-alter">변화표</label><select id="v3-advanced-alter"><option value="-2">𝄫</option><option value="-1">♭</option><option value="0">♮</option><option value="1">♯</option><option value="2">𝄪</option></select></div>',
+'<div><label for="v3-advanced-octave">옥타브</label><select id="v3-advanced-octave"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>',
+'</div>',
 '<div class="v3-actions">',
 '<button id="v3-advanced-pitch" type="button" disabled>선택 음표의 음정 변경</button>',
 '<button id="v3-chord-add" type="button" disabled>선택 음표에 화음 음 추가</button>',
 '<button id="v3-chord-remove" type="button" disabled>화음 구성 음 삭제</button>',
 '</div>',
-'<p class="control-hint">음정·변화표·옥타브는 위 3.0 편집기의 입력값을 사용합니다. 원본은 보존되며 기존 실행 취소·다시 실행이 적용됩니다.</p>',
+'<p class="control-hint">음정·변화표·옥타브는 이 영역에서 별도로 지정합니다. 원본은 보존되며 기존 실행 취소·다시 실행이 적용됩니다.</p>',
 '</section>'
 ].join('');
 export function mountAdvancedControls({state,v3,setMessage}) {
@@ -40,6 +45,10 @@ export function mountAdvancedControls({state,v3,setMessage}) {
         ' · 시작 '+event.start+' · 길이 '+event.duration+' · '+flags.join(' / ')+
         (event.protectedMarkup?' · 기보 보호':'');
       const permitted=!state.showBaseline&&!event.rest&&event.editablePitch;
+      for(const id of ['v3-advanced-step','v3-advanced-alter','v3-advanced-octave'])$(id).disabled=!permitted;
+      $('v3-advanced-step').value=event.step||'C';
+      $('v3-advanced-alter').value=String(Number.isInteger(event.alter)?event.alter:0);
+      $('v3-advanced-octave').value=String(event.octave||4);
       $('v3-advanced-pitch').disabled=!permitted;
       $('v3-chord-add').disabled=!permitted||event.chord;
       $('v3-chord-remove').disabled=!permitted||!event.chord;
@@ -53,7 +62,7 @@ export function mountAdvancedControls({state,v3,setMessage}) {
     const {partId,measureIndex,eventIndex}=active;
     const input={
       action,partId,measureIndex,eventIndex,
-      step:$('v3-step').value,alter:Number($('v3-alter').value),octave:Number($('v3-octave').value)
+      step:$('v3-advanced-step').value,alter:Number($('v3-advanced-alter').value),octave:Number($('v3-advanced-octave').value)
     };
     void v3.commitExternal(doc=>editAdvancedScore(doc,input),label);
   }
