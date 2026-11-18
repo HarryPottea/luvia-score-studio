@@ -264,7 +264,7 @@ export function editScoreEvent(source, operation) {
   const action=operation.action;
   if(!['pitch','duration','to-rest','from-rest','lyric','tie'].includes(action)) throw new Error('지원하지 않는 편집 명령입니다.');
   const doc=source.cloneNode(true);
-  const {measure,note,view,event}=getEditable(doc,operation,action==='lyric'?'lyric':'note');
+  const {measure,note,view,event}=getEditable(doc,operation,action==='tie'?'tie':action==='lyric'?'lyric':'note');
   if(action==='tie') {
     toggleTie(measure,operation.eventIndex);
   } else if(action==='pitch') {
