@@ -186,8 +186,19 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       return box.width>0&&box.height>0&&event.clientX>=box.left-pad&&event.clientX<=box.right+pad
         &&event.clientY>=box.top-pad&&event.clientY<=box.bottom+pad;
     });
-    if(hit.length!==1)return;
-    const item=hit[0];
+    if(!hit.length)return;
+    const explicit=hit.filter(item=>item.element===event.target||item.element.contains?.(event.target));
+    let item=null;
+    if(explicit.length===1)item=explicit[0];
+    else if(!explicit.length) {
+      const ranked=hit.map(candidate=>{
+        const b=candidate.element.getBoundingClientRect();
+        return {candidate,distance:Math.hypot(event.clientX-(b.left+b.right)/2,event.clientY-(b.top+b.bottom)/2)};
+      }).sort((a,b)=>a.distance-b.distance);
+      // Nearby chord heads overlap; use the closest only if distinctly closer.
+      if(ranked.length===1||ranked[1].distance-ranked[0].distance>=3)item=ranked[0].candidate;
+    }
+    if(!item)return;
     selected=item;select(item);highlight();
     const box=item.element.getBoundingClientRect();
     drag={item,y:event.clientY,pointerId:event.pointerId,unit:Math.max(7,Math.min(18,box.height*.6))};
