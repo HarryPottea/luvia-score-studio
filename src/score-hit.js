@@ -141,14 +141,16 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
   function highlight(){for(const item of targets)item.element.classList.toggle('jwoo-note-selected',!!same(selected,item));}
   function up(event) {
+    console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'up',disposed,drag:!!drag,id:event.pointerId,dragId:drag?.pointerId}));
     if(disposed||!drag||drag.pointerId!==event.pointerId)return;
     const {item,unit,y}=drag;
     drag=null;
     const steps=Math.max(-8,Math.min(8,Math.round((y-event.clientY)/unit)));
+    console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'move',steps}));
     if(steps)movePitch(item,steps);
   }
   function cancel(event){if(drag?.pointerId===event.pointerId)drag=null;}
-  function clearHandlers(){for(const off of cleanups)off();cleanups=[];drag=null;}
+  function clearHandlers(){console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'clear',drag:!!drag}));for(const off of cleanups)off();cleanups=[];drag=null;}
   function attach(item){
     const el=item.element;
     el.classList.add('jwoo-note-target');el.setAttribute('tabindex','0');
@@ -167,6 +169,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     if(disposed)return;
     const next=graphicalTargets(osmd,doc,visibleParts,host);
     if(next.length===targets.length&&next.every((v,i)=>v.element===targets[i].element))return;
+    console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'remap',old:targets.length,next:next.length}));
     clearHandlers();
     targets=next;
     for(const item of targets)attach(item);
@@ -176,6 +179,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   // elementFromPoint reports an underlying notehead. Resolve inside exactly
   // one source-verified stave note and one notehead hitbox; never guess.
   function rootDown(event){
+    console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'down',disposed,button:event.button,primary:event.isPrimary,cls:event.target?.getAttribute?.('class'),targets:targets.length}));
     if(disposed||event.button!==0||event.isPrimary===false)return;
     const stave=event.target?.closest?.('.vf-stavenote');
     if(!stave)return;
@@ -186,6 +190,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       return box.width>0&&box.height>0&&event.clientX>=box.left-pad&&event.clientX<=box.right+pad
         &&event.clientY>=box.top-pad&&event.clientY<=box.bottom+pad;
     });
+    console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'hit',found:hit.length}));
     if(!hit.length)return;
     const explicit=hit.filter(item=>item.element===event.target||item.element.contains?.(event.target));
     let item=null;
@@ -198,6 +203,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       // Nearby chord heads overlap; use the closest only if distinctly closer.
       if(ranked.length===1||ranked[1].distance-ranked[0].distance>=3)item=ranked[0].candidate;
     }
+    console.info('J_WOO_POINTER_DBG '+JSON.stringify({stage:'chosen',chosen:!!item,explicit:explicit.length}));
     if(!item)return;
     selected=item;select(item);highlight();
     const box=item.element.getBoundingClientRect();
