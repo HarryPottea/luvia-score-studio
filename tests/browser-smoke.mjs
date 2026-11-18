@@ -55,8 +55,16 @@ try {
 
   // Direct manipulation of a real SVG notehead must change the selected note,
   // then return to its previous pitch on undo.
+  const diagnostic=await page.evaluate(()=>{
+    const targets=[...document.querySelectorAll('#score-container .jwoo-note-target')];
+    const first=targets[0],rect=first?.getBoundingClientRect();
+    return {count:targets.length,hint:document.querySelector('#v3-graphic-hint')?.textContent,
+      first:first?{tag:first.tagName,width:rect?.width,height:rect?.height,display:getComputedStyle(first).display}:null,
+      graphics:document.querySelectorAll('#score-container svg').length};
+  });
+  console.log('BROWSER_STAGE=SVG_TARGET_DIAGNOSTIC '+JSON.stringify(diagnostic));
+  assert.ok(diagnostic.count>0,'No mapped SVG note targets after redo');
   const notehead=page.locator('#score-container .jwoo-note-target').first();
-  await notehead.waitFor();
   const box=await notehead.boundingBox();
   assert.ok(box&&box.width>0&&box.height>0);
   const beforeDrag=await page.locator('#v3-events .v3-event').first().textContent();
