@@ -75,6 +75,36 @@ try {
   await fs.writeFile(output+'/sample-part.pdf',pdf);
   console.log('BROWSER_STAGE=PDF_EXPORTED');
   await page.screenshot({path:output+'/sample-workspace.png',fullPage:true});
+
+  // Open the deterministic multi-staff, voice + chord + tuplet MusicXML fixture
+  // and verify real browser round-trip of a protected, pitch-only advanced edit.
+  const fixture=await fs.readFile('tests/fixtures/complex-voices-original.musicxml');
+  await page.setInputFiles('#file-input',{name:'complex-voices-original.musicxml',mimeType:'application/xml',buffer:fixture});
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('1개 파트 · 1개 마디'),{timeout:30000});
+  await page.locator('#v3-advanced-report').waitFor();
+  const advancedReport=await page.locator('#v3-advanced-report').textContent();
+  assert.match(advancedReport,/성부 1/);
+  assert.equal(await page.locator('#v3-advanced-pitch').isEnabled(),true);
+  await page.selectOption('#v3-advanced-step','D');
+  await page.click('#v3-advanced-pitch');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('복합 기보 음정 변경 완료'));
+  assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/D4/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('되돌리기'));
+  assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/C4/);
+  console.log('BROWSER_STAGE=ADVANCED_POLYPHONIC_SCORE_ROUNDTRIP');
+
+  // Add and remove an uncomplicated chord tone without changing occupied beats.
+  await page.selectOption('#v3-advanced-step','G');
+  await page.click('#v3-chord-add');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('화음 구성 음 추가 완료'));
+  assert.equal(await page.locator('#v3-events .v3-event').count(),12);
+  await page.locator('#v3-events .v3-event').nth(2).click();
+  await page.click('#v3-chord-remove');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('화음 구성 음 삭제 완료'));
+  assert.equal(await page.locator('#v3-events .v3-event').count(),11);
+  console.log('BROWSER_STAGE=CHORD_ADD_REMOVE');
+  await page.screenshot({path:output+'/complex-score.png',fullPage:true});
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
