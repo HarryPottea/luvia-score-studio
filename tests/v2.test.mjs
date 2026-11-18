@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scanNotationCandidates, applyNotationCandidates, compareScoreMeasures } from '../src/notation-review.js';
 import { suggestLayout, resolveLayoutPreset, applyLayoutPreset } from '../src/layout-profile.js';
-import { makePdfFromJpegPages } from '../src/pdf-batch.js';
+import { makePdfFromJpegPages } from '../src/pdf-bytes.js';
 
 class Node {
   constructor(localName, attrs={}, children=[], text=''){this.localName=localName;this.attrs={...attrs};this.children=children;this.text=String(text);}
