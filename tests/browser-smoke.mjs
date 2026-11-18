@@ -28,7 +28,6 @@ try {
   page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
   const errors=[];
   page.on('pageerror',error=>errors.push(String(error)));
-  page.on('console',message=>{if(message.text().startsWith('J_WOO_POINTER_DBG'))console.log(message.text());});
   await page.goto(url,{waitUntil:'domcontentloaded'});
   console.log('BROWSER_STAGE=PAGE_OPEN');
   assert.ok((await page.title()).includes('JaeWoo'));
@@ -156,10 +155,13 @@ try {
   await page.mouse.move(center.x,center.y-Math.max(22,rect.height*1.5),{steps:5});
   await page.mouse.up();
   console.log('BROWSER_STAGE=COMPLEX_POST_DRAG '+JSON.stringify({message:await page.locator('#message').textContent(),selection:await page.locator('#v3-selection').textContent(),trace:await page.evaluate(()=>window.__pointerTrace)}));
-  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('악보 음표 위아래 이동 완료'),{timeout:6000});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('악보 음표 위아래 이동 완료'),null,{timeout:12000});
   await page.click('#v3-undo');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('되돌리기'));
   console.log('BROWSER_STAGE=POLYPHONIC_NOTE_DRAG_AND_UNDO');
+  // The drag can select either member of a closely spaced piano chord.
+  // Explicitly select the first XML event for the subsequent independent edit check.
+  await page.locator('#v3-events .v3-event').first().click();
   const advancedReport=await page.locator('#v3-advanced-report').textContent();
   assert.match(advancedReport,/성부 1/);
   assert.equal(await page.locator('#v3-advanced-pitch').isEnabled(),true);
