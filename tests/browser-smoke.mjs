@@ -53,6 +53,16 @@ try {
   assert.ok(Math.abs(staffHeightPx/(96/25.4)-7)<0.4,'Printed single-staff size must be approximately 7mm');
   console.log('BROWSER_STAGE=A4_STAFF_MEASURED '+staffHeightPx.toFixed(3)+'px');
 
+  await page.selectOption('#page-orientation','A4_L');
+  await page.waitForFunction(()=>Math.abs(document.querySelector('#score-container svg')?.getBoundingClientRect().width-297*96/25.4)<3);
+  const landscape=await page.locator('#score-container svg').first().boundingBox();
+  assert.ok(Math.abs(landscape.height-landscape.width*210/297)<3);
+  assert.match(await page.locator('#a4-size-info').textContent(),/A4 가로/);
+  await page.selectOption('#page-orientation','A4_P');
+  await page.waitForFunction(()=>Math.abs(document.querySelector('#score-container svg')?.getBoundingClientRect().width-210*96/25.4)<3);
+  console.log('BROWSER_STAGE=A4_LANDSCAPE_AND_PORTRAIT_OK');
+
+
   assert.ok(Math.abs(a4Portrait.containerWidth-210*96/25.4)<2,'A4 page should have a fixed physical CSS width');
   assert.ok(Math.abs(a4Portrait.svgWidth-a4Portrait.containerWidth)<2,'Rendered SVG should fill A4 width');
   assert.ok(Math.abs(a4Portrait.svgHeight-a4Portrait.containerWidth*297/210)<3,'Rendered SVG should have A4 aspect ratio');
