@@ -129,14 +129,10 @@ try {
     count:polyphonicTargets,hint:await page.locator('#v3-graphic-hint').textContent()
   }));
   assert.ok(polyphonicTargets>=2,'Grand-staff fixture did not expose distinct editable noteheads');
-  // OSMD may replace notehead nodes while auto-resizing the grand staff.
-  // Scroll the stable container, then resolve a fresh notehead bounding box.
-  await page.locator('#score-container').scrollIntoViewIfNeeded();
-  await page.evaluate(()=>{
-    document.querySelector('#score-container .jwoo-note-target')?.scrollIntoView({block:'center',inline:'center'});
-  });
-  await page.waitForTimeout(150);
+  // Playwright hover waits for the SVG target to become stable and scrolls
+  // it into view; manual smooth scrolling would leave moving coordinates.
   const complexHead=page.locator('#score-container .jwoo-note-target').first();
+  await complexHead.hover({timeout:12000});
   const rect=await complexHead.boundingBox();
   assert.ok(rect&&rect.width>0&&rect.height>0);
   const center={x:rect.x+rect.width/2,y:rect.y+rect.height/2};
