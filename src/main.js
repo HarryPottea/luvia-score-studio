@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { buildPartZip, baseScoreName, safeFileName } from './part-export.js';
+import { scanScoreRhythm, applySafeRestCleanup } from './rhythm-dom.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { sampleScore } from './sample.js';
 import './style.css';
@@ -37,6 +38,7 @@ app.innerHTML = `
               <div class="control-group"><div class="control-heading"><span>파트</span><span>02</span></div><p class="control-hint">이름은 저장 파일에도 반영됩니다. 체크 해제는 미리보기·PDF에만 적용됩니다.</p><div id="parts-list" class="parts-list"></div></div>
               <div class="control-group"><div class="control-heading"><span>보기 설정</span><span>03</span></div><label for="page-orientation">용지 방향</label><select id="page-orientation"><option value="A4_P">A4 세로</option><option value="A4_L">A4 가로</option></select><label for="zoom">악보 크기 <span id="zoom-value">100%</span></label><input id="zoom" type="range" min="60" max="140" value="100" step="10" /><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
               <div class="control-group"><div class="control-heading"><span>개별 파트보</span><span>04</span></div><p class="control-hint">파트를 선택해 미리보기와 인쇄를 전환하거나, 해당 파트만 MusicXML로 저장할 수 있습니다.</p><label for="export-part">파트 선택</label><select id="export-part" aria-label="내보낼 파트 선택"></select><div class="part-tools"><button id="view-part" type="button">선택 파트 보기</button><button id="view-all-parts" type="button">전체 파트 보기</button></div><button class="part-export-button" id="download-part-xml" type="button">선택 파트 MusicXML 저장</button><button class="part-export-button part-export-batch" id="download-all-parts-zip" type="button">전체 파트 MusicXML ZIP 저장</button><p class="control-hint">각 파트를 개별 MusicXML로 묶어 저장합니다. PDF는 파트별 미리보기에서 따로 인쇄합니다.</p></div>
+              <div class="control-group"><div class="control-heading"><span>리듬·쉼표 검사</span><span>05</span></div><p class="control-hint">복잡한 리듬은 표시만 합니다. 2/4·3/4·4/4 단일 성부에서 박자 경계가 맞는 연속 쉼표만 병합합니다.</p><div id="rhythm-report" class="rhythm-report" aria-live="polite">악보를 불러오면 검사 결과가 표시됩니다.</div><div class="rhythm-actions"><button id="check-rhythm" type="button">다시 검사</button><button id="apply-rhythm" type="button" disabled>안전한 쉼표 정리 적용</button><button id="undo-rhythm" type="button" disabled>정리 되돌리기</button></div><p class="control-hint">적용 전 원본 파일을 보존하세요. 변경 후에도 악보 표시와 연주 흐름을 검수해 주세요.</p></div>
             </div>
             <div class="privacy-note"><span aria-hidden="true">●</span> 곡 파일은 서버로 전송하지 않습니다.</div>
           </aside>
@@ -54,7 +56,7 @@ app.innerHTML = `
 `;
 
 const $ = (id) => document.getElementById(id);
-const state = { doc: null, filename: '', visible: new Set(), osmd: null, renderToken: 0 };
+const state = { doc: null, filename: '', visible: new Set(), osmd: null, renderToken: 0, undoRhythmDoc: null };
 const input = $('file-input');
 const drop = $('drop-zone');
 
@@ -111,7 +113,34 @@ function showLoaded() {
   const parts = scoreParts();
   state.visible = new Set(parts.map(part => part.id));
   renderPartInputs();
+  refreshRhythmReport();
   $('score-info').textContent = `${parts.length}개 파트 · ${state.doc.querySelectorAll('part > measure').length}개 마디`;
+}
+
+function invalidateRhythmUndo() { state.undoRhythmDoc = null; $('undo-rhythm').disabled = true; }
+function refreshRhythmReport() {
+  const target = $('rhythm-report'); target.replaceChildren();
+  if (!state.doc) return;
+  let report;
+  try { report = scanScoreRhythm(state.doc); }
+  catch (error) { target.textContent = `검사 실패: ${error.message || '알 수 없는 오류'}`; $('apply-rhythm').disabled = true; return; }
+  const heading = document.createElement('p'); heading.className = 'rhythm-result-heading';
+  heading.textContent = `병합 가능한 쉼표 ${report.candidates.length}쌍 · 매우 짧은 음표·쉼표 ${report.warnings.length}개`;
+  target.append(heading);
+  const names = new Map(scoreParts().map(part => [part.id, part.name]));
+  const entries = report.candidates.slice(0, 6).map(c => `${names.get(c.partId) || '파트'} · ${c.measureNumber}마디: ${c.type === 'quarter' ? '8분쉼표 2개 → 4분쉼표' : '16분쉼표 2개 → 8분쉼표'}`);
+  if (report.candidates.length > 6) entries.push(`그 외 ${report.candidates.length - 6}쌍의 병합 후보가 있습니다.`);
+  const warnings = [...new Set(report.warnings.map(w => `${names.get(w.partId) || '파트'} · ${w.measureNumber}마디: 매우 짧은 음표·쉼표 확인 권장`))].slice(0, 5);
+  entries.push(...warnings);
+  if (entries.length) {
+    const list = document.createElement('ul');
+    for (const entry of entries) { const li = document.createElement('li'); li.textContent = entry; list.append(li); }
+    target.append(list);
+  } else {
+    const empty = document.createElement('p'); empty.textContent = '안전한 병합 후보가 없습니다. 복잡한 마디는 자동 변경하지 않습니다.'; target.append(empty);
+  }
+  $('apply-rhythm').disabled = report.candidates.length === 0;
+  $('undo-rhythm').disabled = !state.undoRhythmDoc;
 }
 
 function renderPartInputs() {
@@ -134,6 +163,7 @@ function renderPartInputs() {
     const name = document.createElement('input'); name.type = 'text'; name.maxLength = 80; name.value = part.name; name.setAttribute('aria-label', `${i + 1}번 파트 이름`);
     name.addEventListener('change', () => {
       ensureChild(part.element, 'part-name').textContent = name.value.trim() || part.name;
+      invalidateRhythmUndo();
       const priorSelection = selector.value;
       renderPartInputs();
       selector.value = priorSelection;
@@ -185,7 +215,7 @@ async function renderScore() {
 
 async function openScore(raw, filename) {
   try {
-    state.doc = parseXml(raw); state.filename = filename;
+    state.doc = parseXml(raw); state.filename = filename; state.undoRhythmDoc = null;
     showLoaded(); await renderScore();
     $('workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) { setMessage(error.message || '파일을 열지 못했습니다.', true); }
@@ -207,6 +237,7 @@ $('score-title').addEventListener('change', () => {
   const root = state.doc.documentElement; const title = $('score-title').value.trim();
   ensureChild(ensureChild(root, 'work'), 'work-title').textContent = title;
   ensureChild(root, 'movement-title').textContent = title;
+  invalidateRhythmUndo();
   renderScore();
 });
 $('score-composer').addEventListener('change', () => {
@@ -214,10 +245,36 @@ $('score-composer').addEventListener('change', () => {
   const identification = ensureChild(state.doc.documentElement, 'identification');
   let creator = [...identification.children].find(el => el.localName === 'creator' && el.getAttribute('type') === 'composer');
   if (!creator) { creator = state.doc.createElement('creator'); creator.setAttribute('type', 'composer'); identification.appendChild(creator); }
-  creator.textContent = $('score-composer').value.trim(); renderScore();
+  creator.textContent = $('score-composer').value.trim(); invalidateRhythmUndo(); renderScore();
 });
 $('zoom').addEventListener('input', () => { $('zoom-value').textContent = `${$('zoom').value}%`; if (state.osmd) { state.osmd.zoom = Number($('zoom').value) / 100; state.osmd.render(); } });
 $('measure-numbers').addEventListener('change', renderScore);
+$('check-rhythm').addEventListener('click', () => {
+  if (!state.doc) return;
+  refreshRhythmReport();
+  setMessage('리듬·쉼표 검사를 완료했습니다. 원본은 변경하지 않았습니다.');
+});
+$('apply-rhythm').addEventListener('click', async () => {
+  if (!state.doc || $('apply-rhythm').disabled) return;
+  const before = state.doc;
+  try {
+    const result = applySafeRestCleanup(before);
+    if (!result.changes) { refreshRhythmReport(); setMessage('정리할 쉼표가 없습니다.'); return; }
+    state.undoRhythmDoc = before;
+    state.doc = result.doc;
+    refreshRhythmReport();
+    await renderScore();
+    setMessage(`${result.changes}쌍의 쉼표를 병합했습니다. 음표의 길이와 총 연주시간은 변경하지 않았습니다. 결과를 검수해 주세요.`);
+  } catch (error) { setMessage(`쉼표 정리를 적용하지 않았습니다: ${error.message || '검사 오류'}`, true); }
+});
+$('undo-rhythm').addEventListener('click', async () => {
+  if (!state.undoRhythmDoc) return;
+  state.doc = state.undoRhythmDoc;
+  state.undoRhythmDoc = null;
+  refreshRhythmReport();
+  await renderScore();
+  setMessage('쉼표 정리를 되돌렸습니다.');
+});
 $('page-orientation').addEventListener('change', renderScore);
 $('view-part').addEventListener('click', () => {
   if (!state.doc || !$('export-part').value) return;
