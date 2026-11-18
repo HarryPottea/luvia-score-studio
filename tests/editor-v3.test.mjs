@@ -152,3 +152,24 @@ test('bounded history supports undo, redo and reset without changing source obje
   h.clear();
   assert.deepEqual(h.status(),{undo:0,redo:0,last:''});
 });
+
+test('two adjacent equal notes may be tied and untied without modifying playback durations',()=>{
+  const original=score([note(),note(),note(),note()]);
+  const tied=editScoreEvent(original,args('tie')).doc;
+  const outputNotes=getNotes(tied);
+  assert.equal(outputNotes[0].children.find(x=>x.localName==='tie')?.getAttribute('type'),'start');
+  assert.equal(outputNotes[1].children.find(x=>x.localName==='tie')?.getAttribute('type'),'stop');
+  assert.equal(outputNotes[0].children.find(x=>x.localName==='notations')?.children[0]?.getAttribute('type'),'start');
+  assert.equal(sum(tied),sum(original));
+  assert.equal(getNotes(original)[0].children.find(x=>x.localName==='tie'),undefined);
+  const restored=editScoreEvent(tied,args('tie')).doc;
+  assert.equal(getNotes(restored)[0].children.find(x=>x.localName==='tie'),undefined);
+  assert.equal(getNotes(restored)[1].children.find(x=>x.localName==='notations'),undefined);
+});
+test('different pitch or preexisting external ties are never altered',()=>{
+  const original=score([note(),note(),note(),note()]);
+  const differing=editScoreEvent(original,{...args('pitch',{step:'D',alter:0,octave:4}),eventIndex:1}).doc;
+  assert.throws(()=>editScoreEvent(differing,args('tie')),/같은 높이/);
+  const external=score([note(8,'quarter',[el('tie',{type:'stop'})]),note(),note(),note()]);
+  assert.throws(()=>editScoreEvent(external,args('tie')),/불일치|다른 붙임줄/);
+});
