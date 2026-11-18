@@ -1,14 +1,15 @@
 import { inspectScore, editScoreEvent, EDIT_TYPES } from './editor-core.js';
 import { createEditorHistory } from './editor-history.js';
+import { inspectAdvancedMeasure, editAdvancedScore } from './advanced-score.js';
 const TEMPLATE = [
   '<section class="control-group v3-editor" aria-label="악보 직접 편집">',
   '<div class="control-heading"><span>J-WOO 3.0 악보 편집</span><span>09</span></div>',
-  '<p class="control-hint">음표를 선택해 음정·길이·가사를 편집합니다. 삭제는 같은 길이의 쉼표로 바꿔 박자를 보존합니다. 복잡한 다성부·셋잇단음은 읽기 전용입니다.</p>',
+  '<p class="control-hint">음표를 선택해 음정·길이·가사를 편집합니다. 삭제는 같은 길이의 쉼표로 바꿔 박자를 보존합니다. 다성부 음정은 기보를 보존하는 범위에서 편집 가능하며, 복잡한 리듬과 붙임줄은 보호됩니다.</p>',
   '<label for="v3-part">악기</label><select id="v3-part"></select>',
   '<label for="v3-measure">마디</label><select id="v3-measure"></select>',
   '<div id="v3-meter" class="v3-meter" aria-live="polite">악보를 열면 마디가 표시됩니다.</div>',
   '<div id="v3-events" class="v3-events" role="group" aria-label="마디의 음표·쉼표 목록"></div>',
-  '<p id="v3-graphic-hint" class="control-hint" aria-live="polite">미리보기에서 단일 파트를 선택하면 악보 음표 직접 선택 가능 여부를 확인합니다.</p>',
+  '<p id="v3-graphic-hint" class="control-hint" aria-live="polite">악보에서 음표를 클릭하거나 위아래로 드래그하세요. 기보가 모호하거나 보호된 음표는 비활성화됩니다.</p>',
   '<p id="v3-selection" class="control-hint" aria-live="polite"></p>',
   '<div class="v3-note-tools">',
   '<div><label for="v3-step">음이름</label><select id="v3-step">',
@@ -157,12 +158,22 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
   async function movePitch(position,steps){
     if(!select(position)||busy||state.showBaseline)return;
     const event=chosen(inspect()).event;
-    if(!event||!event.editable||event.rest)return;
+    if(!event||event.rest)return;
     const {shiftDiatonicPitch}=await import('./score-hit.js');
-    try{
-      const next=shiftDiatonicPitch({step:event.step,alter:event.alter,octave:event.octave},steps);
-      await commit('pitch',next,'악보 음표 위아래 이동');
-    }catch(error){setMessage('음정 이동 불가: '+error.message,true);}
+    try {
+      // Simple scores use the original strict editor. Polyphony/staves use the
+      // advanced pitch-only path, which leaves rhythm/backup/forward unchanged.
+      if(event.editable) {
+        const next=shiftDiatonicPitch({step:event.step,alter:event.alter,octave:event.octave},steps);
+        await commit('pitch',next,'악보 음표 위아래 이동');
+      } else {
+        const complex=inspectAdvancedMeasure(state.doc,position.partId,position.measureIndex);
+        const note=complex.events[position.eventIndex];
+        if(complex.reason||!note?.editablePitch)throw new Error(complex.reason||'보호된 기보입니다.');
+        const next=shiftDiatonicPitch({step:note.step,alter:note.alter,octave:note.octave},steps);
+        await commitExternal(doc=>editAdvancedScore(doc,{...position,action:'pitch',...next}),'악보 음표 위아래 이동');
+      }
+    } catch(error){setMessage('음정 이동 불가: '+error.message,true);}
   }
   async function travel(kind) {
     if(busy||!state.doc||state.showBaseline)return;
