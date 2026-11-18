@@ -15,3 +15,7 @@
 .part-tools button:hover,.part-export-button:hover{background:#394236}
 .part-export-button{width:100%;background:var(--lime);border-color:var(--lime);color:#191d13}
 .part-export-button:hover{background:#e7ffb6}
+
+.part-export-batch{margin-top:8px;background:transparent;color:var(--lime);border-color:var(--lime)}
+.part-export-batch:hover{background:#394236;color:#f5f6eb}
+.part-export-batch:disabled{opacity:.5;cursor:wait}
