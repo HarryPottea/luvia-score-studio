@@ -145,11 +145,20 @@ try {
       tag:el?.tagName,cls:el?.getAttribute('class'),parent:el?.parentElement?.getAttribute('class'),
       targetCount:document.querySelectorAll('#score-container .jwoo-note-target').length};
   },center)));
+  await page.evaluate(()=>{
+    window.__pointerTrace=[];
+    for(const type of ['pointerdown','pointerup','pointercancel'])
+      document.addEventListener(type,ev=>window.__pointerTrace.push({
+        type,id:ev.pointerId,x:ev.clientX,y:ev.clientY,
+        target:ev.target?.getAttribute?.('class'),
+        parent:ev.target?.parentElement?.getAttribute?.('class')
+      }),true);
+  });
   await page.mouse.move(center.x,center.y);
   await page.mouse.down();
   await page.mouse.move(center.x,center.y-Math.max(22,rect.height*1.5),{steps:5});
   await page.mouse.up();
-  console.log('BROWSER_STAGE=COMPLEX_POST_DRAG '+JSON.stringify({message:await page.locator('#message').textContent(),selection:await page.locator('#v3-selection').textContent()}));
+  console.log('BROWSER_STAGE=COMPLEX_POST_DRAG '+JSON.stringify({message:await page.locator('#message').textContent(),selection:await page.locator('#v3-selection').textContent(),trace:await page.evaluate(()=>window.__pointerTrace)}));
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('악보 음표 위아래 이동 완료'),{timeout:6000});
   await page.click('#v3-undo');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('되돌리기'));
