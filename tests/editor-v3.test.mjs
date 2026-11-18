@@ -173,3 +173,60 @@ test('different pitch or preexisting external ties are never altered',()=>{
   const external=score([note(8,'quarter',[el('tie',{type:'stop'})]),note(),note(),note()]);
   assert.throws(()=>editScoreEvent(external,args('tie')),/불일치|다른 붙임줄/);
 });
+
+import { inspectAdvancedMeasure, listAdvancedMeasures, editAdvancedScore } from '../src/advanced-score.js';
+
+test('advanced timeline preserves chord onset and can add/remove chord tones without shifting rhythm',()=>{
+  const chordNote=el('note',{},[el('chord'),pitch('E',4),el('duration',{},[],8),el('type',{},[],'quarter')]);
+  const doc=score([note(),chordNote,note(),note(),note()]);
+  const before=inspectAdvancedMeasure(doc,'P1',0);
+  assert.equal(before.reason,null);
+  assert.deepEqual(before.events.map(e=>e.start),[0,0,8,16,24]);
+  assert.equal(before.events[1].chord,true);
+  const result=editAdvancedScore(doc,{partId:'P1',measureIndex:0,eventIndex:0,action:'chord-add',step:'G',alter:0,octave:4}).doc;
+  const after=inspectAdvancedMeasure(result,'P1',0);
+  assert.equal(after.reason,null);
+  assert.deepEqual(after.events.map(e=>e.start),[0,0,0,8,16,24]);
+  assert.equal(after.events[2].step,'G');
+  assert.equal(inspectAdvancedMeasure(doc,'P1',0).events.length,5);
+  const minus=editAdvancedScore(result,{partId:'P1',measureIndex:0,eventIndex:2,action:'chord-remove'}).doc;
+  assert.deepEqual(inspectAdvancedMeasure(minus,'P1',0).events.map(e=>e.start),[0,0,8,16,24]);
+  assert.throws(()=>editAdvancedScore(doc,{partId:'P1',measureIndex:0,eventIndex:0,action:'chord-add',step:'E',alter:0,octave:4}),/이미 있습니다/);
+});
+test('advanced multi-voice pitch editing leaves backup and other voice untouched',()=>{
+  const backup=el('backup',{},[el('duration',{},[],32)]);
+  const secondVoice=()=>note(8,'quarter',[el('voice',{},[],'2')]);
+  const doc=score([...Array.from({length:4},()=>note()),backup,...Array.from({length:4},secondVoice)]);
+  const before=inspectAdvancedMeasure(doc,'P1',0);
+  assert.equal(before.reason,null);
+  assert.deepEqual(before.voices,['1@1','2@1']);
+  assert.equal(before.events[4].start,0);
+  const revised=editAdvancedScore(doc,{partId:'P1',measureIndex:0,eventIndex:4,action:'pitch',step:'D',alter:0,octave:5}).doc;
+  const after=inspectAdvancedMeasure(revised,'P1',0);
+  assert.equal(after.events[4].step,'D');
+  assert.equal(after.events[4].octave,5);
+  assert.equal(after.events[0].step,'C');
+  assert.deepEqual(after.events.map(e=>e.start),before.events.map(e=>e.start));
+  assert.equal(getNotes(doc)[4].children.find(e=>e.localName==='pitch').children[0].textContent,'C');
+  assert.equal(revised.documentElement.children[1].children[0].children.some(e=>e.localName==='backup'),true);
+});
+test('existing triplet metadata and exact note durations survive pitch editing',()=>{
+  const t=()=>el('time-modification',{},[el('actual-notes',{},[],3),el('normal-notes',{},[],2)]);
+  const triplets=Array.from({length:3},()=>note(4,'eighth',[t()]));
+  const doc=score([...triplets,...Array.from({length:3},()=>note(12,'quarter'))]);
+  doc.documentElement.children[1].children[0].children[0].children[0].textContent='12'; // divisions
+  const before=inspectAdvancedMeasure(doc,'P1',0);
+  assert.equal(before.reason,null);
+  assert.equal(before.events[1].tuplet,true);
+  const revised=editAdvancedScore(doc,{partId:'P1',measureIndex:0,eventIndex:1,action:'pitch',step:'F',alter:1,octave:4}).doc;
+  const after=inspectAdvancedMeasure(revised,'P1',0);
+  assert.equal(after.events[1].step,'F');
+  assert.equal(after.events[1].duration,4);
+  assert.equal(getNotes(revised)[1].children.find(x=>x.localName==='time-modification').children[0].textContent,'3');
+  assert.deepEqual(after.events.map(e=>e.duration),before.events.map(e=>e.duration));
+});
+test('malformed backup and overlapping voices are rejected, preserving source',()=>{
+  const doc=score([note(),el('backup',{},[el('duration',{},[],40)]),note(),note(),note()]);
+  assert.match(inspectAdvancedMeasure(doc,'P1',0).reason,/벗어났습니다/);
+  assert.throws(()=>editAdvancedScore(doc,{partId:'P1',measureIndex:0,eventIndex:0,action:'pitch',step:'D',alter:0,octave:4}),/벗어났습니다/);
+});
