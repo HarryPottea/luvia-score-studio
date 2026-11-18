@@ -1,7 +1,7 @@
 // Browser-only integration smoke for the built candidate.
 // Validates a synthetic MusicXML score end to end; it does NOT certify real Logic exports.
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import fs from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -52,6 +52,26 @@ try {
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('다시 실행'));
   assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/F4/);
   console.log('BROWSER_STAGE=UNDO_REDO_OK');
+
+  // Direct manipulation of a real SVG notehead must change the selected note,
+  // then return to its previous pitch on undo.
+  const notehead=page.locator('#score-container .jwoo-note-target').first();
+  await notehead.waitFor();
+  const box=await notehead.boundingBox();
+  assert.ok(box&&box.width>0&&box.height>0);
+  const beforeDrag=await page.locator('#v3-events .v3-event').first().textContent();
+  const point={x:box.x+box.width/2,y:box.y+box.height/2};
+  await page.mouse.move(point.x,point.y);
+  await page.mouse.down();
+  await page.mouse.move(point.x,point.y-Math.max(22,box.height*1.5),{steps:5});
+  await page.mouse.up();
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('악보 음표 위아래 이동 완료'));
+  const afterDrag=await page.locator('#v3-events .v3-event').first().textContent();
+  assert.notEqual(afterDrag,beforeDrag);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('되돌리기'));
+  assert.equal(await page.locator('#v3-events .v3-event').first().textContent(),beforeDrag);
+  console.log('BROWSER_STAGE=SVG_DRAG_AND_UNDO');
 
   // Existing MusicXML export must preserve 3.0 changes.
   const downloadPromise=page.waitForEvent('download',{timeout:15000});
@@ -104,6 +124,18 @@ try {
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('화음 구성 음 삭제 완료'));
   assert.equal(await page.locator('#v3-events .v3-event').count(),11);
   console.log('BROWSER_STAGE=CHORD_ADD_REMOVE');
+  const complexDownloadPromise=page.waitForEvent('download',{timeout:15000});
+  await page.click('#download-xml');
+  const complexDownload=await complexDownloadPromise;
+  const complexPath=await complexDownload.path();
+  await fs.copyFile(complexPath,output+'/complex-roundtrip.musicxml');
+  const audit=JSON.parse(execFileSync('python3',[
+    'tests/audit_musicxml.py','tests/fixtures/complex-voices-original.musicxml',
+    '--compare',complexPath,
+  ],{encoding:'utf8'}));
+  assert.equal(audit.comparison.status,'STRUCTURE_MATCH');
+  assert.equal(audit.comparison.pitchChanges,0);
+  console.log('BROWSER_STAGE=COMPLEX_MUSICXML_ROUNDTRIP_VERIFIED');
   await page.screenshot({path:output+'/complex-score.png',fullPage:true});
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
