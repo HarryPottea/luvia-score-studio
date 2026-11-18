@@ -10,7 +10,7 @@ import JSZip from 'jszip';
 const url = 'http://127.0.0.1:4173/';
 const output = 'artifacts/browser-smoke';
 await fs.mkdir(output, {recursive: true});
-const server = spawn('npm',['run','preview','--','--port','4173','--strictPort'], {stdio: 'pipe'});
+const server = spawn('node',['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port','4173','--strictPort'], {stdio: 'pipe'});
 let serverOutput='';
 server.stderr.on('data', data=>{ serverOutput += data.toString().slice(0,2000); });
 let browser, page;
@@ -29,9 +29,11 @@ try {
   const errors=[];
   page.on('pageerror',error=>errors.push(String(error)));
   await page.goto(url,{waitUntil:'domcontentloaded'});
+  console.log('BROWSER_STAGE=PAGE_OPEN');
   assert.ok((await page.title()).includes('JaeWoo'));
   await page.click('#try-sample');
   await page.locator('#score-container svg').first().waitFor({timeout:30000});
+  console.log('BROWSER_STAGE=SCORE_RENDERED');
   await page.locator('#v3-events .v3-event').first().waitFor();
   assert.ok((await page.locator('#v3-events .v3-event').count())>0);
   const info=await page.locator('#v3-meter').textContent();
@@ -42,12 +44,14 @@ try {
   await page.click('#v3-pitch');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('음정 변경 완료'));
   assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/F4/);
+  console.log('BROWSER_STAGE=EDIT_OK');
   await page.click('#v3-undo');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('되돌리기'));
   assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/A4/);
   await page.click('#v3-redo');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('다시 실행'));
   assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/F4/);
+  console.log('BROWSER_STAGE=UNDO_REDO_OK');
 
   // Existing MusicXML export must preserve 3.0 changes.
   const downloadPromise=page.waitForEvent('download',{timeout:15000});
@@ -57,9 +61,10 @@ try {
   const xml=await fs.readFile(xmlPath,'utf8');
   assert.match(xml,/<score-partwise/);
   assert.match(xml,/<step>F<\/step><octave>4<\/octave>/);
+  console.log('BROWSER_STAGE=MUSICXML_EXPORTED');
 
   // Browser-produced per-part PDF must be a valid downloadable ZIP with a PDF.
-  const pdfEvent=page.waitForEvent('download',{timeout:90000});
+  const pdfEvent=page.waitForEvent('download',{timeout:45000});
   await page.click('#v2-batch-pdf');
   const zipDownload=await pdfEvent;
   const zip=await JSZip.loadAsync(await fs.readFile(await zipDownload.path()));
@@ -68,6 +73,7 @@ try {
   const pdf=await pdfFiles[0].async('uint8array');
   assert.equal(new TextDecoder().decode(pdf.subarray(0,8)),'%PDF-1.4');
   await fs.writeFile(output+'/sample-part.pdf',pdf);
+  console.log('BROWSER_STAGE=PDF_EXPORTED');
   await page.screenshot({path:output+'/sample-workspace.png',fullPage:true});
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
