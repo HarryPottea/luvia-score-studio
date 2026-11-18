@@ -62,7 +62,8 @@ export function matchScoreEvents(events,graphics) {
   return matches;
 }
 function sourcePitch(source) {
-  const short=source?.Pitch?.ToStringShort?.();
+  // OSMD Pitch.ts uses octXmlDiff=3; serialized MusicXML octaves are 3 higher.
+  const short=source?.Pitch?.ToStringShort?.(3);
   if(typeof short!=='string')return null;
   const match=/^([A-G])((?:#{1,2}|b{1,2}|x)?)(-?\d+)$/i.exec(short.trim());
   if(!match)return null;
@@ -108,17 +109,6 @@ export function graphicalTargets(osmd,doc,visibleParts,host) {
           const start=Math.round(time*measure.divisions*4),length=Math.round(duration*measure.divisions*4);
           if(!close(start/(measure.divisions*4),time)||!close(length/(measure.divisions*4),duration))continue;
           drawn.push({...pitch,start,duration:length,gn});
-        }
-        if(measure.index===0&&staff===1){
-          const sample=staffEntries[0]?.graphicalVoiceEntries?.[0]?.notes?.[0];
-          const source=sample?.sourceNote;
-          console.info('J_WOO_MAP_DIAG',JSON.stringify({
-            part:part.id,reason:measure.reason,divisions:measure.divisions,staffCount:location.count,
-            matrixLength:row.length,expected:expected.slice(0,2).map(x=>({start:x.start,duration:x.duration,step:x.step,alter:x.alter,octave:x.octave})),
-            drawn:drawn.slice(0,2).map(x=>({start:x.start,duration:x.duration,step:x.step,alter:x.alter,octave:x.octave})),
-            source:source?{pitch:source.Pitch?.ToStringShort?.(),timestamp:source.ParentVoiceEntry?.Timestamp?.RealValue,
-              length:source.Length?.RealValue,rest:source.isRest?.(),headCount:sample?.getNoteheadSVGs?.()?.length}:null,
-          }));
         }
         for(const pair of matchScoreEvents(expected,drawn)) {
           const element=noteHead(pair.graphic.gn,host);
