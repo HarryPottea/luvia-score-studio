@@ -22,7 +22,7 @@ const section = `
 </div>
 `;
 
-export function mountV2Controls({state,$,scoreParts,renderScore,refreshRhythmReport,invalidateRhythmUndo,setMessage}) {
+export function mountV2Controls({state,$,scoreParts,renderScore,refreshRhythmReport,invalidateRhythmUndo,setMessage,onExternalDocChange=()=>{},onViewChange=()=>{}}) {
   $('editor-controls').insertAdjacentHTML('beforeend',section);
   const candidateList=$('v2-candidates'),diffTarget=$('v2-diff');
   let current=[];
@@ -75,21 +75,21 @@ export function mountV2Controls({state,$,scoreParts,renderScore,refreshRhythmRep
       if(state.doc!==edited.doc)return;
       if(!ok){state.doc=before;undoNoteDoc=null;await renderScore();setMessage('변경 후 렌더링 실패로 원래 악보를 복원했습니다.',true);}
       else setMessage(`${edited.applied.length}건의 음표 모양을 실제 duration에 맞게 수정했습니다. 원본 비교를 확인하세요.`);
-      refreshRhythmReport();refresh();
+      refreshRhythmReport();refresh();onExternalDocChange();
     }catch(error){state.doc=before;undoNoteDoc=null;refresh();setMessage(`음표 수정 실패: ${error.message}`,true);}
   });
   $('v2-undo').addEventListener('click',async()=>{
     if(!undoNoteDoc)return;
     state.doc=undoNoteDoc;undoNoteDoc=null;state.showBaseline=false;
-    refreshRhythmReport();refresh();await renderScore();setMessage('직전 음표 표기 수정을 되돌렸습니다.');
+    refreshRhythmReport();refresh();onExternalDocChange();await renderScore();setMessage('직전 음표 표기 수정을 되돌렸습니다.');
   });
   $('v2-view-original').addEventListener('click',async()=>{
     if(!state.originalDoc)return;
-    state.showBaseline=true;refresh();await renderScore();
+    state.showBaseline=true;refresh();onViewChange();await renderScore();
     setMessage('원본 악보 미리보기입니다. 저장은 계속 현재 수정본을 대상으로 합니다.');
   });
   $('v2-view-current').addEventListener('click',async()=>{
-    state.showBaseline=false;refresh();await renderScore();setMessage('현재 수정본 미리보기입니다.');
+    state.showBaseline=false;refresh();onViewChange();await renderScore();setMessage('현재 수정본 미리보기입니다.');
   });
   $('v2-layout').addEventListener('change',async()=>{
     if(!state.doc)return;
