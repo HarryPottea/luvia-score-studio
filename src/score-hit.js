@@ -68,66 +68,76 @@ export function graphicalTargets(osmd,doc,visibleParts){
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce}) {
   const graphical=graphicalTargets(osmd,doc,visibleParts);
   const host=document.getElementById('score-container');
-  const live=graphical.map(item=>{
-    // An SVG can report isConnected in a different Document. Only the displayed
-    // preview DOM is interactive, never an OSMD internal/offscreen SVG.
-    if(host?.contains(item.element))return item;
-    const id=item.element.id;
-    const match=id && [...document.querySelectorAll('#score-container svg [id]')].filter(node=>node.id===id);
-    return match?.length===1?{...item,element:match[0]}:null;
-  });
-  let targets=live.every(Boolean)?live:[];
-  // Conservative last resort for legacy VexFlow SVG: 1:1 monophonic noteheads,
-  // only if *every* MusicXML event is matched and exactly one live glyph exists per event.
-  if(!targets.length && graphical.length && visibleParts.length===1){
-    const model=inspectScore(doc).parts.find(part=>part.id===visibleParts[0]);
-    const expected=model?.measures.reduce((sum,measure)=>sum+measure.events.length,0);
-    const glyphs=[...document.querySelectorAll('#score-container svg .vf-notehead')];
-    if(expected===graphical.length && glyphs.length===graphical.length &&
-       glyphs.every(el=>el.isConnected)) {
-      targets=graphical.map((item,i)=>({...item,element:glyphs[i]}));
+  const model=visibleParts.length===1?inspectScore(doc).parts.find(part=>part.id===visibleParts[0]):null;
+  const allNotes=model?.measures.reduce((total,measure)=>total+measure.events.length,0);
+  // Never attach based on a subset or to another document's detached glyph nodes.
+  const enabled=!!host&&graphical.length>0&&graphical.length<=320&&graphical.length===allNotes;
+  let selected=null,drag=null,disposed=false;
+  const elements=()=> {
+    if(!enabled||disposed)return [];
+    const glyphs=[...host.querySelectorAll('svg .vf-notehead')];
+    return glyphs.length===graphical.length && glyphs.every(el=>host.contains(el)) ? glyphs : [];
+  };
+  function update(){
+    const glyphs=elements();
+    for(const [i,el] of glyphs.entries()){
+      const item=graphical[i];
+      el.classList.add('jwoo-note-target');
+      el.setAttribute('tabindex','0');
+      el.setAttribute('role','button');
+      el.setAttribute('aria-label','악보 '+(item.measureIndex+1)+'마디 '+(item.eventIndex+1)+'번째 음표 선택');
+      el.classList.toggle('jwoo-note-selected',!!selected&&selected.partId===item.partId&&selected.measureIndex===item.measureIndex&&selected.eventIndex===item.eventIndex);
     }
+    return glyphs.length;
   }
-  if(targets.length && new Set(targets.map(item=>item.element)).size!==targets.length)targets=[];
-  const bindings=[];
-  function highlight(selection){
-    if(targets.length>320)return {count:0,highlight(){},dispose(){}};
-  for(const item of targets){
-      item.element.classList?.toggle('jwoo-note-selected',!!selection&&item.partId===selection.partId&&item.measureIndex===selection.measureIndex&&item.eventIndex===selection.eventIndex);
-    }
+  function findEvent(event){
+    const element=event.target?.closest?.('.vf-notehead');
+    const glyphs=elements();
+    if(!element||!glyphs.length)return null;
+    const i=glyphs.indexOf(element);
+    return i>=0?{element,item:graphical[i]}:null;
   }
-  for(const item of targets){
-    const {element}=item;
-    element.classList?.add('jwoo-note-target');
-    element.setAttribute?.('tabindex','0');
-    element.setAttribute?.('role','button');
-    element.setAttribute?.('aria-label','악보 '+(item.measureIndex+1)+'마디 '+(item.eventIndex+1)+'번째 음표 선택');
-    const pos={partId:item.partId,measureIndex:item.measureIndex,eventIndex:item.eventIndex};
-    let start=null;
-    function down(e){
-      if(e.button!==0)return;
-      start={x:e.clientX,y:e.clientY,id:e.pointerId,height:element.getBoundingClientRect?.().height||12};
-      select(pos);
-      e.preventDefault();
-    }
-    function up(e){
-      if(!start||e.pointerId!==start.id)return;
-      const drag=start.y-e.clientY;
-      const px=Math.max(7,Math.min(18,start.height*0.6));
-      start=null;
-      const steps=Math.max(-8,Math.min(8,Math.round(drag/px)));
-      if(steps!==0)movePitch(pos,steps);
-    }
-    function key(e){
-      if(e.key==='Enter'||e.key===' '){e.preventDefault();select(pos);}
-      if(e.key==='ArrowUp'||e.key==='ArrowDown') {e.preventDefault();select(pos);movePitch(pos,e.key==='ArrowUp'?1:-1);}
-    }
-    element.addEventListener('pointerdown',down);
-    element.addEventListener('keydown',key);
-    const release=e=>up(e);
-    document.addEventListener('pointerup',release);
-    bindings.push(()=>{element.removeEventListener('pointerdown',down);element.removeEventListener('keydown',key);document.removeEventListener('pointerup',release);});
+  function pointerDown(event){
+    if(event.button!==0)return;
+    const found=findEvent(event);
+    if(!found)return;
+    const rect=found.element.getBoundingClientRect();
+    drag={id:event.pointerId,y:event.clientY,unit:Math.max(7,Math.min(18,rect.height*.6)),item:found.item};
+    selected={partId:found.item.partId,measureIndex:found.item.measureIndex,eventIndex:found.item.eventIndex};
+    select(selected);
+    update();
+    event.preventDefault();
   }
-  announce?.(targets.length);
-  return {count:targets.length,highlight,dispose(){for(const unbind of bindings)unbind();}};
+  function pointerUp(event){
+    if(!drag||drag.id!==event.pointerId)return;
+    const steps=Math.max(-8,Math.min(8,Math.round((drag.y-event.clientY)/drag.unit)));
+    const item=drag.item;drag=null;
+    if(steps!==0)movePitch(item,steps);
+  }
+  function keyDown(event){
+    if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
+    const found=findEvent(event);
+    if(!found)return;
+    event.preventDefault();
+    selected={partId:found.item.partId,measureIndex:found.item.measureIndex,eventIndex:found.item.eventIndex};
+    select(selected);update();
+    if(event.key==='ArrowUp'||event.key==='ArrowDown')movePitch(found.item,event.key==='ArrowUp'?1:-1);
+  }
+  host?.addEventListener('pointerdown',pointerDown);
+  host?.addEventListener('keydown',keyDown);
+  document.addEventListener('pointerup',pointerUp);
+  const observer=enabled?new MutationObserver(()=>{if(!disposed)update();}):null;
+  observer?.observe(host,{childList:true,subtree:true});
+  const count=update();
+  announce?.(count);
+  return {
+    count,
+    highlight(nextSelection){selected=nextSelection;update();},
+    dispose(){
+      disposed=true;observer?.disconnect();
+      host?.removeEventListener('pointerdown',pointerDown);
+      host?.removeEventListener('keydown',keyDown);
+      document.removeEventListener('pointerup',pointerUp);
+    },
+  };
 }
