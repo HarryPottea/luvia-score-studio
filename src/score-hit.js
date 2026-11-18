@@ -67,8 +67,11 @@ export function graphicalTargets(osmd,doc,visibleParts){
 // Attach user interactions only to a verified, uniquely mapped graphical note.
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce}) {
   const graphical=graphicalTargets(osmd,doc,visibleParts);
+  const host=document.getElementById('score-container');
   const live=graphical.map(item=>{
-    if(item.element.isConnected===true)return item;
+    // An SVG can report isConnected in a different Document. Only the displayed
+    // preview DOM is interactive, never an OSMD internal/offscreen SVG.
+    if(host?.contains(item.element))return item;
     const id=item.element.id;
     const match=id && [...document.querySelectorAll('#score-container svg [id]')].filter(node=>node.id===id);
     return match?.length===1?{...item,element:match[0]}:null;
