@@ -227,7 +227,7 @@ function tieType(note) {
   if(ties.length>1||notations.length>1) throw new Error('여러 붙임줄 또는 복합 기보가 있어 변경하지 않습니다.');
   if(notations[0]&&[...notations[0].children].some(el=>el.localName!=='tied')) throw new Error('붙임줄 외 다른 기보가 있어 변경하지 않습니다.');
   const tied=notations[0]?MANY(notations[0],'tied'):[];
-  if(tied.length>1) throw new Error('여러 붙임줄이 겹친 기보입니다.');
+  if(tied.length>1 || (notations[0]&&!tied.length)) throw new Error('기보 속성이 불완전합니다.');
   const a=ties[0]?.getAttribute('type')||'';
   const b=tied[0]?.getAttribute('type')||'';
   if(a!==b) throw new Error('붙임줄 데이터가 불일치합니다.');
@@ -251,7 +251,7 @@ function removeTie(note) {
 function toggleTie(measure,selectedEventIndex) {
   const notes=MANY(measure,'note');
   const first=notes[selectedEventIndex],second=notes[selectedEventIndex+1];
-  if(!first||!second||!pitchSignature(first)||pitchSignature(first)!==pitchSignature(second)) throw new Error('같은 높이의 인접 음표 두 개만 붙임줄로 연결할 수 있습니다.');
+  if(!first||!second||!DIRECT(first,'type')||!DIRECT(second,'type')||!pitchSignature(first)||pitchSignature(first)!==pitchSignature(second)) throw new Error('같은 높이의 인접 음표 두 개만 붙임줄로 연결할 수 있습니다.');
   if(noteProtected(first,'tie')||noteProtected(second,'tie')) throw new Error('연결할 수 없는 복합 기보가 포함되어 있습니다.');
   const a=tieType(first),b=tieType(second);
   if(!a&&!b){makeTie(first,'start');makeTie(second,'stop');return 'tie-added';}
