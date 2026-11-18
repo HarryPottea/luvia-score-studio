@@ -32,3 +32,19 @@
 .rhythm-actions button:hover:not(:disabled){filter:brightness(1.14)}
 .rhythm-actions button:disabled{opacity:.45;cursor:not-allowed}
 .rhythm-actions button:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+
+/* J-WOO 2.0: notation proposals, before/after measure inspection, A4 batch PDF */
+.v2-group .v2-inspector{border:1px solid #596357;border-radius:2px;background:#252b25;color:#d5dfcc;padding:12px 13px;font-size:11px;line-height:1.65;max-height:270px;overflow-y:auto;word-break:keep-all}
+.v2-inspector p{margin:0 0 7px}
+.v2-inspector p:last-child{margin-bottom:0}
+.v2-inspector ul{padding-left:17px;margin:7px 0}
+.v2-inspector li+li{margin-top:4px}
+.v2-candidate{display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;gap:7px!important;padding:7px 0!important;margin:0!important;border-top:1px solid #485246;font-size:11px!important;color:#e3eadf!important;line-height:1.5}
+.v2-candidate input{flex:none;margin-top:3px;accent-color:var(--lime)}
+.v2-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:12px 0}
+.v2-actions button{min-width:0;border:1px solid #87917f;background:transparent;color:#f5f6eb;border-radius:2px;padding:10px 7px;font-size:11px;font-weight:700;line-height:1.4}
+.v2-actions #v2-apply{grid-column:span 2;background:var(--lime);color:#1d2115;border-color:var(--lime)}
+.v2-actions button:disabled{opacity:.45;cursor:not-allowed}
+.v2-actions button:hover:not(:disabled){filter:brightness(1.14)}
+.v2-actions button:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.v2-group #v2-batch-pdf{margin:12px 0}
