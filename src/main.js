@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { buildPartZip, baseScoreName, safeFileName } from './part-export.js';
 import { scanScoreRhythm, applySafeRestCleanup } from './rhythm-dom.js';
 import { applyLayoutPreset } from './layout-profile.js';
+import { applyFixedA4Profile, fixedA4Profile } from './a4-engraving.js';
 import { mountV2Controls } from './v2-controls.js';
 import { mountV3Controls } from './v3-controls.js';
 import { mountAdvancedControls } from './advanced-controls.js';
@@ -42,7 +43,7 @@ app.innerHTML = `
             <div id="editor-controls" class="editor-controls" hidden>
               <div class="control-group"><div class="control-heading"><span>곡 정보</span><span>01</span></div><label for="score-title">곡 제목</label><input id="score-title" type="text" maxlength="120" placeholder="곡 제목" /><label for="score-composer">작곡가</label><input id="score-composer" type="text" maxlength="120" placeholder="작곡가" /></div>
               <div class="control-group"><div class="control-heading"><span>파트</span><span>02</span></div><p class="control-hint">이름은 저장 파일에도 반영됩니다. 체크 해제는 미리보기·PDF에만 적용됩니다.</p><div id="parts-list" class="parts-list"></div></div>
-              <div class="control-group"><div class="control-heading"><span>보기 설정</span><span>03</span></div><label for="page-orientation">용지 방향</label><select id="page-orientation"><option value="A4_P">A4 세로</option><option value="A4_L">A4 가로</option></select><label for="zoom">악보 크기 <span id="zoom-value">100%</span></label><input id="zoom" type="range" min="60" max="140" value="100" step="10" /><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
+              <div class="control-group"><div class="control-heading"><span>보기 설정</span><span>03</span></div><label for="page-orientation">용지 방향</label><select id="page-orientation"><option value="A4_P">A4 세로</option><option value="A4_L">A4 가로</option></select><p id="a4-size-info" class="control-hint" aria-live="polite">A4 자동 조판 · 오선 크기는 악보 구성에 맞춰 고정됩니다.</p><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
               <div class="control-group"><div class="control-heading"><span>개별 파트보</span><span>04</span></div><p class="control-hint">파트를 선택해 미리보기와 인쇄를 전환하거나, 해당 파트만 MusicXML로 저장할 수 있습니다.</p><label for="export-part">파트 선택</label><select id="export-part" aria-label="내보낼 파트 선택"></select><div class="part-tools"><button id="view-part" type="button">선택 파트 보기</button><button id="view-all-parts" type="button">전체 파트 보기</button></div><button class="part-export-button" id="download-part-xml" type="button">선택 파트 MusicXML 저장</button><button class="part-export-button part-export-batch" id="download-all-parts-zip" type="button">전체 파트 MusicXML ZIP 저장</button><p class="control-hint">각 파트를 개별 MusicXML로 묶어 저장합니다. PDF는 파트별 미리보기에서 따로 인쇄합니다.</p></div>
               <div class="control-group"><div class="control-heading"><span>리듬·쉼표 검사</span><span>05</span></div><p class="control-hint">복잡한 리듬은 표시만 합니다. 2/4·3/4·4/4 단일 성부에서 박자 경계가 맞는 연속 쉼표만 병합합니다.</p><div id="rhythm-report" class="rhythm-report" aria-live="polite">악보를 불러오면 검사 결과가 표시됩니다.</div><div class="rhythm-actions"><button id="check-rhythm" type="button">다시 검사</button><button id="apply-rhythm" type="button" disabled>안전한 쉼표 정리 적용</button><button id="undo-rhythm" type="button" disabled>정리 되돌리기</button></div><p class="control-hint">적용 전 원본 파일을 보존하세요. 변경 후에도 악보 표시와 연주 흐름을 검수해 주세요.</p></div>
             </div>
@@ -200,7 +201,8 @@ const printPageStyle = document.createElement('style');
 document.head.append(printPageStyle);
 function updatePrintPageSize() {
   const landscape = $('page-orientation').value === 'A4_L';
-  printPageStyle.textContent = `@media print { @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 12mm; } }`;
+  const width=landscape?297:210;
+  printPageStyle.textContent = `@media print { @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 0; } .score-container, .score-container>div {width:${width}mm!important;max-width:none!important;} .score-container svg {width:${width}mm!important;max-width:none!important;height:auto!important;} }`;
 }
 
 function attachScoreInteractions(osmd){
@@ -223,12 +225,16 @@ async function renderScore() {
   state.graphicBridge?.dispose?.(); state.graphicBridge = null;
   const container = $('score-container'); container.replaceChildren();
   updatePrintPageSize();
+  const format=$('page-orientation').value;
+  const renderedDoc = state.showBaseline && state.originalDoc ? filteredDocument(state.visible, state.originalDoc) : previewDocument();
+  const a4=fixedA4Profile(renderedDoc,format);
+  container.style.width=`${a4.pageWidthPx}px`;
+  $('a4-size-info').textContent=`A4 ${format==='A4_L'?'가로':'세로'} · 오선 ${a4.staffHeightMm}mm 고정 · 여백 ${a4.marginMm}mm · 화면 확대는 브라우저 확대 기능을 사용하세요.`;
   try {
     const osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value });
-    osmd.zoom = Number($('zoom').value) / 100;
-    const renderedDoc = state.showBaseline && state.originalDoc ? filteredDocument(state.visible, state.originalDoc) : previewDocument();
     await osmd.load(renderedDoc);
     if (token !== state.renderToken) return false;
+    applyFixedA4Profile(osmd,renderedDoc,format);
     applyLayoutPreset(osmd, $('v2-layout')?.value || 'standard', renderedDoc);
     osmd.render(); state.osmd = osmd;
     try {attachScoreInteractions(osmd);} catch (error) {console.warn('Note selection unavailable',error);}
@@ -291,7 +297,6 @@ $('score-composer').addEventListener('change', () => {
   if (!creator) { creator = state.doc.createElement('creator'); creator.setAttribute('type', 'composer'); identification.appendChild(creator); }
   creator.textContent = $('score-composer').value.trim(); invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo(); v3.externalChanged(); renderScore(); v2.refresh();
 });
-$('zoom').addEventListener('input', () => { $('zoom-value').textContent = `${$('zoom').value}%`; if (state.osmd) { state.osmd.zoom = Number($('zoom').value) / 100; state.osmd.render(); try {attachScoreInteractions(state.osmd);} catch {} } });
 $('measure-numbers').addEventListener('change', renderScore);
 $('check-rhythm').addEventListener('click', () => {
   if (!state.doc) return;
