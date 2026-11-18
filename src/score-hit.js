@@ -33,11 +33,23 @@ export function graphicalTargets(osmd,doc,visibleParts){
       graphical.push(...notes);
     }
     if(graphical.length!==measure.events.length)continue;
+    const sourceFirst=graphical[0]?.sourceNote;
+    const firstTimestamp=sourceFirst?.getAbsoluteTimestamp?.()?.RealValue;
+    if(!Number.isFinite(firstTimestamp))continue;
     const elements=new Set(),matches=[];
     let valid=true;
     for(let i=0;i<graphical.length;i++){
       const gn=graphical[i];
       if(!gn?.sourceNote||typeof gn.sourceNote.isRest!=='function'||gn.sourceNote.isRest()) {valid=false;break;}
+      const sourceNote=gn.sourceNote, event=measure.events[i];
+      const name=sourceNote.Pitch?.ToStringShort?.();
+      const duration=sourceNote.Length?.RealValue;
+      const absolute=sourceNote.getAbsoluteTimestamp?.()?.RealValue;
+      const expectedLength=event.duration/(measure.divisions*4);
+      const expectedDelta=(event.start-measure.events[0].start)/(measure.divisions*4);
+      if(typeof name!=='string'||name[0]?.toUpperCase()!==event.step||
+        !Number.isFinite(duration)||Math.abs(duration-expectedLength)>1e-6||
+        !Number.isFinite(absolute)||Math.abs((absolute-firstTimestamp)-expectedDelta)>1e-6){valid=false;break;}
       const heads=typeof gn.getNoteheadSVGs==='function'?gn.getNoteheadSVGs():[];
       const head=Array.isArray(heads)&&heads.length===1?heads[0]:(typeof gn.getSVGGElement==='function'?gn.getSVGGElement():null);
       if(!head||typeof head.addEventListener!=='function'||elements.has(head)){valid=false;break;}
@@ -52,7 +64,8 @@ export function graphicalTargets(osmd,doc,visibleParts){
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce}) {
   const targets=graphicalTargets(osmd,doc,visibleParts),bindings=[];
   function highlight(selection){
-    for(const item of targets){
+    if(targets.length>320)return {count:0,highlight(){},dispose(){}};
+  for(const item of targets){
       item.element.classList?.toggle('jwoo-note-selected',!!selection&&item.partId===selection.partId&&item.measureIndex===selection.measureIndex&&item.eventIndex===selection.eventIndex);
     }
   }
