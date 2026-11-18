@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { applyLayoutPreset } from './layout-profile.js';
+import { applyFixedA4Profile, fixedA4Profile } from './a4-engraving.js';
 import { baseScoreName, safeFileName } from './part-export.js';
 import { makePdfFromJpegPages } from './pdf-bytes.js';
 
@@ -46,13 +47,14 @@ async function svgToJpeg(svg,pageFormat) {
 
 async function renderPdfPages(doc,format,layout,measureNumbers) {
   const holder=document.createElement('div');
-  holder.style.cssText=`position:fixed;left:-100000px;top:0;visibility:hidden;width:${format==='A4_L'?1123:794}px;background:white;pointer-events:none;`;
+  const profile=fixedA4Profile(doc,format);
+  holder.style.cssText=`position:fixed;left:-100000px;top:0;visibility:hidden;width:${profile.pageWidthPx}px;max-width:none;background:white;pointer-events:none;`;
   document.body.append(holder);
   let osmd;
   try {
     osmd=new OpenSheetMusicDisplay(holder,{autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,drawMeasureNumbers:measureNumbers,pageFormat:format});
-    osmd.zoom=1;
     await osmd.load(doc);
+    applyFixedA4Profile(osmd,doc,format);
     applyLayoutPreset(osmd,layout,doc);
     osmd.render();
     const svgs=[...holder.querySelectorAll('svg')];
