@@ -257,8 +257,8 @@ test('graphical note binding requires exact single-staff, single-voice note corr
   assert.deepEqual(found[2].eventIndex,2);
   assert.equal(graphicalTargets(graph,doc,[]).length,0);
   assert.equal(graphicalTargets(graph,doc,['P1','P2']).length,0);
-  const polyphonic={GraphicSheet:{MeasureList:[[{staffEntries:[{graphicalVoiceEntries:[{notes:graphical}]}]},
-    {staffEntries:[{graphicalVoiceEntries:[{notes:graphical}]}]}]]]}};
+  const duplicateStaff={staffEntries:[{graphicalVoiceEntries:[{notes:graphical}]}]};
+  const polyphonic={GraphicSheet:{MeasureList:[[duplicateStaff,duplicateStaff]]}};
   assert.equal(graphicalTargets(polyphonic,doc,['P1']).length,0);
   const withRest=score([rest(),note(),note(),note()]);
   assert.equal(graphicalTargets(graph,withRest,['P1']).length,0);
