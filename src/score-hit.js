@@ -78,10 +78,34 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     const glyphs=[...host.querySelectorAll('svg .vf-notehead')];
     return glyphs.length===graphical.length && glyphs.every(el=>host.contains(el)) ? glyphs : [];
   };
+  function ensureHitArea(group){
+    if(group.querySelector?.(':scope > .jwoo-hit-area'))return;
+    if(typeof group.getBBox!=='function')return;
+    let bounds;
+    try {bounds=group.getBBox();}catch{return;}
+    if(!bounds||!Number.isFinite(bounds.x)||!Number.isFinite(bounds.y)||
+       !Number.isFinite(bounds.width)||!Number.isFinite(bounds.height)||
+       bounds.width<=0||bounds.height<=0)return;
+    // A transparent, pointer-enabled box covers the complete music glyph, including
+    // the empty-looking middle of a notehead. Appended only once per rendered SVG.
+    const doc=group.ownerDocument;
+    const box=doc.createElementNS('http://www.w3.org/2000/svg','rect');
+    const pad=4;
+    box.setAttribute('x',String(bounds.x-pad));
+    box.setAttribute('y',String(bounds.y-pad));
+    box.setAttribute('width',String(bounds.width+pad*2));
+    box.setAttribute('height',String(bounds.height+pad*2));
+    box.setAttribute('fill','transparent');
+    box.setAttribute('stroke','none');
+    box.setAttribute('pointer-events','all');
+    box.classList.add('jwoo-hit-area');
+    group.appendChild(box);
+  }
   function update(){
     const glyphs=elements();
     for(const [i,el] of glyphs.entries()){
       const item=graphical[i];
+      ensureHitArea(el);
       el.classList.add('jwoo-note-target');
       el.setAttribute('tabindex','0');
       el.setAttribute('role','button');
