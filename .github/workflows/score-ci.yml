@@ -31,4 +31,6 @@ jobs:
       - run: node --check src/advanced-controls.js
       - run: node --check src/score-hit.js
       - run: node --test tests/*.test.mjs
+      - run: python3 tests/audit_musicxml.py --self-test
+      - run: python3 tests/audit_musicxml.py tests/fixtures/complex-voices-original.musicxml --compare tests/fixtures/complex-voices-pitch-edited.musicxml --allow-pitch
       - run: npm run build
