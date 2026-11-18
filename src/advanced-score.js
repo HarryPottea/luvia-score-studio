@@ -79,7 +79,9 @@ function inspectPartMeasure(part,index) {
     if(!rest&&!pitch)reason='음표 음정 정보가 누락되었습니다.';
     if(pitch&&(!steps.includes(value(pitch,'step'))||!integer(value(pitch,'octave'))))reason='음표 음정을 확인할 수 없습니다.';
     const noteTagKinds=[...node.children].map(c=>c.localName);
-    const protectedMarkup=noteTagKinds.some(k=>['grace','cue','tie','notations','unpitched'].includes(k));
+    const notations=direct(node,'notations');
+    const unsafeNotations=!!notations&&[...notations.children].some(el=>el.localName!=='tuplet');
+    const protectedMarkup=unsafeNotations||noteTagKinds.some(k=>['grace','cue','tie','unpitched'].includes(k));
     const lane=voice+'@'+staff;
     const event={eventIndex,partId:part.getAttribute('id'),measureIndex:index,
       start:startsAt,duration:duration||0,voice,staff,chord:isChord,rest,tuplet,
