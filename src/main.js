@@ -224,7 +224,7 @@ async function renderScore() {
   const container = $('score-container'); container.replaceChildren();
   updatePrintPageSize();
   try {
-    const osmd = new OpenSheetMusicDisplay(container, { autoResize: true, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value });
+    const osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value });
     osmd.zoom = Number($('zoom').value) / 100;
     const renderedDoc = state.showBaseline && state.originalDoc ? filteredDocument(state.visible, state.originalDoc) : previewDocument();
     await osmd.load(renderedDoc);
