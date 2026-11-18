@@ -37,6 +37,7 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
   $('editor-controls').insertAdjacentHTML('beforeend',TEMPLATE);
   const history=createEditorHistory(40), selection={partId:'',measureIndex:0,eventIndex:0};
   let busy=false;
+  let selectionChanged=()=>{};
   const inspect=()=>state.doc?inspectScore(state.doc):{parts:[]};
   function chosen(model) {
     const part=model.parts.find(p=>p.id===selection.partId);
@@ -109,17 +110,19 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
       $('v3-lyric').value=event.lyric||'';
     }
     status();
+    state.graphicBridge?.highlight?.({...selection});
+    selectionChanged({...selection});
   }
   function externalChanged(){history.clear();refresh();}
   function reset(){history.clear();selection.partId='';selection.measureIndex=0;selection.eventIndex=0;refresh();}
   function operation(action,options={}) {return {...selection,action,...options};}
-  async function commit(action,options,label) {
+  async function commitExternal(transform,label) {
     if(!state.doc||busy||state.showBaseline)return;
     busy=true;status();
     const before=state.doc;
     let result=null;
     try{
-      result=editScoreEvent(before,operation(action,options));
+      result=transform(before);
       state.doc=result.doc;state.showBaseline=false;
       const ok=await renderScore();
       if(state.doc!==result.doc)return;
@@ -134,6 +137,31 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
       if(state.doc===result?.doc) {state.doc=before;await renderScore();}
       setMessage('악보 편집 실패: '+(error.message||'알 수 없는 오류'),true);
     }finally{busy=false;refresh();}
+  }
+  async function commit(action,options,label){
+    return commitExternal(before=>editScoreEvent(before,operation(action,options)),label);
+  }
+  function select(position){
+    if(!state.doc||!position)return false;
+    const model=inspect();
+    const part=model.parts.find(p=>p.id===position.partId);
+    const measure=part?.measures[position.measureIndex];
+    if(!measure?.events[position.eventIndex])return false;
+    selection.partId=position.partId;
+    selection.measureIndex=position.measureIndex;
+    selection.eventIndex=position.eventIndex;
+    refresh();
+    return true;
+  }
+  async function movePitch(position,steps){
+    if(!select(position)||busy||state.showBaseline)return;
+    const event=chosen(inspect()).event;
+    if(!event||!event.editable||event.rest)return;
+    const {shiftDiatonicPitch}=await import('./score-hit.js');
+    try{
+      const next=shiftDiatonicPitch({step:event.step,alter:event.alter,octave:event.octave},steps);
+      await commit('pitch',next,'악보 음표 위아래 이동');
+    }catch(error){setMessage('음정 이동 불가: '+error.message,true);}
   }
   async function travel(kind) {
     if(busy||!state.doc||state.showBaseline)return;
@@ -171,5 +199,7 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     if(!state.doc||!document.activeElement?.closest?.('.site-shell'))return;
     ev.preventDefault();travel(ev.shiftKey?'redo':'undo');
   });
-  return {refresh,reset,externalChanged};
+  return {refresh,reset,externalChanged,select,getSelection:()=>({...selection}),
+    onSelectionChange:callback=>{selectionChanged=typeof callback==='function'?callback:()=>{};},
+    commitExternal,movePitch};
 }
