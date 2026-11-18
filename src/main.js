@@ -4,6 +4,7 @@ import { scanScoreRhythm, applySafeRestCleanup } from './rhythm-dom.js';
 import { applyLayoutPreset } from './layout-profile.js';
 import { mountV2Controls } from './v2-controls.js';
 import { mountV3Controls } from './v3-controls.js';
+import { midiToMusicXml } from './midi-import.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { sampleScore } from './sample.js';
 import './style.css';
@@ -33,8 +34,8 @@ app.innerHTML = `
             <span class="workspace-kicker">A WORKSPACE FOR JAEWOO</span>
             <h2 id="workspace-title">악보를<br>직접 다듬다.</h2>
             <p class="workspace-description">음표·쉼표·가사부터 파트별 악보 출력까지 편집합니다.</p>
-            <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="MusicXML 파일 선택"><span class="drop-index">OPEN DOCUMENT</span><strong>악보 파일을 여기에 놓거나 선택</strong><small>.musicxml · .xml · .mxl</small><span class="drop-link">+ 파일 선택</span></div>
-            <input id="file-input" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" hidden />
+            <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="MusicXML 파일 선택"><span class="drop-index">OPEN DOCUMENT</span><strong>악보 파일을 여기에 놓거나 선택</strong><small>.musicxml · .xml · .mxl · .mid · .midi</small><span class="drop-link">+ 파일 선택</span></div>
+            <input id="file-input" type="file" accept=".musicxml,.xml,.mxl,.mid,.midi,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml,audio/midi" hidden />
             <div class="sample-action"><button id="try-sample" type="button">예시 악보 보기 <span aria-hidden="true">↗</span></button></div>
             <div id="editor-controls" class="editor-controls" hidden>
               <div class="control-group"><div class="control-heading"><span>곡 정보</span><span>01</span></div><label for="score-title">곡 제목</label><input id="score-title" type="text" maxlength="120" placeholder="곡 제목" /><label for="score-composer">작곡가</label><input id="score-composer" type="text" maxlength="120" placeholder="작곡가" /></div>
@@ -227,10 +228,24 @@ async function openScore(raw, filename) {
     state.doc = parseXml(raw); state.originalDoc = state.doc.cloneNode(true); state.filename = filename; state.undoRhythmDoc = null; state.showBaseline = false; v2.invalidateUndo();
     showLoaded(); await renderScore();
     $('workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (error) { setMessage(error.message || '파일을 열지 못했습니다.', true); }
+    return true;
+  } catch (error) { setMessage(error.message || '파일을 열지 못했습니다.', true); return false; }
 }
 
-async function handleFile(file) { if (!file) return; setMessage('파일을 읽고 있습니다…'); try { await openScore(await xmlFromFile(file), file.name); } catch (error) { setMessage(error.message || '파일을 읽지 못했습니다.', true); } }
+async function handleFile(file) {
+  if (!file) return;
+  setMessage('파일을 읽고 있습니다…');
+  try {
+    if (/\.(mid|midi)$/i.test(file.name)) {
+      if (file.size > 5 * 1024 * 1024) throw new Error('MIDI 파일은 5MB 이하만 지원합니다.');
+      const result = midiToMusicXml(await file.arrayBuffer(), file.name);
+      const title = file.name.replace(/\.(mid|midi)$/i, '') + '.musicxml';
+      const loaded = await openScore(result.xml, title);
+      if (loaded) setMessage('MIDI ' + result.report.tracks + '개 파트 · ' + result.report.notes + '개 음표를 가져왔습니다. ' +
+        result.report.quantizedNotes + '개 음표의 시점/길이가 16분음표 그리드로 조정되었습니다. 원본과 반드시 대조하세요.');
+    } else { await openScore(await xmlFromFile(file), file.name); }
+  } catch (error) {setMessage(error.message || '파일을 읽지 못했습니다.', true);}
+}
 
 $('open-file').addEventListener('click', () => input.click());
 drop.addEventListener('click', () => input.click());
