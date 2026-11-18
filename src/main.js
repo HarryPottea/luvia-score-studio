@@ -4,6 +4,8 @@ import { scanScoreRhythm, applySafeRestCleanup } from './rhythm-dom.js';
 import { applyLayoutPreset } from './layout-profile.js';
 import { mountV2Controls } from './v2-controls.js';
 import { mountV3Controls } from './v3-controls.js';
+import { mountAdvancedControls } from './advanced-controls.js';
+import { bindGraphicalEditor } from './score-hit.js';
 import { midiToMusicXml } from './midi-import.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { sampleScore } from './sample.js';
@@ -60,7 +62,7 @@ app.innerHTML = `
 `;
 
 const $ = (id) => document.getElementById(id);
-const state = { doc: null, originalDoc: null, filename: '', visible: new Set(), osmd: null, renderToken: 0, undoRhythmDoc: null, showBaseline: false };
+const state = { doc: null, originalDoc: null, filename: '', visible: new Set(), osmd: null, renderToken: 0, undoRhythmDoc: null, showBaseline: false, graphicBridge: null };
 const input = $('file-input');
 const drop = $('drop-zone');
 
@@ -201,9 +203,24 @@ function updatePrintPageSize() {
   printPageStyle.textContent = `@media print { @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 12mm; } }`;
 }
 
+function attachScoreInteractions(osmd){
+  state.graphicBridge?.dispose?.();
+  state.graphicBridge = null;
+  if (state.showBaseline) return;
+  state.graphicBridge = bindGraphicalEditor({
+    osmd, doc:state.doc, visibleParts:[...state.visible],
+    select:position=>v3.select(position),
+    movePitch:(position,steps)=>v3.movePitch(position,steps),
+    announce:count=>{ const el=document.getElementById('v3-graphic-hint');
+      if (el) el.textContent = count ? `악보 화면에서 음표 ${count}개를 직접 선택할 수 있습니다. 음표를 위아래로 움직이거나 ↑↓ 키를 사용하세요.` : '직접 선택할 음표의 위치가 확인되지 않았습니다. 한 파트 보기와 단순 단일 보표 악보에서 사용할 수 있습니다.';
+    },
+  });
+  state.graphicBridge.highlight(v3.getSelection());
+}
 async function renderScore() {
   if (!state.doc) return false;
   const token = ++state.renderToken;
+  state.graphicBridge?.dispose?.(); state.graphicBridge = null;
   const container = $('score-container'); container.replaceChildren();
   updatePrintPageSize();
   try {
@@ -214,6 +231,7 @@ async function renderScore() {
     if (token !== state.renderToken) return false;
     applyLayoutPreset(osmd, $('v2-layout')?.value || 'standard', renderedDoc);
     osmd.render(); state.osmd = osmd;
+    try {attachScoreInteractions(osmd);} catch (error) {console.warn('Note selection unavailable',error);}
     setMessage('악보가 준비되었습니다. 변경 사항은 MusicXML 저장에 반영됩니다.');
     return true;
   } catch (error) {
@@ -273,7 +291,7 @@ $('score-composer').addEventListener('change', () => {
   if (!creator) { creator = state.doc.createElement('creator'); creator.setAttribute('type', 'composer'); identification.appendChild(creator); }
   creator.textContent = $('score-composer').value.trim(); invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo(); v3.externalChanged(); renderScore(); v2.refresh();
 });
-$('zoom').addEventListener('input', () => { $('zoom-value').textContent = `${$('zoom').value}%`; if (state.osmd) { state.osmd.zoom = Number($('zoom').value) / 100; state.osmd.render(); } });
+$('zoom').addEventListener('input', () => { $('zoom-value').textContent = `${$('zoom').value}%`; if (state.osmd) { state.osmd.zoom = Number($('zoom').value) / 100; state.osmd.render(); try {attachScoreInteractions(state.osmd);} catch {} } });
 $('measure-numbers').addEventListener('change', renderScore);
 $('check-rhythm').addEventListener('click', () => {
   if (!state.doc) return;
@@ -386,3 +404,5 @@ $('print-score').addEventListener('click', () => { if (state.doc) window.print()
 const v2 = mountV2Controls({ state, $, scoreParts, renderScore, refreshRhythmReport, invalidateRhythmUndo, setMessage,
   onExternalDocChange: () => v3.externalChanged(), onViewChange: () => v3.refresh() });
 const v3 = mountV3Controls({ state, renderScore, refreshRhythmReport, refreshV2: () => {v2.invalidateUndo();v2.refresh();}, invalidateRhythmUndo, setMessage });
+const advanced = mountAdvancedControls({state,v3,setMessage});
+v3.onSelectionChange(() => advanced.refresh());
