@@ -34,7 +34,8 @@ app.innerHTML = `
             <div id="editor-controls" class="editor-controls" hidden>
               <div class="control-group"><div class="control-heading"><span>곡 정보</span><span>01</span></div><label for="score-title">곡 제목</label><input id="score-title" type="text" maxlength="120" placeholder="곡 제목" /><label for="score-composer">작곡가</label><input id="score-composer" type="text" maxlength="120" placeholder="작곡가" /></div>
               <div class="control-group"><div class="control-heading"><span>파트</span><span>02</span></div><p class="control-hint">이름은 저장 파일에도 반영됩니다. 체크 해제는 미리보기·PDF에만 적용됩니다.</p><div id="parts-list" class="parts-list"></div></div>
-              <div class="control-group"><div class="control-heading"><span>보기 설정</span><span>03</span></div><label for="zoom">확대 <span id="zoom-value">100%</span></label><input id="zoom" type="range" min="60" max="140" value="100" step="10" /><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
+              <div class="control-group"><div class="control-heading"><span>보기 설정</span><span>03</span></div><label for="page-orientation">용지 방향</label><select id="page-orientation"><option value="A4_P">A4 세로</option><option value="A4_L">A4 가로</option></select><label for="zoom">악보 크기 <span id="zoom-value">100%</span></label><input id="zoom" type="range" min="60" max="140" value="100" step="10" /><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
+              <div class="control-group"><div class="control-heading"><span>개별 파트보</span><span>04</span></div><p class="control-hint">파트를 선택해 미리보기와 인쇄를 전환하거나, 해당 파트만 MusicXML로 저장할 수 있습니다.</p><label for="export-part">파트 선택</label><select id="export-part" aria-label="내보낼 파트 선택"></select><div class="part-tools"><button id="view-part" type="button">선택 파트 보기</button><button id="view-all-parts" type="button">전체 파트 보기</button></div><button class="part-export-button" id="download-part-xml" type="button">선택 파트 MusicXML 저장</button></div>
             </div>
             <div class="privacy-note"><span aria-hidden="true">●</span> 곡 파일은 서버로 전송하지 않습니다.</div>
           </aside>
@@ -114,29 +115,57 @@ function showLoaded() {
 
 function renderPartInputs() {
   const list = $('parts-list'); list.replaceChildren();
+  const selector = $('export-part');
+  const selectedId = selector.value;
+  selector.replaceChildren();
   scoreParts().forEach((part, i) => {
+    const option = document.createElement('option');
+    option.value = part.id;
+    option.textContent = part.name;
+    selector.append(option);
     const row = document.createElement('div'); row.className = 'part-row';
     const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = state.visible.has(part.id); toggle.setAttribute('aria-label', `${part.name} 미리보기 표시`);
-    toggle.addEventListener('change', () => { toggle.checked ? state.visible.add(part.id) : state.visible.delete(part.id); if (!state.visible.size) { state.visible.add(part.id); toggle.checked = true; setMessage('미리보기에는 최소 한 개의 파트가 필요합니다.'); return; } renderScore(); });
+    toggle.addEventListener('change', () => {
+      toggle.checked ? state.visible.add(part.id) : state.visible.delete(part.id);
+      if (!state.visible.size) { state.visible.add(part.id); toggle.checked = true; setMessage('미리보기에는 최소 한 개의 파트가 필요합니다.'); return; }
+      renderScore();
+    });
     const name = document.createElement('input'); name.type = 'text'; name.maxLength = 80; name.value = part.name; name.setAttribute('aria-label', `${i + 1}번 파트 이름`);
-    name.addEventListener('change', () => { ensureChild(part.element, 'part-name').textContent = name.value.trim() || part.name; renderScore(); });
+    name.addEventListener('change', () => {
+      ensureChild(part.element, 'part-name').textContent = name.value.trim() || part.name;
+      const priorSelection = selector.value;
+      renderPartInputs();
+      selector.value = priorSelection;
+      renderScore();
+    });
     row.append(toggle, name); list.append(row);
   });
+  if ([...selector.options].some(option => option.value === selectedId)) selector.value = selectedId;
 }
 
-function previewDocument() {
+function filteredDocument(visibleIds) {
   const copy = state.doc.cloneNode(true);
-  for (const part of [...copy.querySelectorAll('part')]) if (!state.visible.has(part.getAttribute('id'))) part.remove();
-  for (const def of [...copy.querySelectorAll('part-list > score-part')]) if (!state.visible.has(def.getAttribute('id'))) def.remove();
+  for (const part of [...copy.querySelectorAll('part')]) if (!visibleIds.has(part.getAttribute('id'))) part.remove();
+  for (const def of [...copy.querySelectorAll('part-list > score-part')]) if (!visibleIds.has(def.getAttribute('id'))) def.remove();
   return copy;
+}
+
+function previewDocument() { return filteredDocument(state.visible); }
+
+const printPageStyle = document.createElement('style');
+document.head.append(printPageStyle);
+function updatePrintPageSize() {
+  const landscape = $('page-orientation').value === 'A4_L';
+  printPageStyle.textContent = `@media print { @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 12mm; } }`;
 }
 
 async function renderScore() {
   if (!state.doc) return;
   const token = ++state.renderToken;
   const container = $('score-container'); container.replaceChildren();
+  updatePrintPageSize();
   try {
-    const osmd = new OpenSheetMusicDisplay(container, { autoResize: true, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: 'A4_P' });
+    const osmd = new OpenSheetMusicDisplay(container, { autoResize: true, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value });
     osmd.zoom = Number($('zoom').value) / 100;
     await osmd.load(previewDocument());
     if (token !== state.renderToken) return;
@@ -183,12 +212,41 @@ $('score-composer').addEventListener('change', () => {
 });
 $('zoom').addEventListener('input', () => { $('zoom-value').textContent = `${$('zoom').value}%`; if (state.osmd) { state.osmd.zoom = Number($('zoom').value) / 100; state.osmd.render(); } });
 $('measure-numbers').addEventListener('change', renderScore);
+$('page-orientation').addEventListener('change', renderScore);
+$('view-part').addEventListener('click', () => {
+  if (!state.doc || !$('export-part').value) return;
+  state.visible = new Set([$('export-part').value]);
+  renderPartInputs();
+  renderScore();
+});
+$('view-all-parts').addEventListener('click', () => {
+  if (!state.doc) return;
+  state.visible = new Set(scoreParts().map(part => part.id));
+  renderPartInputs();
+  renderScore();
+});
+function downloadXmlDocument(doc, filename) {
+  const serialized = new XMLSerializer().serializeToString(doc);
+  const xml = /^\\s*<\\?xml\\b/i.test(serialized) ? serialized : `<?xml version="1.0" encoding="utf-8"?>\\n${serialized}`;
+  const url = URL.createObjectURL(new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' }));
+  const link = document.createElement('a');
+  link.href = url; link.download = filename; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function safeFileName(name) { return String(name).replace(/[\\\\/:*?"<>|]/g, '_').trim().slice(0, 80) || 'score'; }
 $('download-xml').addEventListener('click', () => {
   if (!state.doc) return;
-  const serialized = new XMLSerializer().serializeToString(state.doc);
-  const xml = /^\s*<\?xml\b/i.test(serialized) ? serialized : `<?xml version="1.0" encoding="utf-8"?>\n${serialized}`;
-  const url = URL.createObjectURL(new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' }));
-  const link = document.createElement('a'); link.href = url; link.download = `${(state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score')}-정리.musicxml`; link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 2000); setMessage('MusicXML 파일을 저장했습니다.');
+  const base = state.filename.replace(/\\.(musicxml|xml|mxl)$/i, '') || 'score';
+  downloadXmlDocument(state.doc, `${safeFileName(base)}-정리.musicxml`);
+  setMessage('전체 MusicXML 파일을 저장했습니다.');
+});
+$('download-part-xml').addEventListener('click', () => {
+  if (!state.doc) return;
+  const id = $('export-part').value;
+  const part = scoreParts().find(item => item.id === id);
+  if (!part) { setMessage('내보낼 파트를 선택해주세요.', true); return; }
+  const base = state.filename.replace(/\\.(musicxml|xml|mxl)$/i, '') || 'score';
+  downloadXmlDocument(filteredDocument(new Set([id])), `${safeFileName(base)}-${safeFileName(part.name)}.musicxml`);
+  setMessage(`${part.name} 파트를 MusicXML로 저장했습니다. 인쇄하려면 ‘선택 파트 보기’ 후 PDF로 인쇄를 누르세요.`);
 });
 $('print-score').addEventListener('click', () => { if (state.doc) window.print(); });
