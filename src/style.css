@@ -19,3 +19,16 @@
 .part-export-batch{margin-top:8px;background:transparent;color:var(--lime);border-color:var(--lime)}
 .part-export-batch:hover{background:#394236;color:#f5f6eb}
 .part-export-batch:disabled{opacity:.5;cursor:wait}
+
+/* Rhythm review and explicitly reversible, note-preserving rest cleanup */
+.rhythm-report{border:1px solid #596357;background:#252b25;padding:12px 13px;border-radius:2px;font-size:11px;line-height:1.6;color:#d5dfcc;word-break:keep-all}
+.rhythm-report p{margin:0}
+.rhythm-report .rhythm-result-heading{font-weight:800;color:var(--lime)}
+.rhythm-report ul{margin:9px 0 0;padding-left:17px}
+.rhythm-report li+li{margin-top:5px}
+.rhythm-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:12px 0}
+.rhythm-actions button{min-width:0;border:1px solid #87917f;background:transparent;color:#f5f6eb;padding:10px 7px;border-radius:2px;font-size:11px;font-weight:700}
+.rhythm-actions #apply-rhythm{grid-column:span 2;background:var(--lime);border-color:var(--lime);color:#181e14;grid-row:2}
+.rhythm-actions button:hover:not(:disabled){filter:brightness(1.14)}
+.rhythm-actions button:disabled{opacity:.45;cursor:not-allowed}
+.rhythm-actions button:focus-visible{outline:2px solid var(--lime);outline-offset:2px}

@@ -16,5 +16,7 @@ jobs:
       - run: npm ci
       - run: node --check src/main.js
       - run: node --check src/part-export.js
+      - run: node --check src/rhythm-rules.js
+      - run: node --check src/rhythm-dom.js
       - run: node --test tests/*.test.mjs
       - run: npm run build
