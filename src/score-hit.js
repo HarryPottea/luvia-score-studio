@@ -51,7 +51,11 @@ export function graphicalTargets(osmd,doc,visibleParts){
         !Number.isFinite(duration)||Math.abs(duration-expectedLength)>1e-6||
         !Number.isFinite(absolute)||Math.abs((absolute-firstTimestamp)-expectedDelta)>1e-6){valid=false;break;}
       const heads=typeof gn.getNoteheadSVGs==='function'?gn.getNoteheadSVGs():[];
-      const head=Array.isArray(heads)&&heads.length===1?heads[0]:(typeof gn.getSVGGElement==='function'?gn.getSVGGElement():null);
+      const group=typeof gn.getSVGGElement==='function'?gn.getSVGGElement():null;
+      const candidates=[...(Array.isArray(heads)&&heads.length===1?heads:[]),group].filter(Boolean);
+      // OSMD may return a rendered glyph reference detached from the live SVG tree.
+      // Never attach handlers to invisible/detached nodes; prefer a connected group.
+      const head=candidates.find(el=>el.isConnected===true) || candidates.find(el=>el.isConnected===undefined && typeof el.addEventListener==='function');
       if(!head||typeof head.addEventListener!=='function'||elements.has(head)){valid=false;break;}
       elements.add(head);
       matches.push({partId,measureIndex:measure.index,eventIndex:i,element:head});
