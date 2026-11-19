@@ -98,7 +98,7 @@ test('composer: tied sound and notation start/stop can be toggled across barline
 });
 test('composer: singing-tie refuses skips, mismatched pitches and different voices',()=>{
   const original=score();
-  assert.throws(()=>toggleSoundingTie(original,{partId:'P1',measureIndex:0,eventIndex:0,endMeasureIndex:0,endEventIndex:2}),/연속된/);
+  assert.throws(()=>toggleSoundingTie(original,{partId:'P1',measureIndex:0,eventIndex:1,endMeasureIndex:0,endEventIndex:3}),/연속된/);
   assert.throws(()=>toggleSoundingTie(original,{partId:'P1',measureIndex:0,eventIndex:3,endMeasureIndex:1,endEventIndex:1}),/같은 음정/);
   assert.throws(()=>toggleSoundingTie(original,{partId:'P1',measureIndex:0,eventIndex:3,endMeasureIndex:5,endEventIndex:0}),/연속된 마디/);
   const mutated=score();
