@@ -14,6 +14,7 @@ import { sampleScore } from './sample.js';
 import { mountStudioV4 } from './studio-v4.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
+import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
 import './style.css';
 
 let v4 = null;
@@ -177,11 +178,17 @@ function renderPartInputs() {
     option.textContent = part.name;
     selector.append(option);
     const row = document.createElement('div'); row.className = 'part-row';
-    const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = state.visible.has(part.id); toggle.setAttribute('aria-label', `${part.name} 미리보기 표시`);
+    const toggle = document.createElement('input'); toggle.type = 'checkbox';
+    toggle.checked = state.visible.has(part.id);
+    toggle.dataset.partId=part.id;
+    toggle.setAttribute('aria-label', `${part.name} 미리보기 표시`);
     toggle.addEventListener('change', () => {
       toggle.checked ? state.visible.add(part.id) : state.visible.delete(part.id);
-      if (!state.visible.size) { state.visible.add(part.id); toggle.checked = true; setMessage('미리보기에는 최소 한 개의 파트가 필요합니다.'); return; }
-      renderScore();
+      if (!state.visible.size) {
+        state.visible.add(part.id);toggle.checked=true;
+        setMessage('미리보기에는 최소 한 개의 파트가 필요합니다.');return;
+      }
+      requestPreviewUpdate();
     });
     const name = document.createElement('input'); name.type = 'text'; name.maxLength = 80; name.value = part.name; name.setAttribute('aria-label', `${i + 1}번 파트 이름`);
     name.addEventListener('change', () => {
@@ -195,6 +202,12 @@ function renderPartInputs() {
     row.append(toggle, name); list.append(row);
   });
   if ([...selector.options].some(option => option.value === selectedId)) selector.value = selectedId;
+}
+
+function syncPartVisibilityInputs() {
+  for(const checkbox of document.querySelectorAll('#parts-list input[type="checkbox"][data-part-id]')){
+    checkbox.checked=state.visible.has(checkbox.dataset.partId);
+  }
 }
 
 function filteredDocument(visibleIds, sourceDoc = state.doc) {
@@ -233,35 +246,97 @@ function attachScoreInteractions(osmd){
   });
   state.graphicBridge.highlight(v3.getSelection());
 }
+let previewUpdater=null;
+let lastPaintedView=null;
+let renderInFlight=0;
+function viewSignature(){
+  return JSON.stringify({
+    visible:[...state.visible].sort(),
+    original:state.showBaseline,
+    page:$('page-orientation').value,
+    numbers:$('measure-numbers').checked,
+    layout:$('v2-layout')?.value||'standard',
+  });
+}
+function markPreviewBusy(busy){
+  $('preview-shell').setAttribute('aria-busy',String(busy));
+  document.querySelector('.preview-column')?.classList.toggle('is-refreshing',busy);
+  if(busy)$('score-info').textContent='표시 변경 반영 중…';
+}
+function requestPreviewUpdate(){
+  if(!state.doc)return;
+  if(renderInFlight===0&&lastPaintedView?.doc===state.doc&&
+     lastPaintedView?.key===viewSignature()){
+    previewUpdater.cancel();markPreviewBusy(false);
+    $('score-info').textContent=scoreMeasureSummary();
+    return;
+  }
+  previewUpdater.request();
+}
 async function renderScore() {
   if (!state.doc) return false;
-  const token = ++state.renderToken;
-  state.graphicBridge?.dispose?.(); state.graphicBridge = null;
-  const container = $('score-container'); container.replaceChildren();
+  previewUpdater?.cancel();
+  const token=++state.renderToken;
+  renderInFlight++;
+  markPreviewBusy(true);
   updatePrintPageSize();
   const format=$('page-orientation').value;
-  const renderedDoc = state.showBaseline && state.originalDoc ? filteredDocument(state.visible, state.originalDoc) : previewDocument();
-  const a4=fixedA4Profile(renderedDoc,format);
-  container.style.width=`${a4.pageWidthPx}px`;
-  $('a4-size-info').textContent=`A4 ${format==='A4_L'?'가로':'세로'} · 오선 ${a4.staffHeightMm}mm 고정 · 여백 ${a4.marginMm}mm · 화면 확대는 브라우저 확대 기능을 사용하세요.`;
+  const displayed=state.showBaseline&&state.originalDoc?state.originalDoc:state.doc;
+  const sourceAtStart=state.doc;
+  const viewAtStart=viewSignature();
+  let stage=null;
   try {
-    const osmd = new OpenSheetMusicDisplay(container, editableScoreRenderOptions({ autoResize: false, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value }));
+    const renderedDoc=filteredDocument(state.visible,displayed);
+    const a4=fixedA4Profile(renderedDoc,format);
+    // Keep the previous page visible while OSMD creates a new SVG off-screen.
+    // Staging is attached to the document for correct A4 width measurement.
+    stage=document.createElement('div');
+    stage.style.cssText='position:fixed;left:-100000px;top:0;visibility:hidden;pointer-events:none;'+
+      'width:'+a4.pageWidthPx+'px;max-width:none;';
+    document.body.appendChild(stage);
+    const osmd=new OpenSheetMusicDisplay(stage,editableScoreRenderOptions({
+      autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,
+      drawMeasureNumbers:$('measure-numbers').checked,pageFormat:format,
+    }));
     await osmd.load(renderedDoc);
-    if (token !== state.renderToken) return false;
+    if(token!==state.renderToken)return false;
     applyFixedA4Profile(osmd,renderedDoc,format);
-    applyLayoutPreset(osmd, $('v2-layout')?.value || 'standard', renderedDoc);
-    osmd.render(); state.osmd = osmd;
-    try {attachScoreInteractions(osmd);} catch (error) {console.warn('Note selection unavailable',error);}
-    $('score-info').textContent = scoreMeasureSummary();
+    applyLayoutPreset(osmd,$('v2-layout')?.value||'standard',renderedDoc);
+    osmd.render();
+    if(token!==state.renderToken)return false;
+    const container=$('score-container'),scroll=$('preview-shell');
+    const priorScroll={top:scroll.scrollTop,left:scroll.scrollLeft};
+    state.graphicBridge?.dispose?.();state.graphicBridge=null;
+    // Move rendered A4 pages only, preserving the original print layout.
+    // Old SVG pages remain in place until this atomic swap.
+    container.replaceChildren(...stage.childNodes);
+    container.dataset.renderRevision=String(Number(container.dataset.renderRevision||0)+1);
+    container.style.width=a4.pageWidthPx+'px';
+    $('a4-size-info').textContent=`A4 ${format==='A4_L'?'가로':'세로'} · 오선 ${a4.staffHeightMm}mm 고정 · 여백 ${a4.marginMm}mm · 화면 확대는 브라우저 확대 기능을 사용하세요.`;
+    stage.remove();stage=null;
+    scroll.scrollTop=priorScroll.top;scroll.scrollLeft=priorScroll.left;
+    state.osmd=osmd;
+    try{attachScoreInteractions(osmd);}catch(error){console.warn('Note selection unavailable',error);}
+    lastPaintedView={doc:sourceAtStart,key:viewAtStart};
+    $('score-info').textContent=scoreMeasureSummary();
     setMessage('악보가 준비되었습니다. 변경 사항은 MusicXML 저장에 반영됩니다.');
     v4?.onRendered?.();
     return true;
-  } catch (error) {
-    if (token !== state.renderToken) return false;
-    setMessage(`악보 렌더링에 실패했습니다: ${error.message || '지원하지 않는 표기일 수 있습니다.'}`, true);
+  }catch(error){
+    if(token!==state.renderToken)return false;
+    setMessage(`악보 렌더링에 실패했습니다: ${error.message||'지원하지 않는 표기일 수 있습니다.'}`,true);
     return false;
+  }finally{
+    stage?.remove();
+    renderInFlight--;
+    if(token===state.renderToken)markPreviewBusy(false);
   }
 }
+previewUpdater=createCoalescedPreviewUpdate({
+  run:()=>renderScore(),
+  delay:140,
+  onPending:()=>markPreviewBusy(true),
+});
 
 async function openScore(raw, filename) {
   try {
@@ -316,7 +391,7 @@ $('score-composer').addEventListener('change', () => {
   if (!creator) { creator = state.doc.createElement('creator'); creator.setAttribute('type', 'composer'); identification.appendChild(creator); }
   creator.textContent = $('score-composer').value.trim(); invalidateRhythmUndo(); state.showBaseline = false; v2.invalidateUndo(); v3.externalChanged(); renderScore(); v2.refresh();
 });
-$('measure-numbers').addEventListener('change', renderScore);
+$('measure-numbers').addEventListener('change', requestPreviewUpdate);
 $('check-rhythm').addEventListener('click', () => {
   if (!state.doc) return;
   refreshRhythmReport();
@@ -353,18 +428,18 @@ $('undo-rhythm').addEventListener('click', async () => {
   await renderScore();
   setMessage('쉼표 정리를 되돌렸습니다.');
 });
-$('page-orientation').addEventListener('change', renderScore);
+$('page-orientation').addEventListener('change', requestPreviewUpdate);
 $('view-part').addEventListener('click', () => {
   if (!state.doc || !$('export-part').value) return;
   state.visible = new Set([$('export-part').value]);
-  renderPartInputs();
-  renderScore();
+  syncPartVisibilityInputs();
+  requestPreviewUpdate();
 });
 $('view-all-parts').addEventListener('click', () => {
   if (!state.doc) return;
   state.visible = new Set(scoreParts().map(part => part.id));
-  renderPartInputs();
-  renderScore();
+  syncPartVisibilityInputs();
+  requestPreviewUpdate();
 });
 function serializeXmlDocument(doc) {
   const serialized = new XMLSerializer().serializeToString(doc);
