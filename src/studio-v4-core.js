@@ -83,8 +83,8 @@ export function createBlankScore(options={}) {
     let xml='<part id="'+part.id+'">';
     for(let i=0;i<part.measures;i++){
       xml+='<measure number="'+(i+1)+'">';
-      if(i===0)xml+='<attributes><divisions>16</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>'+part.clef+'</sign><line>'+(part.clef==='F'?4:2)+'</line></clef></attributes>';
-      xml+='<note><rest/><duration>64</duration><type>whole</type></note></measure>';
+      if(i===0)xml+='<attributes><divisions>48</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>'+part.clef+'</sign><line>'+(part.clef==='F'?4:2)+'</line></clef></attributes>';
+      xml+='<note><rest/><duration>192</duration><type>whole</type></note></measure>';
     }
     return xml+'</part>';
   }).join('');
