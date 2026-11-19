@@ -44,7 +44,9 @@ function validateChange(source,original,partId,measureIndex,changedLanes){
   const newState=inspectAdvancedMeasure(source,partId,measureIndex);
   if(newState.reason||newState.max!==original.audit.max)
     fail('변경 후 성부의 시간 위치 또는 박자 무결성 검사에 실패했습니다.');
-  if(JSON.stringify(transport(original.measure))!==JSON.stringify(transport(all(original.part,'measure')[measureIndex])))
+  const nextPart=all(source.documentElement,'part').find(p=>p.getAttribute('id')===partId);
+  const nextMeasure=all(nextPart,'measure')[measureIndex];
+  if(JSON.stringify(transport(original.measure))!==JSON.stringify(transport(nextMeasure)))
     fail('다성부 백업·이동 정보가 변경되어 거부했습니다.');
   if(JSON.stringify(original.audit.events.filter(e=>!changedLanes.has(identity(e))).map(e=>[
     e.voice,e.staff,e.start,e.duration,e.rest,e.step,e.alter,e.octave,e.chord
@@ -140,8 +142,6 @@ function directionBefore(measure,note,kind,number,voice,staff){
   measure.insertBefore(direction,note);
 }
 function post(source,doc,loc,changedLanes,action){
-  const after=all(all(doc.documentElement,'part').find(p=>p.getAttribute('id')===loc.part.getAttribute('id')),'measure')[loc.audit.index];
-  const candidate={...loc,part:all(doc.documentElement,'part').find(p=>p.getAttribute('id')===loc.part.getAttribute('id')),measure:after};
   validateChange(doc,{...loc,measure:loc.sourceMeasure,part:loc.sourcePart},
     loc.part.getAttribute('id'),loc.audit.index,changedLanes);
   return {doc,change:{action,partId:loc.part.getAttribute('id'),measureIndex:loc.audit.index}};
