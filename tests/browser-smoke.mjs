@@ -417,7 +417,8 @@ try {
     mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(polyphonicRhythm)});
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'));
   await page.locator('#v3-events .v3-event').first().click();
-  await page.selectOption('#v3-length','half');
+  assert.equal(await page.locator('#v3-length').isDisabled(),true,'Legacy input is locked for polyphonic notation');
+  await page.selectOption('#v4-pro-type','half');
   await page.click('#v4-pro-duration');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부별 음표 길이 변경 완료'));
   const polyDownloadPromise=page.waitForEvent('download');
@@ -441,7 +442,7 @@ try {
   await page.click('#v4-insert-note');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부를 보존한 음표 삽입 완료'));
   await page.locator('#v3-events .v3-event').first().click();
-  await page.selectOption('#v3-step','D');
+  await page.selectOption('#v4-pro-step','D');
   await page.click('#v4-pro-triplet');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('셋잇단음 변환 완료'));
   const tripletDownloadPromise=page.waitForEvent('download');
