@@ -9,6 +9,7 @@ import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid} from './studio-v4-professional.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
+import {planBatchLyrics,applyBatchLyrics} from './studio-v4-lyrics-batch.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import './studio-v4.css';
@@ -69,6 +70,15 @@ const panel=[
   '<label for="v4-lyric-text">가사 (한국어·영어 지원)</label><input id="v4-lyric-text" type="text" maxlength="100" placeholder="이 음표에 들어갈 한 음절" />',
   '<label for="v4-lyric-extend">멜리스마 연장선</label><select id="v4-lyric-extend"><option value="none">없음</option><option value="start">연장 시작</option><option value="continue">연장 계속</option><option value="stop">연장 종료</option></select>',
   '<div class="v4-inline"><button id="v4-lyric-set" type="button">가사 입력·교체</button><button id="v4-lyric-remove" type="button">선택 절 가사 삭제</button></div>',
+  '<div class="v4-batch-lyrics" role="group" aria-label="스마트 가사 일괄 입력">',
+  '<p class="v4-subhead">03A / 스마트 가사 일괄 입력</p>',
+  '<p class="v4-tiny">악보에서 시작 음표를 선택하고 가사 전체를 붙여넣으세요. 한글은 글자마다 한 음표에 배치하며 공백은 단어 경계입니다. 단독 _ 기호는 앞 음절의 멜리스마를 다음 음표로 연장합니다.</p>',
+  '<label for="v4-lyrics-batch-text">붙여넣을 가사 (선택한 절에 적용)</label>',
+  '<textarea id="v4-lyrics-batch-text" rows="5" maxlength="20000" placeholder="오늘도 너를 생각해&#10;우리 함께 걷던 그 길"></textarea>',
+  '<label class="v4-batch-check"><input id="v4-lyrics-batch-overwrite" type="checkbox" /> 이미 입력된 해당 절 가사 덮어쓰기 (기본 보호)</label>',
+  '<div class="v4-inline"><button id="v4-lyrics-batch-preview" type="button">배치 가능 여부 확인</button><button id="v4-lyrics-batch-apply" type="button">가사 전체 적용</button></div>',
+  '<p id="v4-lyrics-batch-status" class="v4-tiny" role="status" aria-live="polite">성부·보표·음표 수를 확인한 후 원자적으로 적용합니다. 기존 음정과 박자는 변경하지 않습니다.</p>',
+  '</div>',
   '<label for="v4-tie-next-measure">붙임줄 끝 마디</label><select id="v4-tie-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option></select>',
   '<button id="v4-tie-toggle" type="button">선택 음표와 끝 음표의 붙임줄 연결 / 해제</button>',
   '<p class="v4-tiny">끝 음표 목록 번호는 위 ‘이음줄·크레셴도 끝 음표’에서 지정합니다. 다른 성부·음정으로 연결하면 안전하게 차단됩니다.</p>',
@@ -378,6 +388,41 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-lyric-remove').addEventListener('click',()=>void commit(doc=>setNoteVerse(doc,{
     ...selected(),verse:Number($('v4-lyric-verse').value),mode:'remove',
   }),'선택 절 가사 삭제'));
+  function batchOptions(){
+    return {...selected(),verse:Number($('v4-lyric-verse').value),
+      text:$('v4-lyrics-batch-text').value,overwrite:$('v4-lyrics-batch-overwrite').checked};
+  }
+  function batchPreview(options=batchOptions()){
+    const status=$('v4-lyrics-batch-status');
+    try{
+      const plan=planBatchLyrics(state.doc,options);
+      status.textContent='배치 가능 · '+plan.syllables+'개 가사 음절 · 멜리스마 '+plan.extensions+
+        '개 · 선택 성부 '+plan.voice+' / 보표 '+plan.staff+
+        ' · 건너뛴 쉼표 '+plan.skippedRests+'개 · 붙임줄 뒤 음표 '+plan.skippedTies+
+        '개'+(plan.occupied?' · 덮어쓸 기존 가사 '+plan.occupied+'개':'')+
+        ' · 아직 악보는 변경하지 않았습니다.';
+      return plan;
+    }catch(error){
+      status.textContent='배치 불가 · '+(error.message||'입력과 음표 선택을 확인해 주세요.');
+      return null;
+    }
+  }
+  $('v4-lyrics-batch-preview').addEventListener('click',()=>batchPreview());
+  $('v4-lyrics-batch-apply').addEventListener('click',async()=>{
+    const options=batchOptions(),plan=batchPreview(options);
+    if(!plan)return;
+    const prior=state.doc;
+    await commit(doc=>applyBatchLyrics(doc,options),'스마트 가사 일괄 입력');
+    $('v4-lyrics-batch-status').textContent=state.doc!==prior?
+      '적용 완료 · '+plan.syllables+'개 음절 및 멜리스마 '+plan.extensions+
+        '개를 해당 성부의 '+plan.verse+'절에 입력했습니다. 3.0 실행 취소 버튼으로 한 번에 되돌릴 수 있습니다.':
+      '적용되지 않았습니다. 상단 상태 메시지에서 원인을 확인해 주세요.';
+  });
+  $('v4-lyrics-batch-text').addEventListener('keydown',event=>{
+    if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){
+      event.preventDefault();$('v4-lyrics-batch-apply').click();
+    }
+  });
   $('v4-tie-toggle').addEventListener('click',()=>void commit(doc=>toggleSoundingTie(doc,{
     ...selected(),endMeasureIndex:selected().measureIndex+Number($('v4-tie-next-measure').value),
     endEventIndex:Number($('v4-pro-end').value)-1,

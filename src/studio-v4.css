@@ -37,3 +37,14 @@
 .v4-beat-event.selected{outline:2px solid #dbff94!important;outline-offset:1px;z-index:3}
 .v4-beat-event:focus-visible{outline:2px solid white!important;outline-offset:1px}
 @media print{.v4-beat-grid{display:none!important}}
+
+/* Smart vocal lyric paste: responsive input, explicit safety preview. */
+.v4-batch-lyrics{margin-top:14px;padding:0 0 14px;border-bottom:1px solid #52634a}
+.v4-editor .v4-batch-lyrics textarea{display:block;width:100%;min-width:0;box-sizing:border-box;resize:vertical;min-height:120px;padding:11px 10px;font:inherit;font-size:13px;line-height:1.6;color:#f8f9f4;background:#30382d;border:1px solid #5c6a57;border-radius:2px}
+.v4-editor .v4-batch-lyrics textarea:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.v4-editor .v4-batch-check{display:flex;align-items:flex-start;gap:8px;font-size:11px;line-height:1.45;margin:12px 0}
+.v4-editor .v4-batch-check input{width:17px;min-width:17px;height:17px;display:inline-block;flex:0 0 auto;padding:0;margin:0;accent-color:var(--lime)}
+.v4-editor #v4-lyrics-batch-apply{color:#171815;background:var(--lime);border-color:var(--lime)}
+.v4-editor #v4-lyrics-batch-apply:hover:not(:disabled){background:#f1ffbd}
+.v4-editor #v4-lyrics-batch-status{overflow-wrap:anywhere;min-height:2em}
+@media(max-width:670px){.v4-editor .v4-batch-lyrics textarea{font-size:16px}.v4-editor .v4-batch-check{font-size:12px}}
