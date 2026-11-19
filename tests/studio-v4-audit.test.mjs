@@ -69,7 +69,7 @@ test('exact 3:2 eighth note triplets and matched expression endpoints are clean'
 });
 test('overfull measure, negative backup and invalid chord remain blocking defects',()=>{
   const source=doc([part('P1',[measure(1,[
-    attrs(),note(192),note(48,{chord:true}),backup(400),
+    attrs(),note(192),note(48,{chord:true}),note(48),backup(400),
   ])])]);
   const r=auditMusicXml(source);
   assert.equal(r.status,'BLOCKED');
