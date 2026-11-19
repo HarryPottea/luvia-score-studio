@@ -5,6 +5,7 @@ import {
   appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount,
 } from '../src/studio-v4-core.js';
 import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
+import {parseBatchLyrics,planBatchLyrics,applyBatchLyrics} from '../src/studio-v4-lyrics-batch.js';
 
 // Minimal deterministic XML DOM with the operations used by the pure editor.
 class Element {
@@ -210,4 +211,115 @@ test('grand-staff piano bar count edits preserve synchronized backup and both ha
   const shrunk=setScoreMeasureCount(added,{total:2}).doc;
   assert.equal(many(firstPart(shrunk),'measure').length,2);
   assert.equal(many(firstPart(doc),'measure').length,1);
+});
+
+
+// Smart Korean lyric paste: pure MusicXML mutation with voice/verse safety.
+function lyricVocalScore({measures=1,parts=1,polyphony=false,tied=false,existing=false}={}){
+  const partNodes=[];
+  for(let partIndex=0;partIndex<parts;partIndex++){
+    const bars=[];
+    for(let m=0;m<measures;m++){
+      const melody=(voice='1',staff='1')=>el('note',[
+        pitch('C',4),num('duration',16),num('voice',voice),num('type','quarter'),num('staff',staff)
+      ]);
+      const top=Array.from({length:4},()=>melody());
+      if(tied&&m===0)top[1].appendChild(el('tie',[],{type:'stop'}));
+      if(existing&&m===0){
+        top[0].appendChild(el('lyric',[num('syllabic','single'),num('text','옛')],{number:'1'}));
+      }
+      const measureChildren=[attrs(),...top];
+      if(polyphony){
+        measureChildren.push(el('backup',[num('duration',64)]));
+        measureChildren.push(...Array.from({length:4},()=>melody('2','1')));
+      }
+      bars.push(el('measure',measureChildren,{number:String(m+1)}));
+    }
+    partNodes.push(el('part',bars,{id:'P'+(partIndex+1)}));
+  }
+  return new Document(el('score-partwise',partNodes));
+}
+const lyricNotes=(doc,p='P1',m=0)=>many(many(doc.documentElement,'part')
+  .find(node=>node.getAttribute('id')===p).children.filter(n=>n.localName==='measure')[m],'note');
+const verseNode=(note,verse='1')=>many(note,'lyric').find(n=>(n.getAttribute('number')||'1')===verse);
+const lyricInput=(text,extras={})=>({partId:'P1',measureIndex:0,eventIndex:0,verse:1,text,...extras});
+
+test('Korean lyrics split by character and retain word syllabic boundaries',()=>{
+  assert.deepEqual(parseBatchLyrics('오늘도 너를').map(t=>t.text),['오','늘','도','너','를']);
+  assert.deepEqual(parseBatchLyrics('사랑해!').map(t=>t.text),['사','랑','해!']);
+  assert.deepEqual(parseBatchLyrics('hel-lo').map(t=>t.syllabic),['begin','end']);
+  assert.deepEqual(parseBatchLyrics('오늘').map(t=>t.syllabic),['begin','end']);
+  assert.throws(()=>parseBatchLyrics('_ 아'),/앞에/);
+});
+
+test('bulk lyric change is an immutable multi-note MusicXML edit',()=>{
+  const original=lyricVocalScore();
+  const result=applyBatchLyrics(original,lyricInput('우리 함께')).doc;
+  assert.deepEqual(lyricNotes(result).map(n=>first(verseNode(n),'text').textContent),['우','리','함','께']);
+  assert.deepEqual(lyricNotes(result).map(n=>first(verseNode(n),'syllabic').textContent),['begin','end','begin','end']);
+  assert.equal(verseNode(lyricNotes(original)[0]),undefined);
+  assert.deepEqual(lyricNotes(result).map(n=>first(n,'duration').textContent),['16','16','16','16']);
+});
+
+test('melisma underscore emits MusicXML extend start/continue/stop',()=>{
+  const output=applyBatchLyrics(lyricVocalScore(),lyricInput('아 _ _ 너')).doc;
+  const lyrics=lyricNotes(output).map(n=>verseNode(n));
+  assert.deepEqual(lyrics.map(l=>first(l,'extend')?.getAttribute('type')||'none'),
+    ['start','continue','stop','none']);
+  assert.equal(first(lyrics[1],'text'),undefined);
+  assert.equal(first(lyrics[2],'text'),undefined);
+});
+
+test('multi-voice backup and same staff: batch targets selected voice only',()=>{
+  const doc=lyricVocalScore({polyphony:true});
+  const output=applyBatchLyrics(doc,lyricInput('하늘을 봐',{eventIndex:4})).doc;
+  assert.ok(lyricNotes(output).slice(0,4).every(n=>verseNode(n)===undefined));
+  assert.deepEqual(lyricNotes(output).slice(4).map(n=>first(verseNode(n),'text').textContent),
+    ['하','늘','을','봐']);
+  assert.equal(many(firstMeasure(output),'backup').length,1);
+});
+
+test('sounding tied note continuation is skipped, not rewritten',()=>{
+  const input=lyricVocalScore({tied:true});
+  const plan=planBatchLyrics(input,lyricInput('아 너 와'));
+  assert.equal(plan.skippedTies,1);
+  const output=applyBatchLyrics(input,lyricInput('아 너 와')).doc;
+  assert.equal(verseNode(lyricNotes(output)[1]),undefined);
+  assert.deepEqual([0,2,3].map(i=>first(verseNode(lyricNotes(output)[i]),'text').textContent),['아','너','와']);
+});
+
+test('existing verse is protected until overwrite explicitly enabled',()=>{
+  const input=lyricVocalScore({existing:true});
+  assert.throws(()=>applyBatchLyrics(input,lyricInput('아 너 와 요')),/덮어쓰기/);
+  const output=applyBatchLyrics(input,lyricInput('아 너 와 요',{overwrite:true})).doc;
+  assert.equal(first(verseNode(lyricNotes(input)[0]),'text').textContent,'옛');
+  assert.equal(first(verseNode(lyricNotes(output)[0]),'text').textContent,'아');
+  const verse2=applyBatchLyrics(output,lyricInput('봄',{verse:2})).doc;
+  assert.equal(first(verseNode(lyricNotes(verse2)[0],'1'),'text').textContent,'아');
+  assert.equal(first(verseNode(lyricNotes(verse2)[0],'2'),'text').textContent,'봄');
+});
+
+test('complex existing lyrics block bulk overwrites',()=>{
+  const input=lyricVocalScore({existing:true});
+  verseNode(lyricNotes(input)[0]).appendChild(num('elision',' '));
+  assert.throws(()=>applyBatchLyrics(input,lyricInput('가',{overwrite:true})),/복잡한/);
+});
+
+test('overflow is atomic; no original note is changed',()=>{
+  const input=lyricVocalScore();
+  assert.throws(()=>applyBatchLyrics(input,lyricInput('오늘 하루 우리 함께')),/배치할 수 있습니다/);
+  assert.ok(lyricNotes(input).every(n=>verseNode(n)===undefined));
+});
+
+test('lyrics span multiple measures while another part remains untouched',()=>{
+  const input=lyricVocalScore({measures:2,parts:2});
+  const output=applyBatchLyrics(input,lyricInput('가나다라마바사아')).doc;
+  assert.equal(first(verseNode(lyricNotes(output,'P1',1)[3]),'text').textContent,'아');
+  assert.equal(verseNode(lyricNotes(output,'P2')[0]),undefined);
+});
+
+test('invalid verse and missing part are rejected',()=>{
+  assert.throws(()=>planBatchLyrics(lyricVocalScore(),lyricInput('봄',{verse:13})),/절 번호/);
+  assert.throws(()=>planBatchLyrics(lyricVocalScore(),lyricInput('봄',{partId:'other'})),/파트/);
+  assert.throws(()=>planBatchLyrics(lyricVocalScore(),lyricInput(' ')),/가사를/);
 });
