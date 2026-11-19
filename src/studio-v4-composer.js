@@ -82,7 +82,7 @@ export function setNoteVerse(source,{partId,measureIndex,eventIndex,verse=1,
   checkBeforeAfter(source,cloned);
   return {doc:cloned,change:{action:'verse-lyric',partId,measureIndex,eventIndex,verse:Number(number),mode}};
 }
-function ordinalCandidates(part,measureIndex,from,to){
+function ordinalCandidates(part,from,to){
   const rows=[];
   for(let m=from;m<=to;m++){
     const notes=kids(kids(part,'measure')[m],'note');
@@ -91,7 +91,7 @@ function ordinalCandidates(part,measureIndex,from,to){
   return rows;
 }
 function ensureAdjacentSameLane(part,start,end){
-  const rows=ordinalCandidates(part,start.measureIndex,start.eventIndex<=end.eventIndex?end.measureIndex:start.measureIndex,end.measureIndex);
+  const rows=ordinalCandidates(part,start.measureIndex,end.measureIndex);
   const laneName=lane(start.note);
   const joined=rows.filter(x=>lane(x.node)===laneName&&!child(x.node,'chord')&&!child(x.node,'grace'));
   const from=joined.findIndex(x=>x.measureIndex===start.measureIndex&&x.eventIndex===start.eventIndex);
