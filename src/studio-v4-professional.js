@@ -317,3 +317,61 @@ export function addHairpin(source,{kind='crescendo',...params}={}){
   post(source,doc,loc,new Set([identity(loc.event)]),'hairpin');
   return {doc,change:{action:'hairpin',kind,partId:params.partId,measureIndex:params.measureIndex}};
 }
+
+
+/**
+ * Move a non-chord note earlier/later by a precise grid subdivision while
+ * exchanging time with an immediately adjacent same-lane rest.
+ * Cross-bar, tie, tuplet, beam and occupied-time movement is not guessed.
+ * The immutable candidate passes a full multi-voice timeline check.
+ */
+export function nudgeVoiceNoteOnGrid(source,{partId,measureIndex,eventIndex,
+  direction='earlier',grid='16th'}={}){
+  if(!['earlier','later'].includes(direction)||!['eighth','16th','32nd'].includes(grid))
+    fail('음표 이동 방향 또는 박자 격자가 올바르지 않습니다.');
+  const {doc,loc}=start(source,{partId,measureIndex,eventIndex});
+  const {measure,note,event,audit}=loc;
+  if(!event||event.rest||event.chord||event.tuplet||!audit.divisions)
+    fail('일반 성부 음표만 박자 위치를 조정할 수 있습니다.');
+  guardNote(note);
+  const shift=durationFor(grid,audit.divisions),items=[...measure.children],at=items.indexOf(note);
+  const before=items[at-1],after=items[at+1];
+  const adjacent=direction==='earlier'?before:after;
+  if(!adjacent||adjacent.localName!=='note'||!direct(adjacent,'rest')||
+     !sameLaneNote(note,adjacent))
+    fail('같은 성부에서 이동 방향으로 바로 연결된 쉼표가 필요합니다.');
+  guardNote(adjacent,{rest:true});
+  const originalRest=Number(value(adjacent,'duration'));
+  if(!int(originalRest,1,262144)||originalRest<shift)
+    fail('이동 방향의 쉼표 길이가 부족합니다.');
+  const remainder=decomposeRest(originalRest-shift,audit.divisions);
+  const movedRest=makeRest(measure,adjacent,shift,grid);
+  if(direction==='earlier'){
+    // [rest R][note N] -> [rest R-shift][note N][rest shift]
+    for(const r of remainder)measure.insertBefore(
+      makeRest(measure,adjacent,r.duration,r.type),note);
+    measure.removeChild(adjacent);
+    measure.insertBefore(movedRest,note.nextSibling);
+  }else{
+    // [note N][rest R] -> [rest shift][note N][rest R-shift]
+    measure.insertBefore(movedRest,note);
+    for(const r of remainder)measure.insertBefore(
+      makeRest(measure,adjacent,r.duration,r.type),adjacent);
+    measure.removeChild(adjacent);
+  }
+  post(source,doc,loc,new Set([identity(event)]),'voice-grid-nudge');
+  const audited=inspectAdvancedMeasure(doc,partId,measureIndex);
+  const newIndex=all(measure,'note').indexOf(note),moved=audited.events[newIndex];
+  const expected=event.start+(direction==='earlier'?-shift:shift);
+  if(!moved||moved.start!==expected||moved.duration!==event.duration||
+     moved.step!==event.step||moved.alter!==event.alter||moved.octave!==event.octave||
+     moved.voice!==event.voice||moved.staff!==event.staff)
+    fail('음정 또는 시간 이동 검증에 실패하여 작업을 취소했습니다.');
+  const oldSpan=audit.events.filter(e=>identity(e)===identity(event)&&!e.chord)
+    .reduce((sum,e)=>sum+e.duration,0);
+  const newSpan=audited.events.filter(e=>identity(e)===identity(event)&&!e.chord)
+    .reduce((sum,e)=>sum+e.duration,0);
+  if(oldSpan!==newSpan)fail('편집 성부의 총 박자 길이가 달라졌습니다.');
+  return {doc,change:{action:'voice-grid-nudge',partId,measureIndex,eventIndex,
+    direction,grid,shift}};
+}
