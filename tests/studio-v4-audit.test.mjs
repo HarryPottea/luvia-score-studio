@@ -26,7 +26,7 @@ const attrs=(divisions=48,beats=4,beatType=4)=>E('attributes',[
 const pitch=(step='C',octave=4)=>E('pitch',[t('step',step),t('octave',octave)]);
 const note=(duration=48,{step='C',octave=4,voice='1',staff='1',chord=false,tuplet=false,ties=[],slurs=[]}={})=>{
   const items=[...(chord?[E('chord')]:[]),pitch(step,octave),t('duration',duration),
-    t('voice',voice),t('type',tuplet?'eighth':'quarter'),t('staff',staff)];
+    t('voice',voice),t('type',tuplet?'eighth':duration===192?'whole':duration===96?'half':duration===24?'eighth':'quarter'),t('staff',staff)];
   if(tuplet)items.push(E('time-modification',[
     t('actual-notes',3),t('normal-notes',2),t('normal-type','eighth')]));
   for(const type of ties)items.push(E('tie',[],{type}));
