@@ -146,6 +146,7 @@ try {
   await page.click('#v4-play');
   await page.waitForFunction(()=>document.querySelector('#v4-play-status')?.textContent.includes('재생 중'),null,{timeout:15000});
   assert.equal(await page.locator('#v4-stop').isEnabled(),true);
+  assert.match(await page.locator('#v4-play-status').textContent(),/108 BPM/);
   await page.click('#v4-stop');
   console.log('BROWSER_STAGE=V4_WEB_AUDIO_AUDITION');
   // Explicit restore uses the draft rather than the changed current score.
