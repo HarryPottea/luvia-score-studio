@@ -823,6 +823,72 @@ try {
   await page.setViewportSize({width:1440,height:1000});
   console.log('BROWSER_STAGE=FOLLOW_ALONG_SCORE_PRINT_UNCLIPPED');
 
+
+  // Section-level inspector toggles preserve live inputs and their event handlers.
+  const allGroups=await page.locator('#editor-controls .control-group').count();
+  assert.ok(allGroups>=12,'Every main settings panel has an accordion');
+  assert.equal(await page.locator('#editor-controls .control-group>.control-heading>.jwoo-fold-toggle').count(),allGroups);
+  assert.ok(await page.locator('.jwoo-v4-section>.v4-subhead .jwoo-fold-toggle').count()>=6);
+  const chordToggle=page.locator('.v4-chord-editor>.control-heading>.jwoo-fold-toggle');
+  assert.equal(await chordToggle.getAttribute('aria-expanded'),'true');
+  await chordToggle.click();
+  assert.equal(await chordToggle.getAttribute('aria-expanded'),'false');
+  assert.equal(await page.locator('#v4-chord-input').isVisible(),false);
+  await chordToggle.click();
+  assert.equal(await chordToggle.getAttribute('aria-expanded'),'true');
+  assert.equal(await page.locator('#v4-chord-input').isVisible(),true);
+  const innerToggle=page.locator('.jwoo-v4-section>.v4-subhead .jwoo-fold-toggle').first();
+  await innerToggle.click();
+  assert.equal(await innerToggle.getAttribute('aria-expanded'),'false');
+  await innerToggle.click();
+  assert.equal(await innerToggle.getAttribute('aria-expanded'),'true');
+  console.log('BROWSER_STAGE=INSPECTOR_ACCORDIONS_PRESERVE_CONTROL_STATE');
+
+  // Edit a true MusicXML harmony event at a user-selected note and check the
+  // original lyrics, notes, undo/redo and SVG selection affordance.
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.waitForFunction(()=>document.querySelector('#v4-chord-input')?.disabled===false);
+  assert.equal(await page.locator('#score-container .jwoo-note-selected .jwoo-selection-ring').count(),1,
+    'Selected notehead has a visible, non-destructive SVG ring');
+  assert.equal(await page.locator('#score-container .jwoo-note-selected').getAttribute('aria-pressed'),'true');
+  assert.match(await page.locator('.jwoo-selected-location').textContent(),/선택 · 1마디 \/ 2번 음표/);
+  await page.fill('#v4-chord-input','Am7');
+  await page.click('#v4-chord-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('코드 기호 입력·교체 완료'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-chord-location').textContent(),/현재 코드 Am7/);
+  const chordDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const chordXml=await fs.readFile(await (await chordDownload).path(),'utf8');
+  assert.match(chordXml,/<harmony>/);
+  assert.match(chordXml,/<root-step>A<\/root-step>/);
+  assert.match(chordXml,/<kind text="m7">minor-seventh<\/kind>/);
+  assert.equal((chordXml.match(/<duration>16<\/duration>/g)||[]).length,4,'Rhythm remains unchanged');
+  assert.equal((chordXml.match(/<lyric number="1">/g)||[]).length,4,'Existing verse 1 is preserved');
+  assert.equal((chordXml.match(/<lyric number="2">/g)||[]).length,4,'Existing verse 2 is preserved');
+  assert.ok(await page.locator('#score-container svg').count()>0,'Chord-annotated score renders');
+  console.log('BROWSER_STAGE=MUSICXML_CHORD_SYMBOL_RENDER_AND_ROUNDTRIP');
+
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('코드 기호 입력·교체 되돌리기'));
+  assert.match(await page.locator('#v4-chord-location').textContent(),/코드 없음/);
+  await page.click('#v3-redo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('코드 기호 입력·교체 다시 실행'));
+  assert.match(await page.locator('#v4-chord-location').textContent(),/현재 코드 Am7/);
+  await page.click('#v4-chord-remove');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('코드 기호 삭제 완료'));
+  assert.match(await page.locator('#v4-chord-location').textContent(),/코드 없음/);
+  assert.equal(await page.locator('#score-container .jwoo-selection-ring').count(),1);
+  console.log('BROWSER_STAGE=CHORD_SYMBOL_UNDO_REDO_REMOVE');
+
+  // Toggle entire sections, then restore them without losing the loaded score.
+  await page.getByRole('button',{name:'모두 접기'}).click();
+  assert.equal(await page.locator('#v4-chord-input').isVisible(),false);
+  await page.getByRole('button',{name:'모두 펼치기'}).click();
+  assert.equal(await page.locator('#v4-chord-input').isVisible(),true);
+  assert.ok(await page.locator('#score-container svg').count()>0);
+  await page.screenshot({path:output+'/chords-accordions-selection.png',fullPage:true});
+  console.log('BROWSER_STAGE=ALL_FOLD_UNFOLD_PRESERVES_SCORE');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
