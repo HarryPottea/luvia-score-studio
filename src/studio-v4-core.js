@@ -71,20 +71,29 @@ export function createBlankScore(options={}) {
   const patterns={
     melody:[['P1','Melody','G']],
     vocal:[['P1','Vocal','G']],
-    'vocal-piano':[['P1','Vocal','G'],['P2','Piano RH','G'],['P3','Piano LH','F']],
+    'vocal-piano':[['P1','Vocal','G'],['P2','Piano','GP']],
   };
   const requested=patterns[mode];
   if(!requested)fail('지원하지 않는 신규 악보 템플릿입니다.');
   const parts=requested.map(([id,name,clef])=>scorePart(id,name,clef,measures));
-  // Piano RH/LH are deliberately separate editable single-staff parts.
-  // This is not a full grand-staff voice-editing replacement.
+  // Piano uses one instrument part with two staves and synchronized voices.
   const defs=parts.map(part=>'<score-part id="'+part.id+'"><part-name>'+escapeXml(part.name)+'</part-name></score-part>').join('');
   const body=parts.map(part=>{
     let xml='<part id="'+part.id+'">';
     for(let i=0;i<part.measures;i++){
       xml+='<measure number="'+(i+1)+'">';
-      if(i===0)xml+='<attributes><divisions>48</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>'+part.clef+'</sign><line>'+(part.clef==='F'?4:2)+'</line></clef></attributes>';
-      xml+='<note><rest/><duration>192</duration><type>whole</type></note></measure>';
+      if(i===0) {
+        xml+='<attributes><divisions>48</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time>';
+        if(part.clef==='GP')xml+='<staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef>';
+        else xml+='<clef><sign>'+part.clef+'</sign><line>'+(part.clef==='F'?4:2)+'</line></clef>';
+        xml+='</attributes>';
+      }
+      if(part.clef==='GP'){
+        xml+='<note><rest/><duration>192</duration><voice>1</voice><type>whole</type><staff>1</staff></note>';
+        xml+='<backup><duration>192</duration></backup>';
+        xml+='<note><rest/><duration>192</duration><voice>2</voice><type>whole</type><staff>2</staff></note>';
+      }else xml+='<note><rest/><duration>192</duration><type>whole</type></note>';
+      xml+='</measure>';
     }
     return xml+'</part>';
   }).join('');
