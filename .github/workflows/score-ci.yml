@@ -37,6 +37,8 @@ jobs:
       - run: node --check src/studio-v4.js
       - run: node --check src/studio-v4-professional.js
       - run: node --check src/studio-v4-audit.js
+      - run: node --check src/studio-v4-composer.js
+      - run: node --check src/studio-v4-printbook.js
       - run: node --test tests/*.test.mjs
       - run: python3 tests/audit_musicxml.py --self-test
       - run: python3 tests/audit_musicxml.py tests/fixtures/complex-voices-original.musicxml --compare tests/fixtures/complex-voices-pitch-edited.musicxml --allow-pitch
