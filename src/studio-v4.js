@@ -8,6 +8,7 @@ import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin} from './studio-v4-professional.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
+import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import './studio-v4.css';
 
 const intro=[
@@ -66,6 +67,8 @@ const panel=[
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
+  '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
+  '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
   '<button id="v4-vector-zip" type="button">벡터 SVG 페이지 ZIP 저장</button>',
   '<p class="v4-tiny">벡터 PDF는 상단의 ‘PDF로 인쇄 → PDF로 저장’을 사용하세요. 기존 ‘파트 PDF ZIP’은 JPEG 기반이므로 인쇄 전 검수가 필요합니다.</p>',
   '<p class="v4-subhead">05 / 간이 청음</p>',
@@ -247,6 +250,33 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }catch(error){player.stop();setMessage('간이 재생 실패: '+error.message,true);}
   });
   $('v4-stop').addEventListener('click',()=>player.stop());
+  $('v4-print-book').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    const win=window.open('','_blank');
+    if(!win){setMessage('브라우저가 인쇄용 새 창을 차단했습니다. 팝업을 허용해 주세요.',true);return;}
+    win.document.title='J-WOO 벡터 파트보 준비 중';
+    win.document.body.textContent='파트별 벡터 악보를 만들고 있습니다. 새 창을 닫지 마세요.';
+    const button=$('v4-print-book');button.disabled=true;
+    try{
+      const partNodes=[...state.doc.documentElement.children].filter(p=>p.localName==='part');
+      const names=new Map([...state.doc.querySelectorAll('part-list > score-part')].map(p=>[
+        p.getAttribute('id'),p.querySelector('part-name')?.textContent||p.getAttribute('id'),
+      ]));
+      const parts=partNodes.map(p=>({id:p.getAttribute('id'),name:names.get(p.getAttribute('id'))||p.getAttribute('id')}));
+      const pageFormat=$('page-orientation').value;
+      const pages=await renderPartSvgPages({doc:state.doc,parts,pageFormat,
+        measureNumbers:$('measure-numbers').checked,
+        onProgress:detail=>setMessage('벡터 파트보 생성: '+detail)});
+      if(win.closed){setMessage('인쇄용 창이 닫혀 출력이 취소됐습니다.',true);return;}
+      const output=populateVectorPrintWindow(win,{pages,
+        pageFormat,title:state.filename+' · J-WOO 벡터 파트보'});
+      setMessage('벡터 파트보 '+output.pages+
+        '페이지 준비 완료 · 새 창의 인쇄/PDF 저장 버튼을 누르세요. 실제 품질은 인쇄 미리보기에서 검수해야 합니다.');
+    }catch(error){
+      if(!win.closed)win.document.body.textContent='벡터 파트보 생성 실패: '+error.message;
+      setMessage('벡터 파트보를 만들지 못했습니다: '+error.message,true);
+    }finally{button.disabled=false;}
+  });
   $('v4-vector-zip').addEventListener('click',async()=>{
     if(!state.doc)return;
     const button=$('v4-vector-zip');button.disabled=true;
