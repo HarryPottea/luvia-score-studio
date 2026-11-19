@@ -193,3 +193,89 @@ export function addExpression(source,{partId,measureIndex,eventIndex=0,kind,valu
   }
   return {doc,change:{action:'expression',partId,measureIndex,eventIndex,kind,value}};
 }
+
+// Add complete empty 4/4 measures to a score with independent single-staff parts.
+// Never synthesize incomplete grand-staff voices or alter existing measures.
+export function appendBlankMeasures(source,{count=4}={}){
+  if(!integer(count,1,16))fail('한 번에 1~16마디만 추가할 수 있습니다.');
+  if(source?.documentElement?.localName!=='score-partwise')fail('MusicXML partwise 악보만 지원합니다.');
+  const doc=source.cloneNode(true),parts=children(doc.documentElement,'part');
+  if(!parts.length||parts.length>12)fail('마디 확장 지원 범위를 벗어난 악보입니다.');
+  const allMeasures=parts.map(part=>children(part,'measure'));
+  if(allMeasures.some(list=>list.length!==allMeasures[0].length))fail('파트별 마디 수가 달라 추가하지 않습니다.');
+  const start=allMeasures[0].length;
+  if(!start||start+count>128)fail('마디 수는 최대 128개까지 지원합니다.');
+  const allNumbers=[];
+  for(let index=0;index<parts.length;index++){
+    const part=parts[index],measures=allMeasures[index];
+    let divisions=0,beats=0,beatType=0,staffCount=1;
+    for(const measure of measures){
+      if([...measure.children].some(x=>['backup','forward'].includes(x.localName)) ||
+        children(measure,'note').some(note=>direct(note,'staff')||direct(note,'voice')))
+        fail('다성부·복수 보표 악보의 자동 마디 추가는 보호됩니다.');
+      for(const attrs of children(measure,'attributes')){
+        const d=Number(text(attrs,'divisions'));
+        if(d)divisions=d;
+        const t=direct(attrs,'time');
+        if(t){beats=Number(text(t,'beats'));beatType=Number(text(t,'beat-type'));}
+        const st=Number(text(attrs,'staves'));
+        if(st>1)staffCount=st;
+      }
+    }
+    const previous=Number(measures[measures.length-1].getAttribute('number'));
+    if(!integer(previous,1,20000)||!integer(divisions,1,65536)
+       ||beats!==4||beatType!==4||staffCount!==1)
+      fail('마지막 박자가 4/4이고 단일 보표인 악보만 마디를 추가할 수 있습니다.');
+    allNumbers.push(previous);
+    const duration=divisions*4;
+    for(let k=1;k<=count;k++){
+      const measure=element(part,'measure');
+      measure.setAttribute('number',String(previous+k));
+      const note=element(measure,'note');
+      note.appendChild(element(note,'rest'));
+      note.appendChild(element(note,'duration',duration));
+      note.appendChild(element(note,'type','whole'));
+      measure.appendChild(note);part.appendChild(measure);
+    }
+  }
+  if(new Set(allNumbers).size!==1)fail('파트별 마디 번호가 일치하지 않아 변경하지 않습니다.');
+  return {doc,change:{action:'append-measures',count}};
+}
+export function setSimpleKeySignature(source,{fifths=0}={}){
+  if(!integer(fifths,-7,7))fail('조표는 플랫 7개에서 샤프 7개 사이여야 합니다.');
+  if(source?.documentElement?.localName!=='score-partwise')fail('MusicXML partwise 악보만 지원합니다.');
+  const doc=source.cloneNode(true),parts=children(doc.documentElement,'part');
+  if(!parts.length||parts.length>12)fail('조표 변경 지원 범위를 벗어난 악보입니다.');
+  const prior=new Set();
+  for(const part of parts){
+    const measures=children(part,'measure');
+    if(!measures.length)fail('비어 있는 악보 파트를 수정하지 않습니다.');
+    if(measures.some(measure=>children(measure,'attributes').some(a=>direct(a,'transpose'))))
+      fail('이조 악기 파트가 포함된 악보의 전체 조표는 변경하지 않습니다.');
+    const measure=measures[0],existing=direct(measure,'attributes');
+    if(children(measure,'attributes').length>1)fail('첫 마디에 여러 속성 정보가 있어 변경하지 않습니다.');
+    if(existing&&children(existing,'key').length>1)fail('복합 조표가 있어 변경하지 않습니다.');
+    if(existing&&direct(existing,'key')){
+      const key=direct(existing,'key'),f=Number(text(key,'fifths'));
+      if(!integer(f,-7,7)||key.getAttribute('number'))fail('복잡한 조표 정보가 있어 변경하지 않습니다.');
+      prior.add(f);
+    }
+  }
+  if(prior.size>1)fail('파트별로 서로 다른 조표가 있어 일괄 변경하지 않습니다.');
+  for(const part of parts){
+    const measure=children(part,'measure')[0];
+    let attrs=direct(measure,'attributes');
+    if(!attrs){attrs=element(measure,'attributes');measure.insertBefore(attrs,measure.firstChild);}
+    let key=direct(attrs,'key');
+    if(!key){
+      key=element(attrs,'key');
+      const reference=direct(attrs,'time')||direct(attrs,'staves')||direct(attrs,'clef');
+      attrs.insertBefore(key,reference||null);
+    }
+    let f=direct(key,'fifths');
+    if(!f){f=element(key,'fifths');key.insertBefore(f,key.firstChild);}
+    f.textContent=String(fifths);
+    // Existing pitches are deliberately unchanged. Key signatures affect notation only.
+  }
+  return {doc,change:{action:'key-signature',fifths}};
+}
