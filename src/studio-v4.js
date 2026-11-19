@@ -5,16 +5,17 @@ import {buildPlaybackTimeline,createAuditionPlayer} from './studio-v4-playback.j
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {baseScoreName} from './part-export.js';
+import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin} from './studio-v4-professional.js';
 import './studio-v4.css';
 
 const intro=[
   '<section class="v4-create" aria-label="새 악보와 임시 저장">',
   '<div class="v4-heading"><strong>J-WOO 4.0 COMPOSE</strong><span>NEW SCORE / LOCAL DRAFTS</span></div>',
   '<label for="v4-new-title">새 악보 제목</label><input id="v4-new-title" type="text" maxlength="120" placeholder="새 악보" value="새 악보" />',
-  '<label for="v4-new-template">악보 구성</label><select id="v4-new-template"><option value="melody">멜로디 한 파트</option><option value="vocal">보컬 한 파트</option><option value="vocal-piano">보컬 + 피아노 양손(3개 단일 보표 파트)</option></select>',
+  '<label for="v4-new-template">악보 구성</label><select id="v4-new-template"><option value="melody">멜로디 한 파트</option><option value="vocal">보컬 한 파트</option><option value="vocal-piano">보컬 + 피아노 양손(그랜드 스태프)</option></select>',
   '<label for="v4-new-measures">마디 수 (4/4)</label><select id="v4-new-measures"><option>4</option><option selected>8</option><option>16</option><option>32</option></select>',
   '<button id="v4-new" type="button">+ 새 악보 작성</button>',
-  '<p class="v4-tiny">피아노 템플릿은 양손을 각각 편집 가능한 단일 보표 파트로 만듭니다. 전문 그랜드 스태프와 동일하지 않습니다.</p>',
+  '<p class="v4-tiny">피아노는 하나의 파트 안에 높은음·낮은음자리표 두 보표와 독립 성부를 사용합니다. 4.0 전문 기보 입력을 활용하세요.</p>',
   '<div class="v4-draft-area"><label for="v4-draft-select">기기에 임시 저장된 악보</label><select id="v4-draft-select"><option value="">불러오는 중…</option></select>',
   '<div class="v4-inline"><button id="v4-restore" type="button" disabled>임시 저장 복원</button><button id="v4-delete-draft" type="button" disabled>임시본 삭제</button></div>',
   '<p id="v4-draft-status" class="v4-tiny" role="status">기기 저장소를 확인합니다.</p></div>',
@@ -31,7 +32,21 @@ const panel=[
   '<div class="v4-inline"><button id="v4-add-tempo" type="button">템포 기보</button><button id="v4-add-dynamic" type="button">셈여림 기보</button></div>',
   '<label for="v4-articulation">아티큘레이션</label><select id="v4-articulation"><option value="staccato">스타카토</option><option value="tenuto">테누토</option><option value="accent">악센트</option></select>',
   '<button id="v4-apply-articulation" type="button">선택 음표에 추가 / 해제</button>',
-  '<p class="v4-subhead">02 / 악보 확장·조표·조판</p>',
+  '<p class="v4-subhead">02 / 다성부·셋잇단음·이음줄</p>',
+  '<p class="v4-tiny">3.0 편집 영역에서 음표를 선택하세요. 같은 성부의 박자 합계를 유지하고, 지원하지 않는 복합 기보는 변경하지 않습니다.</p>',
+  '<p class="v4-tiny">다성부 악보에서는 기존 3.0 입력란이 잠길 수 있으므로 아래의 독립 입력값을 사용합니다.</p>',
+  '<div class="v4-inline"><div><label for="v4-pro-step">음이름</label><select id="v4-pro-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div><div><label for="v4-pro-octave">옥타브</label><select id="v4-pro-octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div></div>',
+  '<label for="v4-pro-alter">변화표</label><select id="v4-pro-alter"><option value="-2">𝄫</option><option value="-1">♭</option><option value="0" selected>♮</option><option value="1">♯</option><option value="2">𝄪</option></select>',
+  '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select>',
+  '<button id="v4-pro-duration" type="button">선택 음표 길이 변경 (성부·박자 보존)</button>',
+  '<button id="v4-pro-triplet" type="button">8분음표 두 개를 셋잇단음 세 개로 (가운데 음정은 3.0 입력값)</button>',
+  '<p class="v4-tiny">정확히 분할 가능한 MusicXML divisions의 동일 성부·보표 8분음표 2개가 필요합니다.</p>',
+  '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
+  '<input id="v4-pro-end" type="number" min="2" max="9999" step="1" value="2" />',
+  '<button id="v4-pro-slur" type="button">선택 음표부터 끝 음표까지 이음줄 추가 / 해제</button>',
+  '<label for="v4-pro-wedge">셈여림 변화</label><select id="v4-pro-wedge"><option value="crescendo">크레셴도 &lt;</option><option value="diminuendo">디미누엔도 &gt;</option></select>',
+  '<button id="v4-pro-hairpin" type="button">선택 음표부터 끝 음표까지 셈여림 변화 추가</button>',
+  '<p class="v4-subhead">03 / 악보 확장·조표·조판</p>',
   '<label for="v4-measure-count">빈 4/4 마디 추가</label><select id="v4-measure-count"><option value="1">1마디</option><option value="4" selected>4마디</option><option value="8">8마디</option><option value="16">16마디</option></select>',
   '<button id="v4-add-measures" type="button">모든 파트에 빈 마디 추가</button>',
   '<label for="v4-key">조표 (장조 표기·음정 자체는 변경하지 않음)</label>',
@@ -42,7 +57,7 @@ const panel=[
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
   '<button id="v4-vector-zip" type="button">벡터 SVG 페이지 ZIP 저장</button>',
   '<p class="v4-tiny">벡터 PDF는 상단의 ‘PDF로 인쇄 → PDF로 저장’을 사용하세요. 기존 ‘파트 PDF ZIP’은 JPEG 기반이므로 인쇄 전 검수가 필요합니다.</p>',
-  '<p class="v4-subhead">03 / 간이 청음</p>',
+  '<p class="v4-subhead">04 / 간이 청음</p>',
   '<div class="v4-inline"><button id="v4-play" type="button">▶ 악보 재생</button><button id="v4-stop" type="button" disabled>■ 정지</button></div>',
   '<p id="v4-play-status" class="v4-tiny" role="status">Web Audio 기반 간이 신시사이저 · 음악적 표현과 실제 악기 음색을 재현하지 않습니다.</p>',
   '</section>',
@@ -157,10 +172,28 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     await v3.commitExternal(transform,label);
   }
   function selected(){return v3.getSelection();}
-  $('v4-insert-note').addEventListener('click',()=>void commit(doc=>placeNoteIntoRest(doc,{
-    ...selected(),step:$('v3-step').value,alter:Number($('v3-alter').value),
-    octave:Number($('v3-octave').value),type:$('v3-length').value,
-  }),'선택 쉼표에 음표 삽입'));
+  // Keep backward compatibility with 4.0's original simple-score controls,
+  // but never depend on fields disabled for polyphony or tuplets.
+  const proFieldIds={'v3-step':'v4-pro-step','v3-alter':'v4-pro-alter',
+    'v3-octave':'v4-pro-octave','v3-length':'v4-pro-type'};
+  const editInput=id=>$(id).disabled?$(proFieldIds[id]):$(id);
+  function pitch(){return {step:editInput('v3-step').value,
+    alter:Number(editInput('v3-alter').value),octave:Number(editInput('v3-octave').value)};}
+  $('v4-insert-note').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
+    ...selected(),mode:'insert',...pitch(),type:editInput('v3-length').value,
+  }),'성부를 보존한 음표 삽입'));
+  $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
+    ...selected(),mode:'duration',type:$('v4-pro-type').value,
+  }),'성부별 음표 길이 변경'));
+  $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
+    ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
+    octave:Number($('v4-pro-octave').value),
+  }),'8분음표 셋잇단음 변환'));
+  const span=()=>({...selected(),endEventIndex:Number($('v4-pro-end').value)-1});
+  $('v4-pro-slur').addEventListener('click',()=>void commit(doc=>toggleSlur(doc,span()),'이음줄 추가·해제'));
+  $('v4-pro-hairpin').addEventListener('click',()=>void commit(doc=>addHairpin(doc,{
+    ...span(),kind:$('v4-pro-wedge').value,
+  }),'셈여림 변화 기보'));
   $('v4-add-tempo').addEventListener('click',()=>void commit(doc=>addExpression(doc,{
     ...selected(),kind:'tempo',value:Number($('v4-tempo').value),
   }),'템포 기보'));

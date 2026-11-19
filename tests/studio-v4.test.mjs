@@ -79,8 +79,11 @@ test('new 4.0 MusicXML score escapes names and creates the requested staves',()=
   const xml=createBlankScore({title:'C & < D',composer:'A "B"',template:'vocal-piano',measures:4});
   assert.match(xml,/<movement-title>C &amp; &lt; D<\/movement-title>/);
   assert.match(xml,/<creator type="composer">A &quot;B&quot;<\/creator>/);
-  assert.equal((xml.match(/<part id="/g)||[]).length,3);
-  assert.equal((xml.match(/<measure number="/g)||[]).length,12);
+  assert.equal((xml.match(/<part id="/g)||[]).length,2);
+  assert.equal((xml.match(/<measure number="/g)||[]).length,8);
+  assert.match(xml,/<staves>2<\/staves>/);
+  assert.match(xml,/<clef number="2"><sign>F<\/sign><line>4<\/line><\/clef>/);
+  assert.equal((xml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,4);
   assert.throws(()=>createBlankScore({template:'unimplemented'}));
   assert.throws(()=>createBlankScore({measures:65}));
 });

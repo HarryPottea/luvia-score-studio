@@ -128,7 +128,7 @@ try {
   assert.match(v4Text,/<fifths>-1<\/fifths>/);
   assert.equal((v4Text.match(/<measure number="/g)||[]).length,5);
   assert.match(v4Text,/new-system="yes"/);
-  assert.match(v4Text,/<duration>16<\/duration>/);
+  assert.match(v4Text,/<duration>48<\/duration>/);
   assert.match(v4Text,/<step>C<\/step>/);
   console.log('BROWSER_STAGE=V4_AUTHORING_MUSICXML_ROUNDTRIP');
   await page.waitForFunction(()=>[...document.querySelectorAll('#v4-draft-select option')].some(x=>x.value==='통합 검증.musicxml'),null,{timeout:12000});
@@ -382,6 +382,108 @@ try {
     document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:20000});
   assert.ok((await page.locator('#score-container svg').count())>0);
   console.log('BROWSER_STAGE=V4_COMPLEX_MXL_FILE_IMPORTED');
+
+  // Professional annotations on complex multi-staff, multi-voice MusicXML.
+  await page.locator('#v3-events .v3-event').nth(5).click();
+  await page.fill('#v4-pro-end','7');
+  await page.click('#v4-pro-slur');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('이음줄 추가·해제 완료'));
+  await page.click('#v4-pro-hairpin');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('셈여림 변화 기보 완료'));
+  const annotatedDownloadPromise=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const annotatedText=await fs.readFile(await (await annotatedDownloadPromise).path(),'utf8');
+  assert.match(annotatedText,/<slur[^>]+type="start"/);
+  assert.match(annotatedText,/<slur[^>]+type="stop"/);
+  assert.match(annotatedText,/<wedge[^>]+type="crescendo"/);
+  assert.match(annotatedText,/<wedge[^>]+type="stop"/);
+  assert.match(annotatedText,/<backup><duration>48<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_COMPLEX_SLUR_HAIRPIN_MUSICXML');
+
+  const polyphonicRhythm='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef>'+
+    '<clef number="2"><sign>F</sign><line>4</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>48</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>'+
+    '<note><rest/><duration>48</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>'+
+    '<note><pitch><step>E</step><octave>4</octave></pitch><duration>96</duration><voice>1</voice><type>half</type><staff>1</staff></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><pitch><step>G</step><octave>3</octave></pitch><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '<note><rest/><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'polyphonic-rhythm.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(polyphonicRhythm)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'));
+  await page.locator('#v3-events .v3-event').first().click();
+  assert.equal(await page.locator('#v3-length').isDisabled(),true,'Legacy input is locked for polyphonic notation');
+  await page.selectOption('#v4-pro-type','half');
+  await page.click('#v4-pro-duration');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부별 음표 길이 변경 완료'));
+  const polyDownloadPromise=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const polyText=await fs.readFile(await (await polyDownloadPromise).path(),'utf8');
+  assert.match(polyText,/<step>C<\/step><octave>4<\/octave><\/pitch><duration>96<\/duration>/);
+  assert.match(polyText,/<backup><duration>192<\/duration><\/backup>/);
+  assert.match(polyText,/<step>G<\/step><octave>3<\/octave><\/pitch><duration>96<\/duration>/);
+  console.log('BROWSER_STAGE=V4_POLYPHONIC_RHYTHM_EDIT');
+
+  await page.fill('#v4-new-title','셋잇단음 편집 검증');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.locator('#v3-events .v3-event').first().waitFor();
+  await page.selectOption('#v3-length','eighth');
+  await page.click('#v4-insert-note');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부를 보존한 음표 삽입 완료'));
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v3-length','eighth');
+  await page.selectOption('#v3-step','E');
+  await page.click('#v4-insert-note');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부를 보존한 음표 삽입 완료'));
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-pro-step','D');
+  await page.click('#v4-pro-triplet');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('셋잇단음 변환 완료'));
+  const tripletDownloadPromise=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const tripletText=await fs.readFile(await (await tripletDownloadPromise).path(),'utf8');
+  assert.equal((tripletText.match(/<actual-notes>3<\/actual-notes>/g)||[]).length,3);
+  assert.match(tripletText,/<tuplet[^>]+type="start"/);
+  assert.match(tripletText,/<tuplet[^>]+type="stop"/);
+  assert.match(tripletText,/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(tripletText,/<duration>16<\/duration>/);
+  console.log('BROWSER_STAGE=V4_TRIPLET_AUTHORING_RENDERED');
+
+  // Genuine grand-staff Piano: one instrument, two clefs/voices, same timeline.
+  await page.selectOption('#v4-new-template','vocal-piano');
+  await page.fill('#v4-new-title','보컬 피아노 양손 검증');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.startsWith('2개 파트'));
+  await page.selectOption('#v3-part','P2');
+  assert.equal(await page.locator('#v3-events .v3-event').count(),2);
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  assert.equal(await page.locator('#v3-length').isDisabled(),true);
+  await page.selectOption('#v4-pro-step','A');
+  await page.selectOption('#v4-pro-octave','3');
+  await page.selectOption('#v4-pro-type','quarter');
+  await page.click('#v4-insert-note');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부를 보존한 음표 삽입 완료'));
+  await page.selectOption('#v4-measure-count','1');
+  await page.click('#v4-add-measures');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('빈 마디 추가 완료'));
+  const grandDownloadPromise=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const grandText=await fs.readFile(await (await grandDownloadPromise).path(),'utf8');
+  assert.equal((grandText.match(/<part id="/g)||[]).length,2);
+  assert.match(grandText,/<staves>2<\/staves>/);
+  assert.match(grandText,/<clef number="2"><sign>F<\/sign><line>4<\/line><\/clef>/);
+  assert.match(grandText,/<step>A<\/step><octave>3<\/octave><\/pitch><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type><staff>2<\/staff>/);
+  assert.equal((grandText.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,5);
+  console.log('BROWSER_STAGE=V4_GRAND_STAFF_PIANO_CREATED_EDITED_EXTENDED');
+
+
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
