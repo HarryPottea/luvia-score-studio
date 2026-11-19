@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,
-  appendBlankMeasures,setSimpleKeySignature,
+  appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount,
 } from '../src/studio-v4-core.js';
 import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
 
@@ -163,4 +163,51 @@ test('Web Audio timeline uses score tempo instead of fallback and preserves para
   assert.equal(timeline.events.length,2);
   assert.ok(timeline.events.every(x=>x.start===0&&Math.abs(x.duration-.5)<.0001));
   assert.throws(()=>buildPlaybackTimeline(doc,{defaultBpm:0}));
+});
+
+
+test('current-score bar total grows and shrinks without changing another instrument or original',()=>{
+  const source=fixture({parts:2});
+  const grown=setScoreMeasureCount(source,{total:21}).doc;
+  assert.equal(many(firstPart(source),'measure').length,1);
+  assert.equal(many(firstPart(grown),'measure').length,21);
+  assert.equal(many(many(grown.documentElement,'part')[1],'measure').length,21);
+  assert.deepEqual(many(firstPart(grown),'measure').map(m=>m.getAttribute('number')),
+    Array.from({length:21},(_,i)=>String(i+1)));
+  const reduced=setScoreMeasureCount(grown,{total:5}).doc;
+  assert.equal(many(firstPart(reduced),'measure').length,5);
+  assert.equal(many(many(reduced.documentElement,'part')[1],'measure').length,5);
+  assert.equal(many(firstPart(grown),'measure').length,21);
+  assert.equal(many(firstPart(source),'measure').length,1);
+});
+
+test('bar reduction cannot silently delete composed notes or other tail content',()=>{
+  const grown=setScoreMeasureCount(fixture({parts:2}),{total:3}).doc;
+  const last=many(firstPart(grown),'measure')[2];
+  const lastNote=many(last,'note')[0];
+  lastNote.replaceChild(pitch('G',4),first(lastNote,'rest'));
+  assert.throws(()=>setScoreMeasureCount(grown,{total:2}),/삭제를 차단/);
+  assert.equal(many(firstPart(grown),'measure').length,3);
+  assert.throws(()=>setScoreMeasureCount(grown,{total:0}),/1~128/);
+  assert.throws(()=>setScoreMeasureCount(grown,{total:129}),/1~128/);
+  assert.equal(setScoreMeasureCount(grown,{total:3}).change.unchanged,true);
+});
+
+test('grand-staff piano bar count edits preserve synchronized backup and both hands',()=>{
+  const attributes=attrs();
+  attributes.appendChild(num('staves',2));
+  const upper=el('note',[el('rest'),num('duration',64),num('voice',1),num('type','whole'),num('staff',1)]);
+  const lower=el('note',[el('rest'),num('duration',64),num('voice',2),num('type','whole'),num('staff',2)]);
+  const measure=el('measure',[attributes,upper,el('backup',[num('duration',64)]),lower],{number:'1'});
+  const doc=new Document(el('score-partwise',[el('part',[measure],{id:'P1'})]));
+  const added=setScoreMeasureCount(doc,{total:4}).doc;
+  assert.equal(many(firstPart(added),'measure').length,4);
+  for(const bar of many(firstPart(added),'measure').slice(1)){
+    assert.equal(many(bar,'backup').length,1);
+    assert.equal(first(many(bar,'backup')[0],'duration').textContent,'64');
+    assert.deepEqual(many(bar,'note').map(n=>first(n,'voice').textContent),['1','2']);
+  }
+  const shrunk=setScoreMeasureCount(added,{total:2}).doc;
+  assert.equal(many(firstPart(shrunk),'measure').length,2);
+  assert.equal(many(firstPart(doc),'measure').length,1);
 });
