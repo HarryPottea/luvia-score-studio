@@ -48,3 +48,24 @@
 .v4-editor #v4-lyrics-batch-apply:hover:not(:disabled){background:#f1ffbd}
 .v4-editor #v4-lyrics-batch-status{overflow-wrap:anywhere;min-height:2em}
 @media(max-width:670px){.v4-editor .v4-batch-lyrics textarea{font-size:16px}.v4-editor .v4-batch-check{font-size:12px}}
+
+
+/* Compact editable chord symbols, entered above the selected melodic note. */
+.v4-chord-editor{border-top:2px solid #c5e69e}
+.v4-chord-editor label{display:block;color:#bbd2aa;margin:14px 0 6px;font-size:11px}
+.v4-chord-editor input{display:block;box-sizing:border-box;width:100%;min-width:0;
+  color:#f6fff0;background:#30382d;border:1px solid #6f8765;border-radius:3px;
+  padding:11px 12px;font:inherit;font-size:15px}
+.v4-chord-editor input:focus-visible,.v4-chord-editor button:focus-visible{
+  outline:2px solid var(--lime);outline-offset:2px}
+.v4-chord-presets{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0 14px}
+.v4-chord-presets button{width:auto;flex:0 0 auto;min-width:42px;font-size:11px;
+  padding:7px 11px;border:1px solid #64795d;background:#2d3a2b;color:#e8f5dd;border-radius:3px}
+.v4-chord-editor>.jwoo-panel-body>.v4-inline{grid-template-columns:repeat(2,minmax(0,1fr))}
+.v4-chord-editor .v4-inline button{padding:11px 9px;border:1px solid #8fa681;background:transparent;
+  color:#f0f8e7;font-size:11px;font-weight:700;border-radius:3px}
+.v4-chord-editor .v4-inline #v4-chord-apply{background:var(--lime);color:#1b2417;border-color:var(--lime)}
+.v4-chord-editor button:disabled,.v4-chord-editor input:disabled{opacity:.42;cursor:not-allowed}
+.v4-chord-editor .v4-inline button:hover:not(:disabled),.v4-chord-presets button:hover{
+  filter:brightness(1.13)}
+@media(max-width:670px){.v4-chord-editor input{font-size:16px}}
