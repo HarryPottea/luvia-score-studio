@@ -490,6 +490,64 @@ try {
   assert.match(await page.locator('#v4-audit-details').textContent(),/Logic 왕복·시각 품질은 미검증/);
   console.log('BROWSER_STAGE=V4_SCORE_INTEGRITY_PREFLIGHT_CLEAN');
 
+  // Real browser MusicXML edit + export of multi-verse Korean lyric, melisma,
+  // and sounding + visible tie across the bar line.
+  const vocalXml='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>48</duration><type>quarter</type></note>'+
+    '</measure><measure number="2">'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>48</duration><type>quarter</type></note>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'vocal-lyric-tie.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(vocalXml)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'));
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.fill('#v4-lyric-text','바람');
+  await page.fill('#v4-lyric-verse','1');
+  await page.selectOption('#v4-lyric-extend','start');
+  await page.click('#v4-lyric-set');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('가사 입력·교체 완료'));
+  await page.fill('#v4-lyric-text','wind');
+  await page.fill('#v4-lyric-verse','2');
+  await page.selectOption('#v4-lyric-extend','none');
+  await page.click('#v4-lyric-set');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('가사 입력·교체 완료'));
+  await page.selectOption('#v4-tie-next-measure','1');
+  await page.fill('#v4-pro-end','1');
+  await page.click('#v4-tie-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('실제 붙임줄 연결·해제 완료'));
+  const composerDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const composerXml=await fs.readFile(await (await composerDownload).path(),'utf8');
+  assert.match(composerXml,/<lyric number="1"><syllabic>single<\/syllabic><text>바람<\/text><extend type="start"\/><\/lyric>/);
+  assert.match(composerXml,/<lyric number="2"><syllabic>single<\/syllabic><text>wind<\/text><\/lyric>/);
+  assert.equal((composerXml.match(/<tie type="start"\/>/g)||[]).length,1);
+  assert.equal((composerXml.match(/<tie type="stop"\/>/g)||[]).length,1);
+  assert.equal((composerXml.match(/<tied type="start"\/>/g)||[]).length,1);
+  assert.equal((composerXml.match(/<tied type="stop"\/>/g)||[]).length,1);
+  assert.match(composerXml,/<duration>144<\/duration>/);
+  console.log('BROWSER_STAGE=V4_KOREAN_LYRICS_AND_CROSS_BAR_TIE');
+
+  // The native print book keeps the score as live SVG vector graphics and
+  // produces a PDF through Chromium's own print engine (not via JPEG pages).
+  const popupPromise=page.waitForEvent('popup');
+  await page.click('#v4-print-book');
+  const printTab=await popupPromise;
+  await printTab.locator('.sheet svg').first().waitFor({timeout:45000});
+  assert.ok(await printTab.locator('.sheet svg path').count()>0);
+  assert.equal(await printTab.locator('.controls button').textContent(),'인쇄 / PDF 저장');
+  const vectorPdf=await printTab.pdf({printBackground:true,preferCSSPageSize:true});
+  assert.equal(vectorPdf.subarray(0,5).toString(),'%PDF-');
+  assert.ok(vectorPdf.length>1000);
+  await printTab.close();
+  console.log('BROWSER_STAGE=V4_NATIVE_VECTOR_PART_PDF_PRINTED');
+
+
 
 
   assert.deepEqual(errors,[]);
