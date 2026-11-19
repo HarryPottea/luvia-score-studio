@@ -179,3 +179,9 @@
 }
 @media print{.jwoo-fold-all,.jwoo-fold-toggle,.jwoo-selected-location{display:none!important}
   .jwoo-panel-body,.jwoo-v4-section-body{display:block!important}}
+
+/* Selection is an editing cue, never a printed or exported musical mark. */
+@media print{
+  #score-container .jwoo-selection-ring,#score-container .jwoo-hit-area{display:none!important}
+  #score-container .jwoo-note-selected{filter:none!important}
+}
