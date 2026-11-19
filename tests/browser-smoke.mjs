@@ -128,7 +128,7 @@ try {
   assert.match(v4Text,/<fifths>-1<\/fifths>/);
   assert.equal((v4Text.match(/<measure number="/g)||[]).length,5);
   assert.match(v4Text,/new-system="yes"/);
-  assert.match(v4Text,/<duration>16<\/duration>/);
+  assert.match(v4Text,/<duration>48<\/duration>/);
   assert.match(v4Text,/<step>C<\/step>/);
   console.log('BROWSER_STAGE=V4_AUTHORING_MUSICXML_ROUNDTRIP');
   await page.waitForFunction(()=>[...document.querySelectorAll('#v4-draft-select option')].some(x=>x.value==='통합 검증.musicxml'),null,{timeout:12000});
