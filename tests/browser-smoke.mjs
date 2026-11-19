@@ -482,6 +482,13 @@ try {
   assert.match(grandText,/<step>A<\/step><octave>3<\/octave><\/pitch><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type><staff>2<\/staff>/);
   assert.equal((grandText.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,5);
   console.log('BROWSER_STAGE=V4_GRAND_STAFF_PIANO_CREATED_EDITED_EXTENDED');
+  await page.click('#v4-audit-run');
+  await page.waitForFunction(()=>document.querySelector('#v4-audit-result')?.textContent.includes('기본 음악 구조 검사 통과'));
+  assert.match(await page.locator('#v4-audit-result').textContent(),/오류 0건/);
+  assert.match(await page.locator('#v4-audit-result').textContent(),/주의 0건/);
+  assert.match(await page.locator('#v4-audit-result').textContent(),/XSD|검사범위/);
+  assert.match(await page.locator('#v4-audit-details').textContent(),/Logic 왕복·시각 품질은 미검증/);
+  console.log('BROWSER_STAGE=V4_SCORE_INTEGRITY_PREFLIGHT_CLEAN');
 
 
 
