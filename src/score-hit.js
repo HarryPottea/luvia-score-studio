@@ -139,7 +139,28 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   const host=document.getElementById('score-container');
   let targets=[],cleanups=[],selected=null,drag=null,disposed=false;
   const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
-  function highlight(){for(const item of targets)item.element.classList.toggle('jwoo-note-selected',!!same(selected,item));}
+  function markSelected(item,on){
+    const el=item.element;
+    el.classList.toggle('jwoo-note-selected',on);
+    el.setAttribute('aria-pressed',String(on));
+    const prior=el.querySelector(':scope > .jwoo-selection-ring');
+    if(!on){prior?.remove();return;}
+    if(prior)return;
+    const area=el.querySelector(':scope > .jwoo-hit-area');
+    if(!area)return;
+    const x=Number(area.getAttribute('x')),y=Number(area.getAttribute('y'));
+    const w=Number(area.getAttribute('width')),h=Number(area.getAttribute('height'));
+    if(![x,y,w,h].every(Number.isFinite)||w<=0||h<=0)return;
+    const ring=el.ownerDocument.createElementNS('http://www.w3.org/2000/svg','rect');
+    for(const [key,val] of Object.entries({
+      x:x-2,y:y-2,width:w+4,height:h+4,rx:Math.min(8,(h+4)/2),
+      fill:'#d9ff7a','fill-opacity':'0.22',stroke:'#b9fb5d','stroke-width':'2.6',
+      'pointer-events':'none'
+    }))ring.setAttribute(key,String(val));
+    ring.classList.add('jwoo-selection-ring');
+    el.insertBefore(ring,el.firstChild);
+  }
+  function highlight(){for(const item of targets)markSelected(item,!!same(selected,item));}
   function up(event) {
     if(disposed||!drag||drag.pointerId!==event.pointerId)return;
     const {item,unit,y}=drag;
@@ -155,6 +176,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     el.setAttribute('role','button');
     el.setAttribute('aria-label',(item.measureIndex+1)+'마디 '+item.voice+'성부 '+item.staff+'보표 음표');
     addHitArea(el);
+    el.setAttribute('aria-pressed','false');
     function key(event) {
       if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
       event.preventDefault();selected=item;select(item);highlight();
@@ -215,6 +237,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     dispose(){
       if(disposed)return;disposed=true;
       observer?.disconnect();clearHandlers();
+      for(const item of targets)markSelected(item,false);
       host?.removeEventListener('pointerdown',rootDown,true);
       document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);
     }};
