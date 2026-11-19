@@ -174,7 +174,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   function selected(){return v3.getSelection();}
   // Keep backward compatibility with 4.0's original simple-score controls,
   // but never depend on fields disabled for polyphony or tuplets.
-  const editInput=id=>$(id).disabled?$('#v4-pro-'+({ 'v3-step':'step','v3-alter':'alter',
+  const editInput=id=>$(id).disabled?$('v4-pro-'+({ 'v3-step':'step','v3-alter':'alter',
     'v3-octave':'octave','v3-length':'type'}[id])}:$(id);
   function pitch(){return {step:editInput('v3-step').value,
     alter:Number(editInput('v3-alter').value),octave:Number(editInput('v3-octave').value)};}
