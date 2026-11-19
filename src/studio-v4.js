@@ -180,7 +180,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     try{
       const timeline=buildPlaybackTimeline(state.doc,{defaultBpm:Number($('v4-tempo').value)});
       await player.play(timeline);
-      $('v4-play-status').textContent='재생 중 · '+timeline.events.length+'음 · 약 '+Math.ceil(timeline.durationSeconds)+'초'
+      $('v4-play-status').textContent='재생 중 · '+timeline.events.length+'음 · 약 '+Math.ceil(timeline.durationSeconds)+'초 · '+timeline.tempoChanges.map(x=>x.bpm+' BPM').join(' → ')
         +(timeline.warnings.length?' · 주의: '+timeline.warnings.join(' / '):'');
     }catch(error){player.stop();setMessage('간이 재생 실패: '+error.message,true);}
   });
