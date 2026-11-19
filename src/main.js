@@ -9,6 +9,7 @@ import { mountAdvancedControls } from './advanced-controls.js';
 import { bindGraphicalEditor } from './score-hit.js';
 import { midiToMusicXml } from './midi-import.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
+import { editableScoreRenderOptions } from './osmd-render-policy.js';
 import { sampleScore } from './sample.js';
 import { mountStudioV4 } from './studio-v4.js';
 import './style.css';
@@ -242,7 +243,7 @@ async function renderScore() {
   container.style.width=`${a4.pageWidthPx}px`;
   $('a4-size-info').textContent=`A4 ${format==='A4_L'?'가로':'세로'} · 오선 ${a4.staffHeightMm}mm 고정 · 여백 ${a4.marginMm}mm · 화면 확대는 브라우저 확대 기능을 사용하세요.`;
   try {
-    const osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value });
+    const osmd = new OpenSheetMusicDisplay(container, editableScoreRenderOptions({ autoResize: false, backend: 'svg', drawTitle: true, drawComposer: true, drawMeasureNumbers: $('measure-numbers').checked, pageFormat: $('page-orientation').value }));
     await osmd.load(renderedDoc);
     if (token !== state.renderToken) return false;
     applyFixedA4Profile(osmd,renderedDoc,format);
