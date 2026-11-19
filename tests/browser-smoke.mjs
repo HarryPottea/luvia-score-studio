@@ -889,6 +889,68 @@ try {
   await page.screenshot({path:output+'/chords-accordions-selection.png',fullPage:true});
   console.log('BROWSER_STAGE=ALL_FOLD_UNFOLD_PRESERVES_SCORE');
 
+
+  // Responsiveness regression: consecutive changes to part visibility must be
+  // acknowledged immediately, show the existing score while pending, and
+  // engrave only the final state instead of 3 full SVG render passes.
+  await page.selectOption('#v4-new-template','vocal-piano');
+  await page.selectOption('#v4-new-measures','8');
+  await page.click('#v4-new');
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('2개 파트 · 8개 마디')&&
+    document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false',null,{timeout:30000});
+  const rapid=await page.evaluate(()=>{
+    const inputs=[...document.querySelectorAll('#parts-list input[type="checkbox"]')];
+    if(inputs.length!==2||inputs.some(x=>!x.checked))return {failure:'expected two checked parts',count:inputs.length};
+    const checkbox=inputs[1],container=document.querySelector('#score-container');
+    const oldSvg=container.querySelector('svg'),initialRevision=Number(container.dataset.renderRevision);
+    checkbox.click();
+    const immediate={checked:checkbox.checked,svgUnchanged:container.querySelector('svg')===oldSvg,
+      pending:document.querySelector('#preview-shell').getAttribute('aria-busy')};
+    checkbox.click();checkbox.click();
+    return {immediate,finalChecked:checkbox.checked,initialRevision};
+  });
+  assert.equal(rapid.immediate.checked,false);
+  assert.equal(rapid.immediate.svgUnchanged,true,'Score stays visible while rendering is scheduled');
+  assert.equal(rapid.immediate.pending,'true','The UI acknowledges change immediately');
+  assert.equal(rapid.finalChecked,false);
+  await page.waitForFunction(()=>document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false'&&
+    Number(document.querySelector('#score-container')?.dataset.renderRevision)>0,null,{timeout:30000});
+  const finalRevision=await page.locator('#score-container').getAttribute('data-render-revision');
+  assert.equal(Number(finalRevision)-rapid.initialRevision,1,'Three rapid toggles produce one render');
+  assert.equal(await page.locator('#parts-list input[type="checkbox"]').nth(1).isChecked(),false);
+  assert.ok(await page.locator('#score-container .staffline .vf-measure').count()>=8);
+  const didUndo=await page.evaluate(()=>{
+    const box=document.querySelectorAll('#parts-list input[type="checkbox"]')[1];
+    const container=document.querySelector('#score-container'),revision=Number(container.dataset.renderRevision);
+    box.click();box.click();
+    return {revision,checked:box.checked};
+  });
+  assert.equal(didUndo.checked,false);
+  await page.waitForTimeout(250);
+  assert.equal(Number(await page.locator('#score-container').getAttribute('data-render-revision')),
+    didUndo.revision,'A cancelled visibility change should avoid any score rendering');
+  await page.locator('#view-all-parts').click();
+  await page.waitForFunction(()=>[...document.querySelectorAll('#parts-list input[type="checkbox"]')].every(x=>x.checked)&&
+    document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false',null,{timeout:30000});
+  assert.ok(await page.locator('#score-container .staffline .vf-measure').count()>=16);
+  console.log('BROWSER_STAGE=PART_VISIBILITY_IMMEDIATE_AND_COALESCED');
+
+  // The measure-number checkbox uses the same coalesced view renderer.
+  const measureRefresh=await page.evaluate(()=>{
+    const input=document.querySelector('#measure-numbers');
+    const before=Number(document.querySelector('#score-container').dataset.renderRevision);
+    input.click();
+    return {checked:input.checked,revision:before,busy:document.querySelector('#preview-shell').getAttribute('aria-busy')};
+  });
+  assert.equal(measureRefresh.checked,false);
+  assert.equal(measureRefresh.busy,'true');
+  await page.waitForFunction(()=>document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false',null,{timeout:30000});
+  assert.equal(Number(await page.locator('#score-container').getAttribute('data-render-revision')),
+    measureRefresh.revision+1);
+  assert.equal(await page.locator('#measure-numbers').isChecked(),false);
+  await page.screenshot({path:output+'/fast-part-visibility.png'});
+  console.log('BROWSER_STAGE=MEASURE_VISIBILITY_COALESCED');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
