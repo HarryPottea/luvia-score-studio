@@ -114,3 +114,15 @@ test('invalid score root and bad guard configuration do not claim a clean pass',
   assert.throws(()=>auditMusicXml(source,{maxIssues:900}));
   assert.equal(auditMusicXml(source).status,'CLEAN');
 });
+
+test('preflight never hides blocking issues when its displayed issue list is capped',()=>{
+  const source=doc([part('P1',[measure(1,[
+    attrs(),note(192),note(48,{chord:true}),note(48),backup(400),
+  ])])]);
+  const report=auditMusicXml(source,{maxIssues:1});
+  assert.equal(report.status,'BLOCKED');
+  assert.ok(report.errors>=3);
+  assert.equal(report.issues.length,1);
+  assert.ok(report.truncated);
+  assert.ok(report.omittedIssues>=2);
+});
