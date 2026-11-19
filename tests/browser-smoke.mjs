@@ -455,6 +455,35 @@ try {
   assert.match(tripletText,/<duration>16<\/duration>/);
   console.log('BROWSER_STAGE=V4_TRIPLET_AUTHORING_RENDERED');
 
+  // Genuine grand-staff Piano: one instrument, two clefs/voices, same timeline.
+  await page.selectOption('#v4-new-template','vocal-piano');
+  await page.fill('#v4-new-title','보컬 피아노 양손 검증');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.startsWith('2개 파트'));
+  await page.selectOption('#v3-part','P2');
+  assert.equal(await page.locator('#v3-events .v3-event').count(),2);
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  assert.equal(await page.locator('#v3-length').isDisabled(),true);
+  await page.selectOption('#v4-pro-step','A');
+  await page.selectOption('#v4-pro-octave','3');
+  await page.selectOption('#v4-pro-type','quarter');
+  await page.click('#v4-insert-note');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부를 보존한 음표 삽입 완료'));
+  await page.selectOption('#v4-measure-count','1');
+  await page.click('#v4-add-measures');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('빈 마디 추가 완료'));
+  const grandDownloadPromise=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const grandText=await fs.readFile(await (await grandDownloadPromise).path(),'utf8');
+  assert.equal((grandText.match(/<part id="/g)||[]).length,2);
+  assert.match(grandText,/<staves>2<\/staves>/);
+  assert.match(grandText,/<clef number="2"><sign>F<\/sign><line>4<\/line><\/clef>/);
+  assert.match(grandText,/<step>A<\/step><octave>3<\/octave><\/pitch><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type><staff>2<\/staff>/);
+  assert.equal((grandText.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,5);
+  console.log('BROWSER_STAGE=V4_GRAND_STAFF_PIANO_CREATED_EDITED_EXTENDED');
+
+
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
