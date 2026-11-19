@@ -65,7 +65,7 @@ test('pull is inverse of push and preserves MusicXML melodic durations',()=>{
   const restored=shiftPlacedLyrics(out,pick(2,{direction:'left'})).doc;
   assert.deepEqual(view(restored),['오','늘','도','우']);
   assert.deepEqual(view(restored,1),['리','·','·','·']);
-  assert.equal(first(notes(restored)[2],'duration').textContent,4);
+  assert.equal(first(notes(restored)[2],'duration').textContent,'4');
 });
 test('full score has no room: reject and leave original untouched',()=>{
   const d=fixture();for(let i=0;i<8;i++)addLyric(notes(d,i<4?0:1)[i%4],String(i));
