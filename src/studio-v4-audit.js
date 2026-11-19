@@ -7,11 +7,6 @@ const text=(node,tag)=>direct(node,tag)?.textContent?.trim()||'';
 const natural=x=>/^(0|[1-9]\d*)$/.test(String(x))&&Number.isSafeInteger(Number(x))?Number(x):null;
 const positive=x=>{const n=natural(x);return n>0?n:null;};
 const quarterFactors={maxima:32,long:16,breve:8,whole:4,half:2,quarter:1,eighth:.5,'16th':.25,'32nd':.125,'64th':.0625,'128th':.03125};
-const statusCounts=(issues)=>{
-  const errors=issues.filter(i=>i.severity==='ERROR').length;
-  const warnings=issues.filter(i=>i.severity==='WARNING').length;
-  return {errors,warnings,status:errors?'BLOCKED':warnings?'REVIEW':'CLEAN'};
-};
 const pitchOf=n=>{
   const pitch=direct(n,'pitch');
   return pitch?[text(pitch,'step'),text(pitch,'alter')||'0',text(pitch,'octave')].join(':'):'';
@@ -37,17 +32,22 @@ function tupletLength(note,divisions){
   return {valid:Number.isFinite(expected)&&expected>0,expected};
 }
 export function auditMusicXml(doc,{maxIssues=150}={}){
+  if(!Number.isInteger(maxIssues)||maxIssues<1||maxIssues>500)throw new Error('검사 보고서 크기 제한이 잘못되었습니다.');
   const issues=[];
+  let errorCount=0,warningCount=0,omittedIssues=0;
   let notes=0,measures=0,chords=0,tuplets=0,partsAnalyzed=0,unverified=0;
   const add=(severity,code,message,part='',measure='')=>{
+    if(severity==='ERROR')errorCount++;
+    else warningCount++;
     if(issues.length<maxIssues)issues.push({severity,code,message,part,measure});
+    else omittedIssues++;
   };
   const partNodes=many(doc?.documentElement,'part');
   if(doc?.documentElement?.localName!=='score-partwise'||!partNodes.length){
     add('ERROR','ROOT','파트가 있는 score-partwise MusicXML 문서가 아닙니다.');
-    return {status:'BLOCKED',errors:1,warnings:0,issues,stats:{parts:0,measures:0,notes:0,chords:0,tuplets:0,unverified:0},coverage:'BASIC_MUSICAL_TIMING_ONLY'};
+    return {status:'BLOCKED',errors:errorCount,warnings:warningCount,issues,stats:{parts:0,measures:0,notes:0,chords:0,tuplets:0,unverified:0},
+      truncated:false,omittedIssues:0,coverage:'BASIC_MUSICAL_TIMING_ONLY',schemaValidated:false,visualLayoutVerified:false,externalMusicXmlRoundtripVerified:false};
   }
-  if(!Number.isInteger(maxIssues)||maxIssues<1||maxIssues>500)throw new Error('검사 보고서 크기 제한이 잘못되었습니다.');
   if(partNodes.length>64)add('ERROR','PART_LIMIT','악기 파트가 64개를 초과합니다.');
   const ids=new Set();
   const list=direct(doc.documentElement,'part-list');
@@ -189,9 +189,9 @@ export function auditMusicXml(doc,{maxIssues=150}={}){
     for(const key of openWedges)add('WARNING','WEDGE_OPEN','닫히지 않은 셈여림 기호 번호가 있습니다: '+key,label);
     if(notes>150000)break;
   }
-  const result=statusCounts(issues);
-  return {...result,issues,stats:{parts:partsAnalyzed,measures,notes,chords,tuplets,unverified},
-    truncated:issues.length>=maxIssues,
+  const status=errorCount?'BLOCKED':warningCount?'REVIEW':'CLEAN';
+  return {status,errors:errorCount,warnings:warningCount,issues,stats:{parts:partsAnalyzed,measures,notes,chords,tuplets,unverified},
+    truncated:omittedIssues>0,omittedIssues,
     coverage:'BASIC_MUSICAL_TIMING_ONLY',schemaValidated:false,visualLayoutVerified:false,
     externalMusicXmlRoundtripVerified:false};
 }
