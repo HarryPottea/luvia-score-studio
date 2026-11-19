@@ -10,8 +10,10 @@ import { bindGraphicalEditor } from './score-hit.js';
 import { midiToMusicXml } from './midi-import.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { sampleScore } from './sample.js';
+import { mountStudioV4 } from './studio-v4.js';
 import './style.css';
 
+let v4 = null;
 const MAX_FILE = 15 * 1024 * 1024;
 const MAX_XML = 35 * 1024 * 1024;
 const app = document.querySelector('#app');
@@ -239,6 +241,7 @@ async function renderScore() {
     osmd.render(); state.osmd = osmd;
     try {attachScoreInteractions(osmd);} catch (error) {console.warn('Note selection unavailable',error);}
     setMessage('악보가 준비되었습니다. 변경 사항은 MusicXML 저장에 반영됩니다.');
+    v4?.onRendered?.();
     return true;
   } catch (error) {
     if (token !== state.renderToken) return false;
@@ -248,12 +251,14 @@ async function renderScore() {
 }
 
 async function openScore(raw, filename) {
+  v4?.beforeOpen?.();
   try {
     state.doc = parseXml(raw); state.originalDoc = state.doc.cloneNode(true); state.filename = filename; state.undoRhythmDoc = null; state.showBaseline = false; v2.invalidateUndo();
     showLoaded();
     const rendered = await renderScore();
     if (!rendered) return false;
     $('workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    v4?.onLoaded?.();
     return true;
   } catch (error) { setMessage(error.message || '파일을 열지 못했습니다.', true); return false; }
 }
@@ -411,3 +416,4 @@ const v2 = mountV2Controls({ state, $, scoreParts, renderScore, refreshRhythmRep
 const v3 = mountV3Controls({ state, renderScore, refreshRhythmReport, refreshV2: () => {v2.invalidateUndo();v2.refresh();}, invalidateRhythmUndo, setMessage });
 const advanced = mountAdvancedControls({state,v3,setMessage});
 v3.onSelectionChange(() => advanced.refresh());
+v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore });
