@@ -40,7 +40,7 @@ function checkBeforeAfter(original,candidate){
       .filter(x=>['note','backup','forward'].includes(x.localName))
       .map(x=>x.localName==='note'
         ?[x.localName,identity(x),txt(x,'duration'),txt(x,'voice'),txt(x,'staff'),!!child(x,'chord'),!!child(x,'rest')]
-        :[x.localName,txt(x,'duration')])));
+        :[x.localName,txt(x,'duration')]))));
   };
   if(signature(original)!==signature(candidate))fail('기보만 변경해야 하는 작업에서 음정·박자·성부가 달라졌습니다.');
 }
