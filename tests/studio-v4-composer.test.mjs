@@ -103,7 +103,7 @@ test('composer: singing-tie refuses skips, mismatched pitches and different voic
   assert.throws(()=>toggleSoundingTie(original,{partId:'P1',measureIndex:0,eventIndex:3,endMeasureIndex:5,endEventIndex:0}),/연속된 마디/);
   const mutated=score();
   get(note(mutated,0,1),'voice').textContent='2';
-  assert.throws(()=>toggleSoundingTie(mutated,{partId:'P1',measureIndex:0,eventIndex:3,endMeasureIndex:1,endEventIndex:0}),/같은 성부/);
+  assert.throws(()=>toggleSoundingTie(mutated,{partId:'P1',measureIndex:0,eventIndex:3,endMeasureIndex:1,endEventIndex:0}),/같은 음정.*같은 성부/);
 });
 test('composer: malformed partial existing sounding tie cannot be silently normalized',()=>{
   const original=score();
