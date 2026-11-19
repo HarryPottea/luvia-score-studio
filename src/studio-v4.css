@@ -19,3 +19,8 @@
 .v4-editor{border-bottom:1px solid #555f52;padding-bottom:15px}
 @media(max-width:670px){.v4-create{padding:14px 12px}.v4-heading{flex-wrap:wrap}.v4-create button,.v4-editor button{font-size:12px;min-height:43px}.v4-create label,.v4-editor label{font-size:12px}}
 @media print{.v4-create,.v4-editor{display:none!important}}
+
+.v4-audit-details{max-height:300px;overflow:auto;overflow-wrap:anywhere}
+.v4-audit-list{margin:10px 0 0;padding:0 0 0 18px;font-size:10px;line-height:1.65;color:#e4e8db}
+.v4-audit-list li{margin-bottom:7px;border-bottom:1px solid #3b4639;padding-bottom:6px}
+.v4-editor #v4-audit-run{border-color:#c5dab4;background:#2a3728}
