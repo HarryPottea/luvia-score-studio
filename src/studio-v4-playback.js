@@ -24,7 +24,7 @@ export function buildPlaybackTimeline(doc,{defaultBpm=100,maxNotes=3000}={}){
   const measures=parts.map(part=>children(part,'measure'));
   const maxMeasures=Math.max(...measures.map(list=>list.length));
   if(maxMeasures>400)fail('400마디를 넘는 악보는 간이 재생에서 지원하지 않습니다.');
-  const durations=[],starts=[],tempoMarks=[{quarter:0,bpm:defaultBpm,part:-1}];
+  const durations=[],starts=[],tempoMarks=[];
   let beats=4,beatType=4,absolute=0;
   const warnings=new Set();
   for(let m=0;m<maxMeasures;m++){
@@ -91,8 +91,8 @@ export function buildPlaybackTimeline(doc,{defaultBpm=100,maxNotes=3000}={}){
       }
       if(cursor>durations[m]+.01)warnings.add('일부 성부의 박자 길이가 마디 길이와 달라 청음 위치가 부정확할 수 있습니다.');
     }
-    if(children(parts[p],'attributes').some(a=>direct(a,'transpose')))
-      warnings.add('악기 이조 표기는 간이 재생에서 완전히 반영하지 못할 수 있습니다.');
+    if(measures[p].some(measure=>children(measure,'attributes').some(a=>direct(a,'transpose'))))
+      warnings.add('이조 악기 표기는 간이 재생에서 정확하게 반영되지 않을 수 있습니다.');
   }
   const tempoByQuarter=new Map();
   for(const mark of tempoMarks.sort((a,b)=>a.quarter-b.quarter||a.part-b.part)){
