@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f6f6eb" />
+  <title>J-WOO — iPhone 원형 설치 테스트</title>
+  <!-- Deliberately identical to the pre-icon Home Screen metadata set:
+       NO manifest, NO apple-touch-icon, NO apple-mobile-web-app-capable tag.
+       This page is a diagnostic, not the production music editor. -->
+  <style>
+    :root {font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Arial,sans-serif;color:#171815;background:#f6f6eb}
+    * {box-sizing:border-box} body {margin:0;padding:28px 20px} main {max-width:620px;margin:auto}
+    .brand {font-size:13px;font-weight:800;letter-spacing:.06em}
+    h1 {font-size:clamp(30px,8vw,54px);line-height:1.1;letter-spacing:-.07em;margin:38px 0 18px}
+    p {font-size:15px;line-height:1.65}
+    .state {padding:26px 22px;background:#171815;color:#f6f6eb;border-radius:4px;margin:24px 0}
+    .state strong {font-size:24px;letter-spacing:-.04em}
+    .state small {display:block;margin-top:10px;color:#c1cbb9;line-height:1.5}
+    dl {border-top:1px solid #c9cbc1;margin:20px 0}
+    dl div {border-bottom:1px solid #c9cbc1;padding:12px 0}
+    dt {font-size:12px;color:#70776c;font-weight:700}
+    dd {margin:6px 0 0;font-size:14px;overflow-wrap:anywhere}
+    .steps {font-size:13px;background:#e9eddd;padding:16px 18px;line-height:1.7;border-radius:3px}
+    .version {color:#697066;font-size:12px;margin-top:30px}
+  </style>
+</head>
+<body>
+ <main>
+   <div class="brand">JAEWOO SCORE / INSTALL DIAGNOSTIC 001</div>
+   <h1>아이콘 변경 전<br>설치 방식 테스트</h1>
+   <p>이 화면은 악보 편집기가 아닙니다. <strong>최초 아이콘 변경 전의 웹앱 메타데이터를 재현한</strong> 일회성 진단 페이지입니다. 사용 데이터나 로그인 정보는 읽거나 전송하지 않습니다.</p>
+   <div class="state" role="status" aria-live="polite">
+     <strong id="result">확인 중…</strong>
+     <small id="detail">이 페이지를 홈 화면에 추가한 다음, 새 아이콘으로 실행한 결과를 확인해 주세요.</small>
+   </div>
+   <dl>
+     <div><dt>navigator.standalone</dt><dd id="standalone">확인 중</dd></div>
+     <div><dt>display-mode</dt><dd id="mode">확인 중</dd></div>
+     <div><dt>접속 도메인</dt><dd id="origin">확인 중</dd></div>
+     <div><dt>현재 경로</dt><dd id="path">확인 중</dd></div>
+     <div><dt>실행 시 브라우저 주소창</dt><dd>주소창이 보이는지는 화면에서 직접 확인</dd></div>
+   </dl>
+   <div class="steps">Safari에서 이 페이지를 연 뒤 공유 → 홈 화면에 추가 → <strong>웹 앱으로 열기 켬</strong> → 추가를 선택하세요. 새로 생성된 ‘원형 설치 테스트’ 아이콘으로 실행해, 위 결과와 주소창 표시 여부만 확인하면 됩니다. <strong>기존 J-WOO 아이콘은 지우지 마세요.</strong></div>
+   <p class="version">J-WOO iOS standalone baseline • 2026-11-19 • local-only diagnostic</p>
+ </main>
+ <script>
+ (function(){
+   const text=(id,value)=>{document.getElementById(id).textContent=value};
+   const standalone=navigator.standalone===true;
+   const modes=['fullscreen','standalone','minimal-ui','browser'];
+   const mode=modes.find(value=>window.matchMedia('(display-mode: '+value+')').matches)||'unknown';
+   text('standalone',String(navigator.standalone));
+   text('mode',mode);
+   text('origin',location.origin);
+   text('path',location.pathname);
+   text('result',standalone||mode==='standalone'||mode==='fullscreen'?'독립 웹앱 모드 감지':'브라우저 모드로 감지');
+   text('detail',standalone||mode==='standalone'||mode==='fullscreen'
+     ?'주소창이 실제로 사라졌는지 함께 확인해 주세요.'
+     :'홈 화면 아이콘에서 실행한 결과라면 설치·도메인 실행 경로를 추가로 점검해야 합니다.');
+ })();
+ </script>
+</body>
+</html>
