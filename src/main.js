@@ -310,6 +310,7 @@ async function renderScore() {
     // Move rendered A4 pages only, preserving the original print layout.
     // Old SVG pages remain in place until this atomic swap.
     container.replaceChildren(...stage.childNodes);
+    container.dataset.renderRevision=String(Number(container.dataset.renderRevision||0)+1);
     container.style.width=a4.pageWidthPx+'px';
     $('a4-size-info').textContent=`A4 ${format==='A4_L'?'가로':'세로'} · 오선 ${a4.staffHeightMm}mm 고정 · 여백 ${a4.marginMm}mm · 화면 확대는 브라우저 확대 기능을 사용하세요.`;
     stage.remove();stage=null;
