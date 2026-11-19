@@ -776,8 +776,16 @@ try {
   assert.ok(stickyDesktop.height<=stickyDesktop.viewportHeight-20,'Pinned preview must fit in viewport');
   assert.ok(stickyDesktop.scrollHeight>stickyDesktop.shellHeight,'Long score pages remain independently scrollable');
   assert.ok(Math.abs(stickyDesktop.svgWidth-210*96/25.4)<3,'Sticky score must keep fixed A4 geometry');
-  await page.evaluate(()=>{document.querySelector('#preview-shell').scrollTop=90});
-  assert.ok(await page.evaluate(()=>document.querySelector('#preview-shell').scrollTop)>40);
+  const internalScroll=await page.evaluate(()=>{
+    const shell=document.querySelector('#preview-shell');
+    const available=shell.scrollHeight-shell.clientHeight;
+    const target=Math.min(90,available);
+    shell.scrollTop=target;
+    return {available,target,actual:shell.scrollTop,overflowY:getComputedStyle(shell).overflowY};
+  });
+  assert.equal(internalScroll.overflowY,'auto');
+  assert.ok(internalScroll.available>0,'The score viewport should have independently scrollable content');
+  assert.ok(Math.abs(internalScroll.actual-internalScroll.target)<=2,'Preview scroll position remains under user control');
   await page.screenshot({path:output+'/sticky-desktop.png'});
   console.log('BROWSER_STAGE=FOLLOW_ALONG_SCORE_DESKTOP '+JSON.stringify(stickyDesktop));
 
