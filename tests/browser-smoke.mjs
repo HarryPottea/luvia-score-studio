@@ -429,6 +429,40 @@ try {
   assert.match(polyText,/<step>G<\/step><octave>3<\/octave><\/pitch><duration>96<\/duration>/);
   console.log('BROWSER_STAGE=V4_POLYPHONIC_RHYTHM_EDIT');
 
+  // Multi-staff direct beat-grid onset editing, while preserving an independent voice.
+  const nudgeXml='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef>'+
+    '<clef number="2"><sign>F</sign><line>4</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>24</duration><voice>1</voice><type>eighth</type><staff>1</staff></note>'+
+    '<note><pitch><step>E</step><octave>4</octave></pitch><duration>24</duration><voice>1</voice><type>eighth</type><staff>1</staff></note>'+
+    '<note><rest/><duration>48</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>'+
+    '<note><rest/><duration>96</duration><voice>1</voice><type>half</type><staff>1</staff></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><pitch><step>G</step><octave>3</octave></pitch><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '<note><rest/><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'piano-grid-shift.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(nudgeXml)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'));
+  assert.equal(await page.locator('.v4-beat-lane').count(),2);
+  await page.locator('.v4-beat-event').filter({hasText:'E4'}).click();
+  assert.equal(await page.locator('#v3-events .v3-event.selected').count(),1);
+  await page.selectOption('#v4-grid-step','16th');
+  await page.click('#v4-nudge-later');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('성부 음표 시작 위치 이동 완료'));
+  const nudgedXmlDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const nudgedXml=await fs.readFile(await (await nudgedXmlDownload).path(),'utf8');
+  assert.match(nudgedXml,/<rest\/><duration>12<\/duration><voice>1<\/voice><type>16th<\/type><staff>1<\/staff>/);
+  assert.match(nudgedXml,/<step>E<\/step><octave>4<\/octave><\/pitch><duration>24<\/duration>/);
+  assert.match(nudgedXml,/<backup><duration>192<\/duration><\/backup>/);
+  assert.match(nudgedXml,/<step>G<\/step><octave>3<\/octave><\/pitch><duration>96<\/duration>/);
+  console.log('BROWSER_STAGE=V4_POLYPHONIC_BEAT_GRID_ONSET_EDIT');
+
+
   await page.fill('#v4-new-title','셋잇단음 편집 검증');
   page.once('dialog',dialog=>dialog.accept());
   await page.click('#v4-new');
