@@ -77,6 +77,14 @@ try {
   }
   assert.equal(manifest.icons[0].src,'./jwoo-app-v3-192.png');
   console.log('BROWSER_STAGE=IOS_TOUCH_AND_PWA_ICONS_PIXELS_MATCH',JSON.stringify(painted));
+  const baselineResponse=await page.request.get(new URL('ios-preicon-baseline.html',url).href);
+  assert.equal(baselineResponse.status(),200,'Pre-icon iOS install diagnostic must be served');
+  const baselineHtml=await baselineResponse.text();
+  assert.match(baselineHtml,/J-WOO — iPhone 원형 설치 테스트/);
+  assert.doesNotMatch(baselineHtml,/<link\\s+rel=["']manifest["']/i,'Baseline must not attach a manifest');
+  assert.doesNotMatch(baselineHtml,/<link\\s+rel=["']apple-touch-icon["']/i,'Baseline must not attach apple icon metadata');
+  assert.doesNotMatch(baselineHtml,/<meta\\s+name=["']apple-mobile-web-app-capable["']/i,'Baseline must preserve pre-icon setup');
+  console.log('BROWSER_STAGE=IOS_PREICON_BASELINE_READY');
   console.log('BROWSER_STAGE=J_WOO_ICONS_LOADED');
 
   await page.click('#try-sample');
