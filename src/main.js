@@ -240,6 +240,7 @@ async function renderScore() {
     applyLayoutPreset(osmd, $('v2-layout')?.value || 'standard', renderedDoc);
     osmd.render(); state.osmd = osmd;
     try {attachScoreInteractions(osmd);} catch (error) {console.warn('Note selection unavailable',error);}
+    $('score-info').textContent = scoreParts().length+'개 파트 · '+state.doc.querySelectorAll('part > measure').length+'개 마디';
     setMessage('악보가 준비되었습니다. 변경 사항은 MusicXML 저장에 반영됩니다.');
     v4?.onRendered?.();
     return true;
