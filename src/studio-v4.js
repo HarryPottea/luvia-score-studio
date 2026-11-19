@@ -5,6 +5,7 @@ import {buildPlaybackTimeline,createAuditionPlayer} from './studio-v4-playback.j
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {baseScoreName} from './part-export.js';
+import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin} from './studio-v4-professional.js';
 import './studio-v4.css';
 
@@ -60,6 +61,11 @@ const panel=[
   '<p class="v4-subhead">04 / 간이 청음</p>',
   '<div class="v4-inline"><button id="v4-play" type="button">▶ 악보 재생</button><button id="v4-stop" type="button" disabled>■ 정지</button></div>',
   '<p id="v4-play-status" class="v4-tiny" role="status">Web Audio 기반 간이 신시사이저 · 음악적 표현과 실제 악기 음색을 재현하지 않습니다.</p>',
+  '<p class="v4-subhead">05 / 음악 구조 무결성 검사</p>',
+  '<button id="v4-audit-run" type="button">현재 악보의 박자·성부·연결 기호 검사</button>',
+  '<p id="v4-audit-result" class="v4-tiny" role="status">검사 전입니다. 저장 전 최신 악보를 검사해 주세요.</p>',
+  '<div id="v4-audit-details" class="v4-audit-details" aria-live="polite"></div>',
+  '<p class="v4-tiny">기본 음악 구조 검사입니다. XSD 인증, Logic 호환성 검증, 인쇄물의 시각적 정확성을 대체하지 않습니다. 오류가 있어도 원본 백업을 위한 MusicXML 저장은 차단하지 않습니다.</p>',
   '</section>',
 ].join('');
 
@@ -125,6 +131,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     currentRenderedDoc=null;
   }
   function onRendered(){
+    $('v4-audit-result').textContent='악보 변경 또는 재렌더링됨 · 저장 전 다시 검사해 주세요.';
+    $('v4-audit-details').replaceChildren();
     if(state.doc!==currentRenderedDoc){
       player.stop();
       currentRenderedDoc=state.doc;
@@ -230,6 +238,47 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       setMessage('벡터 SVG '+svgs.length+'페이지 저장 완료 · 서체와 실제 인쇄 품질을 확인해 주세요.');
     }catch(error){setMessage('벡터 SVG 출력 실패: '+error.message,true);}
     finally{button.disabled=false;}
+  });
+  $('v4-audit-run').addEventListener('click',()=>{
+    if(!state.doc){setMessage('먼저 악보를 열어 주세요.',true);return;}
+    const target=$('v4-audit-details');
+    target.replaceChildren();
+    try{
+      const report=auditMusicXml(state.doc);
+      $('v4-audit-result').textContent=summarizeMusicXmlAudit(report)+
+        ' · 검사범위: 기본 음악 구조만';
+      const summary=document.createElement('p');
+      summary.className='v4-tiny';
+      summary.textContent='XSD·Logic 왕복·시각 품질은 미검증';
+      target.append(summary);
+      if(report.issues.length){
+        const list=document.createElement('ol');
+        list.className='v4-audit-list';
+        for(const item of report.issues.slice(0,25)){
+          const entry=document.createElement('li');
+          entry.textContent=(item.severity==='ERROR'?'오류':'주의')+
+            ' ['+item.code+'] '+(item.part?item.part+' / ':'')+
+            (item.measure?'마디 '+item.measure+' · ':'')+item.message;
+          list.append(entry);
+        }
+        target.append(list);
+        if(report.issues.length>25){
+          const more=document.createElement('p');
+          more.className='v4-tiny';
+          more.textContent='나머지 '+(report.issues.length-25)+
+            '건은 화면에서 생략했습니다.';
+          target.append(more);
+        }
+      }
+      setMessage(report.errors?
+        '음악 구조 오류가 '+report.errors+
+          '건 발견됐습니다. 검수하지 않은 악보를 연주자에게 출고하지 마세요.':
+        '기본 음악 구조 검사 완료. 조판·인쇄·Logic 왕복 검증은 별도로 필요합니다.',
+        report.errors>0);
+    }catch(error){
+      $('v4-audit-result').textContent='검사 실패: '+error.message;
+      setMessage('음악 구조 검사를 완료하지 못했습니다.',true);
+    }
   });
   void refreshDrafts();
   return {beforeOpen,onRendered,onLoaded,stop:()=>player.stop()};
