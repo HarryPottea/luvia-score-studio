@@ -368,6 +368,21 @@ try {
   assert.equal(audit.comparison.pitchChanges,0);
   console.log('BROWSER_STAGE=COMPLEX_MUSICXML_ROUNDTRIP_VERIFIED');
   await page.screenshot({path:output+'/complex-score.png',fullPage:true});
+  // Import the same complex-polyphonic fixture through an actual compressed MXL
+  // container, without embedding a real composer's private project in the repo.
+  const mxlFixture=new JSZip();
+  mxlFixture.file('META-INF/container.xml',
+    '<?xml version="1.0" encoding="utf-8"?>'+
+    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'+
+    '<rootfiles><rootfile full-path="music/complex.musicxml" media-type="application/vnd.recordare.musicxml+xml"/></rootfiles></container>');
+  mxlFixture.file('music/complex.musicxml',await fs.readFile('tests/fixtures/complex-voices-original.musicxml','utf8'));
+  const mxlBuffer=await mxlFixture.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
+  await page.locator('#file-input').setInputFiles({name:'complex-polyphony.mxl',mimeType:'application/vnd.recordare.musicxml',buffer:mxlBuffer});
+  await page.waitForFunction(()=>document.querySelector('#drop-zone strong')?.textContent==='complex-polyphony.mxl' &&
+    document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:20000});
+  assert.ok((await page.locator('#score-container svg').count())>0);
+  console.log('BROWSER_STAGE=V4_COMPLEX_MXL_FILE_IMPORTED');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
