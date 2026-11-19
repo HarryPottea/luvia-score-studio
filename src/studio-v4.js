@@ -251,6 +251,13 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       summary.className='v4-tiny';
       summary.textContent='XSD·Logic 왕복·시각 품질은 미검증';
       target.append(summary);
+      if(report.truncated){
+        const omitted=document.createElement('p');
+        omitted.className='v4-tiny';
+        omitted.textContent='화면 표시 상한을 초과한 검사 항목 '+report.omittedIssues+
+          '건이 추가로 있습니다. 전체 오류·주의 건수에는 포함됩니다.';
+        target.append(omitted);
+      }
       if(report.issues.length){
         const list=document.createElement('ol');
         list.className='v4-audit-list';
