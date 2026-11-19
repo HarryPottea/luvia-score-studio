@@ -5,6 +5,7 @@ import {buildPlaybackTimeline,createAuditionPlayer} from './studio-v4-playback.j
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {baseScoreName} from './part-export.js';
+import './studio-v4.css';
 
 const intro=[
   '<section class="v4-create" aria-label="새 악보와 임시 저장">',
