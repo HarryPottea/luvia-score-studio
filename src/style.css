@@ -185,3 +185,26 @@
   #score-container .jwoo-selection-ring,#score-container .jwoo-hit-area{display:none!important}
   #score-container .jwoo-note-selected{filter:none!important}
 }
+
+
+/* Fast optimistic toggles: keep the prior A4 engraving visible until the next
+   render has completed. A gentle status pulse indicates asynchronous layout. */
+.preview-column.is-refreshing .preview-indicator{
+  animation:jwoo-preview-pulse .85s ease-in-out infinite alternate;
+  box-shadow:0 0 0 3px rgba(217,255,122,.14);
+}
+.preview-column.is-refreshing #score-container{
+  opacity:.78;pointer-events:none;
+  transition:opacity .16s ease;
+}
+.preview-column #score-container{transition:opacity .18s ease}
+.part-row input[type=checkbox]{cursor:pointer}
+.part-row input[type=checkbox]:focus-visible{outline:2px solid var(--lime);outline-offset:3px}
+@keyframes jwoo-preview-pulse{from{opacity:.45}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){
+  .preview-column.is-refreshing .preview-indicator{animation:none!important}
+  .preview-column #score-container{transition:none!important}
+}
+@media print{
+  .preview-column.is-refreshing #score-container{opacity:1!important;pointer-events:auto!important}
+}
