@@ -252,9 +252,10 @@ async function renderScore() {
 }
 
 async function openScore(raw, filename) {
-  v4?.beforeOpen?.();
   try {
-    state.doc = parseXml(raw); state.originalDoc = state.doc.cloneNode(true); state.filename = filename; state.undoRhythmDoc = null; state.showBaseline = false; v2.invalidateUndo();
+    const parsed = parseXml(raw);
+    v4?.beforeOpen?.();
+    state.doc = parsed; state.originalDoc = state.doc.cloneNode(true); state.filename = filename; state.undoRhythmDoc = null; state.showBaseline = false; v2.invalidateUndo();
     showLoaded();
     const rendered = await renderScore();
     if (!rendered) return false;
