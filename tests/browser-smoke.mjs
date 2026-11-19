@@ -675,6 +675,64 @@ try {
 
 
 
+
+  // Smart Korean lyric paste in the real browser: editor -> XML -> undo/redo -> reimport.
+  const lyricPasteXml='<?xml version="1.0" encoding="utf-8"?>'
+    +'<score-partwise version="4.0"><work><work-title>스마트 가사 검증</work-title></work>'
+    +'<movement-title>스마트 가사 검증</movement-title>'
+    +'<part-list><score-part id="P1"><part-name>Vocal</part-name>'
+    +'<score-instrument id="I1"><instrument-name>Voice</instrument-name></score-instrument>'
+    +'</score-part></part-list><part id="P1"><measure number="1">'
+    +'<attributes><divisions>16</divisions><key><fifths>0</fifths></key>'
+    +'<time><beats>4</beats><beat-type>4</beat-type></time>'
+    +'<clef><sign>G</sign><line>2</line></clef></attributes>'
+    +['C','D','E','F'].map(step=>'<note><pitch><step>'+step+
+      '</step><octave>4</octave></pitch><duration>16</duration><type>quarter</type></note>').join('')
+    +'</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'smart-korean-lyrics.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(lyricPasteXml)});
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('1개 파트 · 1개 마디'));
+  await page.selectOption('#v3-part','P1');
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.fill('#v4-lyric-verse','1');
+  await page.fill('#v4-lyrics-batch-text','우리 함께');
+  await page.click('#v4-lyrics-batch-preview');
+  assert.match(await page.locator('#v4-lyrics-batch-status').textContent(),/배치 가능 · 4개 가사 음절/);
+  await page.click('#v4-lyrics-batch-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('스마트 가사 일괄 입력 완료'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-lyrics-batch-status').textContent(),/적용 완료/);
+  assert.equal(await page.locator('#v3-undo').isEnabled(),true);
+  const pasteDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const pasteXml=await fs.readFile(await (await pasteDownload).path(),'utf8');
+  for(const syllable of ['우','리','함','께'])assert.match(pasteXml,new RegExp('<text>'+syllable+'</text>'));
+  assert.equal((pasteXml.match(/<lyric number="1">/g)||[]).length,4);
+  assert.equal((pasteXml.match(/<duration>16<\/duration>/g)||[]).length,4);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('스마트 가사 일괄 입력 되돌리기'));
+  const undoDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const undoXml=await fs.readFile(await (await undoDownload).path(),'utf8');
+  assert.doesNotMatch(undoXml,/<lyric number="1">/);
+  await page.click('#v3-redo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('스마트 가사 일괄 입력 다시 실행'));
+  await page.fill('#v4-lyric-verse','2');
+  await page.fill('#v4-lyrics-batch-text','아 _ _ 너');
+  await page.click('#v4-lyrics-batch-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('스마트 가사 일괄 입력 완료'),null,{timeout:30000});
+  const melismaDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const melismaXml=await fs.readFile(await (await melismaDownload).path(),'utf8');
+  for(const type of ['start','continue','stop'])assert.match(melismaXml,new RegExp('<extend type="'+type+'"/>'));
+  assert.equal((melismaXml.match(/<lyric number="1">/g)||[]).length,4);
+  assert.equal((melismaXml.match(/<lyric number="2">/g)||[]).length,4);
+  await page.locator('#file-input').setInputFiles({name:'smart-korean-lyrics-roundtrip.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(melismaXml)});
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('1개 파트 · 1개 마디'));
+  assert.ok((await page.locator('#score-container svg').count())>0);
+  console.log('BROWSER_STAGE=V4_SMART_KOREAN_LYRICS_UNDO_REDO_XML_REIMPORT');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
