@@ -7,6 +7,7 @@ import {createVectorPageZip} from './studio-v4-vector.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin} from './studio-v4-professional.js';
+import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import './studio-v4.css';
 
 const intro=[
@@ -47,7 +48,16 @@ const panel=[
   '<button id="v4-pro-slur" type="button">선택 음표부터 끝 음표까지 이음줄 추가 / 해제</button>',
   '<label for="v4-pro-wedge">셈여림 변화</label><select id="v4-pro-wedge"><option value="crescendo">크레셴도 &lt;</option><option value="diminuendo">디미누엔도 &gt;</option></select>',
   '<button id="v4-pro-hairpin" type="button">선택 음표부터 끝 음표까지 셈여림 변화 추가</button>',
-  '<p class="v4-subhead">03 / 악보 확장·조표·조판</p>',
+  '<p class="v4-subhead">03 / 보컬 가사 · 붙임줄</p>',
+  '<p class="v4-tiny">가사는 선택된 선율 음표에 입력하며, 1~12절을 독립적으로 수정할 수 있습니다. 붙임줄은 같은 음정의 연속된 음표를 연결합니다.</p>',
+  '<div class="v4-inline"><div><label for="v4-lyric-verse">가사 절 번호</label><input id="v4-lyric-verse" type="number" min="1" max="12" step="1" value="1" /></div><div><label for="v4-lyric-syllabic">음절 연결</label><select id="v4-lyric-syllabic"><option value="single">단일 음절</option><option value="begin">시작</option><option value="middle">중간</option><option value="end">끝</option></select></div></div>',
+  '<label for="v4-lyric-text">가사 (한국어·영어 지원)</label><input id="v4-lyric-text" type="text" maxlength="100" placeholder="이 음표에 들어갈 한 음절" />',
+  '<label for="v4-lyric-extend">멜리스마 연장선</label><select id="v4-lyric-extend"><option value="none">없음</option><option value="start">연장 시작</option><option value="continue">연장 계속</option><option value="stop">연장 종료</option></select>',
+  '<div class="v4-inline"><button id="v4-lyric-set" type="button">가사 입력·교체</button><button id="v4-lyric-remove" type="button">선택 절 가사 삭제</button></div>',
+  '<label for="v4-tie-next-measure">붙임줄 끝 마디</label><select id="v4-tie-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option></select>',
+  '<button id="v4-tie-toggle" type="button">선택 음표와 끝 음표의 붙임줄 연결 / 해제</button>',
+  '<p class="v4-tiny">끝 음표 목록 번호는 위 ‘이음줄·크레셴도 끝 음표’에서 지정합니다. 다른 성부·음정으로 연결하면 안전하게 차단됩니다.</p>',
+  '<p class="v4-subhead">04 / 악보 확장·조표·조판</p>',
   '<label for="v4-measure-count">빈 4/4 마디 추가</label><select id="v4-measure-count"><option value="1">1마디</option><option value="4" selected>4마디</option><option value="8">8마디</option><option value="16">16마디</option></select>',
   '<button id="v4-add-measures" type="button">모든 파트에 빈 마디 추가</button>',
   '<label for="v4-key">조표 (장조 표기·음정 자체는 변경하지 않음)</label>',
@@ -58,10 +68,10 @@ const panel=[
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
   '<button id="v4-vector-zip" type="button">벡터 SVG 페이지 ZIP 저장</button>',
   '<p class="v4-tiny">벡터 PDF는 상단의 ‘PDF로 인쇄 → PDF로 저장’을 사용하세요. 기존 ‘파트 PDF ZIP’은 JPEG 기반이므로 인쇄 전 검수가 필요합니다.</p>',
-  '<p class="v4-subhead">04 / 간이 청음</p>',
+  '<p class="v4-subhead">05 / 간이 청음</p>',
   '<div class="v4-inline"><button id="v4-play" type="button">▶ 악보 재생</button><button id="v4-stop" type="button" disabled>■ 정지</button></div>',
   '<p id="v4-play-status" class="v4-tiny" role="status">Web Audio 기반 간이 신시사이저 · 음악적 표현과 실제 악기 음색을 재현하지 않습니다.</p>',
-  '<p class="v4-subhead">05 / 음악 구조 무결성 검사</p>',
+  '<p class="v4-subhead">06 / 음악 구조 무결성 검사</p>',
   '<button id="v4-audit-run" type="button">현재 악보의 박자·성부·연결 기호 검사</button>',
   '<p id="v4-audit-result" class="v4-tiny" role="status">검사 전입니다. 저장 전 최신 악보를 검사해 주세요.</p>',
   '<div id="v4-audit-details" class="v4-audit-details" aria-live="polite"></div>',
@@ -211,6 +221,17 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-apply-articulation').addEventListener('click',()=>void commit(doc=>addExpression(doc,{
     ...selected(),kind:$('v4-articulation').value,
   }),'아티큘레이션 토글'));
+  $('v4-lyric-set').addEventListener('click',()=>void commit(doc=>setNoteVerse(doc,{
+    ...selected(),verse:Number($('v4-lyric-verse').value),text:$('v4-lyric-text').value,
+    syllabic:$('v4-lyric-syllabic').value,extend:$('v4-lyric-extend').value,mode:'set',
+  }),'가사 입력·교체'));
+  $('v4-lyric-remove').addEventListener('click',()=>void commit(doc=>setNoteVerse(doc,{
+    ...selected(),verse:Number($('v4-lyric-verse').value),mode:'remove',
+  }),'선택 절 가사 삭제'));
+  $('v4-tie-toggle').addEventListener('click',()=>void commit(doc=>toggleSoundingTie(doc,{
+    ...selected(),endMeasureIndex:selected().measureIndex+Number($('v4-tie-next-measure').value),
+    endEventIndex:Number($('v4-pro-end').value)-1,
+  }),'실제 붙임줄 연결·해제'));
   $('v4-add-measures').addEventListener('click',()=>void commit(doc=>appendBlankMeasures(doc,{count:Number($('v4-measure-count').value)}),'빈 마디 추가'));
   $('v4-apply-key').addEventListener('click',()=>void commit(doc=>setSimpleKeySignature(doc,{fifths:Number($('v4-key').value)}),'전체 조표 변경'));
   $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>setScoreLayoutBreak(doc,{
