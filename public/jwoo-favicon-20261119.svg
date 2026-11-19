@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>JaeWoo Score Studio — J. brand icon</title>
+  <rect width="1024" height="1024" fill="#171815"/>
+  <!-- oversized modular grotesk J: no gradients, no illustrations -->
+  <path d="M 375 242 H 683 V 631 C 683 766 616 831 482 831 C 359 831 289 770 282 674" fill="none" stroke="#F6F6EB" stroke-width="122" stroke-linecap="square" stroke-linejoin="round"/>
+  <circle cx="802" cy="761" r="57" fill="#D9FF7A"/>
+</svg>
