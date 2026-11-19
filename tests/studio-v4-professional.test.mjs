@@ -154,7 +154,12 @@ test('professional: reject cross-voice spans, impure beams, impossible tuplets a
   first(notes(bad)[1],'beam').textContent='continue';
   assert.throws(()=>createEighthTriplet(bad,{...params()}),/빔/);
   const noDiv=fixture();
+  // Keep the score semantically valid while using divisions=16. The 3:2
+  // conversion is impossible because an eighth-triplet requires thirds.
   first(first(measure(noDiv),'attributes'),'divisions').textContent='16';
+  for(const item of [...notes(noDiv),...children(measure(noDiv),'backup')])
+    first(item,'duration').textContent=String(Number(first(item,'duration').textContent)/3);
+  assert.equal(values(noDiv).reason,null);
   assert.throws(()=>createEighthTriplet(noDiv,{...params()}),/divisions/);
   assert.equal(values(doc).reason,null);
 });
