@@ -24,3 +24,16 @@
 .v4-audit-list{margin:10px 0 0;padding:0 0 0 18px;font-size:10px;line-height:1.65;color:#e4e8db}
 .v4-audit-list li{margin-bottom:7px;border-bottom:1px solid #3b4639;padding-bottom:6px}
 .v4-editor #v4-audit-run{border-color:#c5dab4;background:#2a3728}
+
+/* Readable beat grid for complex piano staves and voices; scrolls on iPhone. */
+.v4-beat-grid{display:grid;gap:10px;margin:10px 0 16px;max-width:100%;color:#eaf2df}
+.v4-beat-lane{min-width:0;border:1px solid #53644c;border-radius:3px;overflow:hidden}
+.v4-beat-label{font-size:10px;font-weight:700;letter-spacing:.03em;padding:8px 10px;background:#354130}
+.v4-beat-scroll{overflow-x:auto;overscroll-behavior-x:contain;max-width:100%}
+.v4-beat-canvas{position:relative;min-height:92px;background-image:linear-gradient(to right,rgba(213,245,164,.20) 1px,transparent 1px);background-color:#273124}
+.v4-beat-event{position:absolute;display:block;margin:0!important;min-height:22px!important;height:23px!important;padding:1px 4px!important;border:1px solid #a2c091!important;background:#526b46!important;color:#fff!important;font-size:10px!important;text-align:center!important;white-space:nowrap;overflow:hidden;text-overflow:clip;touch-action:manipulation}
+.v4-beat-event.rest{border-color:#65745f!important;color:#d3d9c8!important;background:#394638!important}
+.v4-beat-event.chord{border-color:#c6d781!important}
+.v4-beat-event.selected{outline:2px solid #dbff94!important;outline-offset:1px;z-index:3}
+.v4-beat-event:focus-visible{outline:2px solid white!important;outline-offset:1px}
+@media print{.v4-beat-grid{display:none!important}}

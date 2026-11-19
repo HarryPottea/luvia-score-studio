@@ -417,5 +417,5 @@ const v2 = mountV2Controls({ state, $, scoreParts, renderScore, refreshRhythmRep
   onExternalDocChange: () => v3.externalChanged(), onViewChange: () => v3.refresh() });
 const v3 = mountV3Controls({ state, renderScore, refreshRhythmReport, refreshV2: () => {v2.invalidateUndo();v2.refresh();}, invalidateRhythmUndo, setMessage });
 const advanced = mountAdvancedControls({state,v3,setMessage});
-v3.onSelectionChange(() => advanced.refresh());
+v3.onSelectionChange(() => {advanced.refresh();v4?.onSelectionChange?.();});
 v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore });

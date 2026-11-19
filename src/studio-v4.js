@@ -6,7 +6,8 @@ import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
-import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin} from './studio-v4-professional.js';
+import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid} from './studio-v4-professional.js';
+import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
@@ -43,6 +44,12 @@ const panel=[
   '<label for="v4-pro-alter">변화표</label><select id="v4-pro-alter"><option value="-2">𝄫</option><option value="-1">♭</option><option value="0" selected>♮</option><option value="1">♯</option><option value="2">𝄪</option></select>',
   '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select>',
   '<button id="v4-pro-duration" type="button">선택 음표 길이 변경 (성부·박자 보존)</button>',
+  '<label for="v4-grid-step">시작 위치 이동 간격</label><select id="v4-grid-step"><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select>',
+  '<div class="v4-inline"><button id="v4-nudge-earlier" type="button">← 선택 음표를 앞 쉼표로 이동</button><button id="v4-nudge-later" type="button">선택 음표를 뒤 쉼표로 이동 →</button></div>',
+  '<p class="v4-tiny">음표와 인접한 같은 성부의 쉼표 사이에서 정확한 시작 위치를 옮깁니다. 다른 성부, 기존 화음·붙임줄·셋잇단음·빔은 변경하지 않습니다.</p>',
+  '<p class="v4-subhead">현재 마디 성부 시간표</p>',
+  '<p class="v4-tiny">다성부·화음도 박자 위치별로 표시됩니다. 음표 블록을 눌러 선택하세요. Shift+←/→는 선택한 음표를 한 격자씩 이동합니다.</p>',
+  '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치"></div>',
   '<button id="v4-pro-triplet" type="button">8분음표 두 개를 셋잇단음 세 개로 (가운데 음정은 3.0 입력값)</button>',
   '<p class="v4-tiny">정확히 분할 가능한 MusicXML divisions의 동일 성부·보표 8분음표 2개가 필요합니다.</p>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
@@ -149,6 +156,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     currentRenderedDoc=null;
   }
   function onRendered(){
+    renderVoiceGrid();
     $('v4-audit-result').textContent='악보 변경 또는 재렌더링됨 · 저장 전 다시 검사해 주세요.';
     $('v4-audit-details').replaceChildren();
     if(state.doc!==currentRenderedDoc){
@@ -198,6 +206,68 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     await v3.commitExternal(transform,label);
   }
   function selected(){return v3.getSelection();}
+  function renderVoiceGrid(){
+    const host=$('v4-beat-grid');
+    host.replaceChildren();
+    const pos=v3.getSelection();
+    if(!state.doc||!pos.partId){host.textContent='악보를 열면 성부 시간표가 표시됩니다.';return;}
+    let audit;
+    try{audit=inspectAdvancedMeasure(state.doc,pos.partId,pos.measureIndex);}
+    catch(error){host.textContent='시간표 확인 실패: '+error.message;return;}
+    if(audit.reason){host.textContent='이 마디는 보호된 기보입니다: '+audit.reason;return;}
+    if(!Number.isFinite(audit.max)||audit.max<=0){
+      host.textContent='이 마디에서 시간축을 계산할 수 없습니다.';return;
+    }
+    const groups=new Map();
+    for(const event of audit.events){
+      const key='성부 '+event.voice+' · 보표 '+event.staff;
+      if(!groups.has(key))groups.set(key,[]);
+      groups.get(key).push(event);
+    }
+    const maxTicks=Math.max(audit.max,1);
+    const widthPx=Math.max(660,Math.min(3600,Math.ceil(maxTicks/Math.max(1,audit.divisions))*190));
+    const step=Number(audit.divisions)||1;
+    for(const [name,events] of groups){
+      const line=document.createElement('div');line.className='v4-beat-lane';
+      const title=document.createElement('div');title.className='v4-beat-label';title.textContent=name;
+      const scroll=document.createElement('div');scroll.className='v4-beat-scroll';
+      const canvas=document.createElement('div');canvas.className='v4-beat-canvas';
+      canvas.style.width=widthPx+'px';
+      canvas.style.backgroundSize=Math.max(1,widthPx*step/maxTicks)+'px 100%';
+      const sameStart=new Map();
+      for(const e of events){
+        const key=e.start+'@'+e.duration;
+        const tier=sameStart.get(key)||0;
+        sameStart.set(key,tier+1);
+        const entry=document.createElement('button');
+        entry.type='button';
+        entry.className='v4-beat-event'+(e.eventIndex===pos.eventIndex?' selected':'')+
+          (e.rest?' rest':'')+(e.chord?' chord':'');
+        entry.style.left=Math.max(0,(e.start/maxTicks)*widthPx)+'px';
+        entry.style.width=Math.max(28,Math.min(widthPx,(e.duration/maxTicks)*widthPx-5))+'px';
+        entry.style.top=(6+(tier%3)*26)+'px';
+        const symbol=e.rest?'쉼표':e.step+(e.alter===1?'♯':e.alter===-1?'♭':'')+e.octave;
+        entry.textContent=symbol;
+        entry.title=(e.eventIndex+1)+'번째 · '+name+' · 시작 '+e.start+
+          ' · 길이 '+e.duration+' · '+(e.chord?'화음':'음표');
+        entry.setAttribute('aria-label',entry.title);
+        entry.setAttribute('aria-pressed',String(e.eventIndex===pos.eventIndex));
+        entry.addEventListener('click',()=>v3.select({partId:pos.partId,
+          measureIndex:pos.measureIndex,eventIndex:e.eventIndex}));
+        entry.addEventListener('keydown',ev=>{
+          if(!ev.shiftKey||!['ArrowLeft','ArrowRight'].includes(ev.key)||e.rest)return;
+          ev.preventDefault();
+          v3.select({partId:pos.partId,measureIndex:pos.measureIndex,eventIndex:e.eventIndex});
+          void commit(doc=>nudgeVoiceNoteOnGrid(doc,{...selected(),
+            direction:ev.key==='ArrowLeft'?'earlier':'later',grid:$('v4-grid-step').value}),
+            '성부 음표 시작 위치 이동');
+        });
+        canvas.append(entry);
+      }
+      scroll.append(canvas);line.append(title,scroll);host.append(line);
+    }
+  }
+
   // Keep backward compatibility with 4.0's original simple-score controls,
   // but never depend on fields disabled for polyphony or tuplets.
   const proFieldIds={'v3-step':'v4-pro-step','v3-alter':'v4-pro-alter',
@@ -208,6 +278,11 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-insert-note').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
     ...selected(),mode:'insert',...pitch(),type:editInput('v3-length').value,
   }),'성부를 보존한 음표 삽입'));
+  for(const [id,direction] of [['v4-nudge-earlier','earlier'],['v4-nudge-later','later']]){
+    $(id).addEventListener('click',()=>void commit(doc=>nudgeVoiceNoteOnGrid(doc,{
+      ...selected(),direction,grid:$('v4-grid-step').value,
+    }),'성부 음표 시작 위치 이동'));
+  }
   $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
     ...selected(),mode:'duration',type:$('v4-pro-type').value,
   }),'성부별 음표 길이 변경'));
@@ -350,5 +425,5 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }
   });
   void refreshDrafts();
-  return {beforeOpen,onRendered,onLoaded,stop:()=>player.stop()};
+  return {beforeOpen,onRendered,onLoaded,onSelectionChange:renderVoiceGrid,stop:()=>player.stop()};
 }
