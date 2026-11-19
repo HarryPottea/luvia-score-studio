@@ -1,6 +1,6 @@
 // J-WOO 4.0 integrated authoring workspace.
 // Reuses V3 commitExternal for immutable edits, history, rollback, and re-render.
-import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,appendBlankMeasures,setSimpleKeySignature} from './studio-v4-core.js';
+import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount} from './studio-v4-core.js';
 import {buildPlaybackTimeline,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
@@ -18,9 +18,15 @@ const intro=[
   '<div class="v4-heading"><strong>J-WOO 4.0 COMPOSE</strong><span>NEW SCORE / LOCAL DRAFTS</span></div>',
   '<label for="v4-new-title">새 악보 제목</label><input id="v4-new-title" type="text" maxlength="120" placeholder="새 악보" value="새 악보" />',
   '<label for="v4-new-template">악보 구성</label><select id="v4-new-template"><option value="melody">멜로디 한 파트</option><option value="vocal">보컬 한 파트</option><option value="vocal-piano">보컬 + 피아노 양손(그랜드 스태프)</option></select>',
-  '<label for="v4-new-measures">마디 수 (4/4)</label><select id="v4-new-measures"><option>4</option><option selected>8</option><option>16</option><option>32</option></select>',
+  '<label for="v4-new-measures">새 악보 생성 시 초기 마디 수 (4/4)</label><select id="v4-new-measures"><option>4</option><option selected>8</option><option>16</option><option>32</option></select>',
   '<button id="v4-new" type="button">+ 새 악보 작성</button>',
   '<p class="v4-tiny">피아노는 하나의 파트 안에 높은음·낮은음자리표 두 보표와 독립 성부를 사용합니다. 4.0 전문 기보 입력을 활용하세요.</p>',
+  '<p class="v4-tiny">위 초기 마디 수는 <strong>새 악보 작성</strong>을 누를 때만 적용됩니다. 현재 악보는 아래에서 변경하세요.</p>',
+  '<div class="v4-draft-area"><label for="v4-current-total">현재 악보의 총마디 수 (파트마다 동일)</label>',
+  '<div class="v4-inline"><input id="v4-current-total" type="number" min="1" max="128" step="1" placeholder="악보를 먼저 열어주세요" disabled />',
+  '<button id="v4-apply-total" type="button" disabled>현재 악보 마디 수 적용</button></div>',
+  '<p id="v4-total-status" class="v4-tiny" role="status">악보를 열면 현재 마디 수가 표시됩니다. 변경 후 Enter 또는 적용 버튼을 누르세요.</p>',
+  '<p class="v4-tiny">마디를 늘리면 끝에 쉼표 마디가 추가됩니다. 줄일 때는 완전히 빈 마지막 마디만 삭제할 수 있어 음표는 보존됩니다.</p></div>',
   '<div class="v4-draft-area"><label for="v4-draft-select">기기에 임시 저장된 악보</label><select id="v4-draft-select"><option value="">불러오는 중…</option></select>',
   '<div class="v4-inline"><button id="v4-restore" type="button" disabled>임시 저장 복원</button><button id="v4-delete-draft" type="button" disabled>임시본 삭제</button></div>',
   '<p id="v4-draft-status" class="v4-tiny" role="status">기기 저장소를 확인합니다.</p></div>',
@@ -99,6 +105,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   document.querySelector('.sample-action').insertAdjacentHTML('afterend',intro);
   $('editor-controls').insertAdjacentHTML('beforeend',panel);
   let saveTimer=null,pending=null,skipRendered=false,currentRenderedDoc=null,writing=false;
+  let changingMeasureCount=false;
   let disabledDraft=false;
   const player=createAuditionPlayer({onState:playing=>{
     $('v4-play').disabled=playing;
@@ -156,6 +163,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     currentRenderedDoc=null;
   }
   function onRendered(){
+    syncCurrentMeasureCount();
     renderVoiceGrid();
     $('v4-audit-result').textContent='악보 변경 또는 재렌더링됨 · 저장 전 다시 검사해 주세요.';
     $('v4-audit-details').replaceChildren();
@@ -172,7 +180,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){void refreshDrafts();}
+  function onLoaded(){syncCurrentMeasureCount();void refreshDrafts();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{
@@ -181,6 +189,65 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       if(ok){setMessage('새 악보 생성 완료 · 쉼표를 선택해 4.0 음표 삽입 기능으로 작곡을 시작하세요.');}
     }catch(error){setMessage('새 악보 생성 실패: '+error.message,true);}
   });
+  function currentMeasureCount(){
+    if(!state.doc)return null;
+    const parts=[...state.doc.documentElement.children].filter(n=>n.localName==='part');
+    const counts=parts.map(p=>[...p.children].filter(n=>n.localName==='measure').length);
+    return counts.length&&counts[0]>0&&counts.every(n=>n===counts[0])?counts[0]:null;
+  }
+  function syncCurrentMeasureCount(){
+    if(changingMeasureCount)return;
+    const current=currentMeasureCount(),control=$('v4-current-total');
+    control.disabled=current===null;
+    $('v4-apply-total').disabled=current===null;
+    control.value=current===null?'':String(current);
+    $('v4-total-status').textContent=current===null?
+      '악보가 없거나 파트별 마디 수가 달라 편집할 수 없습니다.':
+      '현재 '+current+'마디 · 모든 파트 동일 · 변경 후 Enter 또는 적용 버튼을 누르세요.';
+  }
+  async function applyCurrentMeasureCount(){
+    if(changingMeasureCount||!state.doc)return;
+    const current=currentMeasureCount(),target=Number($('v4-current-total').value);
+    if(current===null){setMessage('파트별 마디 수가 같아야 변경할 수 있습니다.',true);return;}
+    if(!Number.isSafeInteger(target)||target<1||target>128){
+      $('v4-total-status').textContent='총마디 수는 1~128 사이의 정수를 입력해 주세요.';
+      $('v4-current-total').value=String(current);
+      return;
+    }
+    if(target===current){
+      $('v4-total-status').textContent='현재 악보가 이미 '+current+'마디입니다.';
+      return;
+    }
+    if(target<current&&!confirm('마지막 '+(current-target)+
+      '개 마디를 삭제하려고 합니다. 비어 있는 마디만 삭제되며 음표·기호가 있는 마디는 보호됩니다. 계속할까요?')){
+      $('v4-current-total').value=String(current);
+      $('v4-total-status').textContent='마디 수 변경을 취소했습니다. 현재 '+current+'마디입니다.';
+      return;
+    }
+    changingMeasureCount=true;
+    $('v4-current-total').disabled=true;
+    $('v4-apply-total').disabled=true;
+    $('v4-total-status').textContent=current+'마디 → '+target+'마디 변경 중…';
+    try{
+      await commit(doc=>setScoreMeasureCount(doc,{total:target}), '현재 악보 총마디 수 변경');
+      const after=currentMeasureCount();
+      $('v4-total-status').textContent=after===target?
+        '적용 완료 · '+current+' → '+after+'마디 · 악보와 MusicXML 저장에 반영됐습니다.':
+        '변경되지 않았습니다. 기존 '+(after??current)+'마디를 보존했습니다. 아래 오류 메시지를 확인하세요.';
+    }catch(error){
+      $('v4-total-status').textContent='마디 수 변경 실패: '+error.message;
+      setMessage('마디 수 변경 실패: '+error.message,true);
+    }finally{
+      changingMeasureCount=false;
+      const after=currentMeasureCount();
+      $('v4-current-total').disabled=after===null;
+      $('v4-apply-total').disabled=after===null;
+      $('v4-current-total').value=after===null?'':String(after);
+    }
+  }
+  $('v4-current-total').addEventListener('change',()=>void applyCurrentMeasureCount());
+  $('v4-apply-total').addEventListener('click',()=>void applyCurrentMeasureCount());
+
   $('v4-draft-select').addEventListener('change',()=>{
     $('v4-restore').disabled=!$('v4-draft-select').value;
     $('v4-delete-draft').disabled=!$('v4-draft-select').value;

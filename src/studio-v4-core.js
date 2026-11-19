@@ -316,3 +316,67 @@ export function setSimpleKeySignature(source,{fifths=0}={}){
   }
   return {doc,change:{action:'key-signature',fifths}};
 }
+
+
+// Set the ACTUAL score's total bar count. Unlike the "new score" template
+// selector, this is an existing-document edit connected to undo/redo.
+// Shortening can only remove entirely empty, unannotated trailing measures.
+// The source is never mutated; caller commits the candidate after rendering.
+export function setScoreMeasureCount(source,{total}={}){
+  if(!integer(total,1,128))fail('현재 악보의 총마디 수는 1~128 사이의 정수여야 합니다.');
+  if(source?.documentElement?.localName!=='score-partwise')
+    fail('현재 악보는 MusicXML partwise 형식이어야 합니다.');
+  const parts=children(source.documentElement,'part');
+  if(!parts.length||parts.length>12)fail('파트가 1~12개인 악보에서 마디 수를 변경할 수 있습니다.');
+  const bars=parts.map(p=>children(p,'measure'));
+  const current=bars[0].length;
+  if(!current||bars.some(b=>b.length!==current))
+    fail('파트별 마디 수가 일치하지 않아 현재 악보를 변경하지 않았습니다.');
+  if(total===current)
+    return {doc:source.cloneNode(true),change:{action:'set-measure-count',from:current,to:total,unchanged:true}};
+  if(total>current){
+    let candidate=source;
+    while(children(children(candidate.documentElement,'part')[0],'measure').length<total){
+      const count=Math.min(16,total-children(children(candidate.documentElement,'part')[0],'measure').length);
+      candidate=appendBlankMeasures(candidate,{count}).doc;
+    }
+    return {doc:candidate,change:{action:'set-measure-count',from:current,to:total}};
+  }
+  const isPlainRest=note=>{
+    if(note?.localName!=='note'||note.attributes.length||
+       children(note,'rest').length!==1||
+       !integer(Number(text(note,'duration')),1,1048576)||
+       !direct(note,'type'))return false;
+    const allowed=new Set(['rest','duration','voice','type','dot','staff']);
+    return [...note.children].every(n=>allowed.has(n.localName))&&
+      children(note,'rest')[0].attributes.length===0;
+  };
+  const isEmptyTailBar=measure=>{
+    if(measure?.localName!=='measure')return false;
+    const nodes=[...measure.children];
+    if(nodes.length===1)return isPlainRest(nodes[0]);
+    if(nodes.length===3&&nodes[1].localName==='backup'&&
+       isPlainRest(nodes[0])&&isPlainRest(nodes[2])){
+      const upper=nodes[0],lower=nodes[2],backup=nodes[1];
+      return [...backup.children].length===1&&direct(backup,'duration')&&
+        integer(Number(text(backup,'duration')),1,1048576)&&
+        text(backup,'duration')===text(upper,'duration')&&
+        text(upper,'duration')===text(lower,'duration')&&
+        text(upper,'voice')==='1'&&text(upper,'staff')==='1'&&
+        text(lower,'voice')==='2'&&text(lower,'staff')==='2';
+    }
+    return false;
+  };
+  for(let index=total;index<current;index++){
+    for(const partBars of bars){
+      if(!isEmptyTailBar(partBars[index]))
+        fail((index+1)+'마디 이후에 음표·가사·악상기호 또는 조판 정보가 있어 삭제를 차단했습니다. 현재 악보는 변경되지 않았습니다.');
+    }
+  }
+  const doc=source.cloneNode(true);
+  for(const part of children(doc.documentElement,'part')){
+    const measureList=children(part,'measure');
+    for(let index=total;index<measureList.length;index++)part.removeChild(measureList[index]);
+  }
+  return {doc,change:{action:'set-measure-count',from:current,to:total,removedEmptyBars:current-total}};
+}

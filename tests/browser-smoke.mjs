@@ -625,6 +625,53 @@ try {
   await printTab.close();
   console.log('BROWSER_STAGE=V4_NATIVE_VECTOR_PART_PDF_PRINTED');
 
+  // Regression: changing a current score's *total* measures must update the
+  // MusicXML + rendered page, not merely a "new score" preset selector.
+  await page.fill('#v4-new-title','실제 마디 수 변경');
+  await page.selectOption('#v4-new-template','vocal-piano');
+  await page.selectOption('#v4-new-measures','4');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('2개 파트 · 4개 마디'));
+  assert.equal(await page.locator('#v4-current-total').inputValue(),'4');
+  await page.locator('#v4-current-total').fill('9');
+  await page.locator('#v4-current-total').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('2개 파트 · 9개 마디'),null,{timeout:30000});
+  assert.equal(await page.locator('#v4-current-total').inputValue(),'9');
+  assert.match(await page.locator('#v4-total-status').textContent(),/적용 완료/);
+  const grownDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const grownXml=await fs.readFile(await (await grownDownload).path(),'utf8');
+  assert.equal((grownXml.match(/<measure number="/g)||[]).length,18);
+  assert.equal((grownXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,9);
+  console.log('BROWSER_STAGE=V4_EXISTING_SCORE_MEASURE_INCREASE');
+
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-current-total').fill('5');
+  await page.locator('#v4-current-total').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('2개 파트 · 5개 마디'),null,{timeout:30000});
+  assert.equal(await page.locator('#v4-current-total').inputValue(),'5');
+  const reducedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const reducedXml=await fs.readFile(await (await reducedDownload).path(),'utf8');
+  assert.equal((reducedXml.match(/<measure number="/g)||[]).length,10);
+  console.log('BROWSER_STAGE=V4_EMPTY_TAIL_MEASURE_REDUCTION');
+
+  await page.selectOption('#v3-part','P1');
+  await page.selectOption('#v3-measure','4');
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v3-length','quarter');
+  await page.click('#v4-insert-note');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('음표 삽입 완료'),null,{timeout:30000});
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-current-total').fill('4');
+  await page.locator('#v4-current-total').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#v4-total-status')?.textContent.includes('변경되지 않았습니다'),null,{timeout:30000});
+  assert.equal(await page.locator('#v4-current-total').inputValue(),'5');
+  assert.match(await page.locator('#score-info').textContent(),/2개 파트 · 5개 마디/);
+  console.log('BROWSER_STAGE=V4_WRITTEN_TAIL_MEASURE_PROTECTED');
+
+
 
 
 
