@@ -87,6 +87,77 @@ try {
   console.log('BROWSER_STAGE=IOS_PREICON_BASELINE_READY');
   console.log('BROWSER_STAGE=J_WOO_ICONS_LOADED');
 
+  // J-WOO 4.0 integrated composer: new score -> rest entry -> notation ->
+  // layout directive -> local draft persistence -> SVG export -> audition.
+  assert.equal(await page.locator('#v4-new').count(),1);
+  await page.fill('#v4-new-title','통합 검증');
+  await page.selectOption('#v4-new-measures','4');
+  await page.click('#v4-new');
+  await page.locator('#v3-events .v3-event').first().waitFor();
+  assert.match(await page.locator('#score-title').inputValue(),/통합 검증/);
+  await page.selectOption('#v3-length','quarter');
+  await page.click('#v4-insert-note');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('음표 삽입 완료'));
+  assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/C4/);
+  assert.ok((await page.locator('#v3-events .v3-event').count())>=2);
+  await page.fill('#v4-tempo','108');
+  await page.click('#v4-add-tempo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('템포 기보 완료'));
+  await page.click('#v4-add-dynamic');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('셈여림 기보 완료'));
+  await page.click('#v4-apply-articulation');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('아티큘레이션 토글 완료'));
+  await page.selectOption('#v4-measure-count','1');
+  await page.click('#v4-add-measures');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('빈 마디 추가 완료'));
+  assert.match(await page.locator('#score-info').textContent(),/5개 마디/);
+  await page.selectOption('#v4-key','-1');
+  await page.click('#v4-apply-key');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('전체 조표 변경 완료'));
+  console.log('BROWSER_STAGE=V4_MEASURE_EXTENSION_AND_KEY_SIGNATURE');
+  await page.selectOption('#v3-measure','1');
+  await page.click('#v4-apply-layout');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('줄·페이지 나눔 완료'));
+  const v4XmlPromise=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const v4Xml=await v4XmlPromise;
+  const v4Text=await fs.readFile(await v4Xml.path(),'utf8');
+  assert.match(v4Text,/<direction-type>/);
+  assert.match(v4Text,/<metronome>/);
+  assert.match(v4Text,/<staccato/);
+  assert.match(v4Text,/<fifths>-1<\/fifths>/);
+  assert.equal((v4Text.match(/<measure number="/g)||[]).length,5);
+  assert.match(v4Text,/new-system="yes"/);
+  assert.match(v4Text,/<duration>16<\/duration>/);
+  assert.match(v4Text,/<step>C<\/step>/);
+  console.log('BROWSER_STAGE=V4_AUTHORING_MUSICXML_ROUNDTRIP');
+  await page.waitForFunction(()=>[...document.querySelectorAll('#v4-draft-select option')].some(x=>x.value==='통합 검증.musicxml'),null,{timeout:12000});
+  console.log('BROWSER_STAGE=V4_IDB_AUTOSAVE_PERSISTED');
+  // Confirm that downloaded vector pages are SVG instead of raster JPEG PDF.
+  const v4VectorPromise=page.waitForEvent('download',{timeout:30000});
+  await page.click('#v4-vector-zip');
+  const v4VectorDownload=await v4VectorPromise;
+  const v4VectorBytes=await fs.readFile(await v4VectorDownload.path());
+  const v4VectorZip=await JSZip.loadAsync(v4VectorBytes);
+  const v4Pages=Object.keys(v4VectorZip.files).filter(x=>x.endsWith('.svg'));
+  assert.ok(v4Pages.length>=1);
+  assert.match(await v4VectorZip.file(v4Pages[0]).async('string'),/<svg[\s>]/);
+  console.log('BROWSER_STAGE=V4_VECTOR_SVG_EXPORTED');
+  await page.click('#v4-play');
+  await page.waitForFunction(()=>document.querySelector('#v4-play-status')?.textContent.includes('재생 중'),null,{timeout:15000});
+  assert.equal(await page.locator('#v4-stop').isEnabled(),true);
+  assert.match(await page.locator('#v4-play-status').textContent(),/108 BPM/);
+  await page.click('#v4-stop');
+  console.log('BROWSER_STAGE=V4_WEB_AUDIO_AUDITION');
+  // Explicit restore uses the draft rather than the changed current score.
+  await page.click('#try-sample');
+  await page.selectOption('#v4-draft-select','통합 검증.musicxml');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-restore');
+  await page.waitForFunction(()=>document.querySelector('#score-title')?.value==='통합 검증',null,{timeout:15000});
+  assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/C4/);
+  console.log('BROWSER_STAGE=V4_LOCAL_DRAFT_RESTORED');
+
   await page.click('#try-sample');
   await page.locator('#score-container svg').first().waitFor({timeout:30000});
   console.log('BROWSER_STAGE=SCORE_RENDERED');
@@ -297,6 +368,21 @@ try {
   assert.equal(audit.comparison.pitchChanges,0);
   console.log('BROWSER_STAGE=COMPLEX_MUSICXML_ROUNDTRIP_VERIFIED');
   await page.screenshot({path:output+'/complex-score.png',fullPage:true});
+  // Import the same complex-polyphonic fixture through an actual compressed MXL
+  // container, without embedding a real composer's private project in the repo.
+  const mxlFixture=new JSZip();
+  mxlFixture.file('META-INF/container.xml',
+    '<?xml version="1.0" encoding="utf-8"?>'+
+    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'+
+    '<rootfiles><rootfile full-path="music/complex.musicxml" media-type="application/vnd.recordare.musicxml+xml"/></rootfiles></container>');
+  mxlFixture.file('music/complex.musicxml',await fs.readFile('tests/fixtures/complex-voices-original.musicxml','utf8'));
+  const mxlBuffer=await mxlFixture.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
+  await page.locator('#file-input').setInputFiles({name:'complex-polyphony.mxl',mimeType:'application/vnd.recordare.musicxml',buffer:mxlBuffer});
+  await page.waitForFunction(()=>document.querySelector('#drop-zone strong')?.textContent==='complex-polyphony.mxl' &&
+    document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:20000});
+  assert.ok((await page.locator('#score-container svg').count())>0);
+  console.log('BROWSER_STAGE=V4_COMPLEX_MXL_FILE_IMPORTED');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));

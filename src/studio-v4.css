@@ -1,0 +1,21 @@
+/* J-WOO 4.0 composing surface. Inherit the original cream/charcoal/lime identity. */
+.v4-create{margin-top:16px;border:1px solid #5d6658;padding:17px 16px 15px;background:#20261d;color:#eef1e6;border-radius:3px}
+.v4-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:13px;margin-bottom:12px;border-bottom:1px solid #4b5844}
+.v4-heading strong{font-size:11px;letter-spacing:.055em}
+.v4-heading span{font-size:8px;letter-spacing:.045em;color:#afbc9f;text-align:right}
+.v4-create label,.v4-editor label{display:block;font-size:11px;color:#b8c5ad;margin:12px 0 6px}
+.v4-create input,.v4-create select,.v4-editor input,.v4-editor select{display:block;width:100%;min-width:0;color:#f8f9f4;background:#30382d;border:1px solid #5c6a57;border-radius:2px;padding:10px 9px;font:inherit;font-size:12px}
+.v4-create input:focus-visible,.v4-create select:focus-visible,.v4-editor input:focus-visible,.v4-editor select:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.v4-create button,.v4-editor button{font-size:11px;font-weight:700;line-height:1.5;padding:10px 9px;border:1px solid #9cac8e;color:#f8f9ef;background:transparent;border-radius:2px;width:100%;margin:8px 0 0;text-align:center}
+.v4-create button:hover:not(:disabled),.v4-editor button:hover:not(:disabled){background:#43563a}
+.v4-create button:disabled,.v4-editor button:disabled{opacity:.4;cursor:not-allowed}
+.v4-create #v4-new,.v4-editor #v4-insert-note{background:var(--lime);border-color:var(--lime);color:#171815;font-weight:800}
+.v4-create #v4-new:hover,.v4-editor #v4-insert-note:hover{background:#f1ffbd}
+.v4-inline{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.v4-inline>div{min-width:0}
+.v4-draft-area{margin-top:14px;padding-top:12px;border-top:1px solid #4a5545}
+.v4-tiny{color:#afb9a9;font-size:10px;line-height:1.6;margin:9px 0 6px;overflow-wrap:anywhere}
+.v4-subhead{margin:18px 0 11px;font-size:10px;letter-spacing:.08em;color:var(--lime);font-weight:800;border-top:1px solid #4f584c;padding-top:16px}
+.v4-editor{border-bottom:1px solid #555f52;padding-bottom:15px}
+@media(max-width:670px){.v4-create{padding:14px 12px}.v4-heading{flex-wrap:wrap}.v4-create button,.v4-editor button{font-size:12px;min-height:43px}.v4-create label,.v4-editor label{font-size:12px}}
+@media print{.v4-create,.v4-editor{display:none!important}}
