@@ -165,6 +165,6 @@ test('composer: empty 3/4 rebar keeps vocal and two-staff piano voices precisely
 });
 test('composer: meter change refuses already-written score and unsupported meter',()=>{
   const src=score();
-  assert.throws(()=>setMeterForEmptyTail(src,{measureIndex:1,beats:3,beatType:4}),/음표·가사·복잡한/);
+  assert.throws(()=>setMeterForEmptyTail(src,{measureIndex:1,beats:3,beatType:4}),/자동 박자 변경/);
   assert.throws(()=>setMeterForEmptyTail(src,{measureIndex:0,beats:5,beatType:8}),/2\/4/);
 });
