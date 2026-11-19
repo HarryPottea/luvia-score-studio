@@ -10,6 +10,7 @@ import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNote
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {planBatchLyrics,applyBatchLyrics} from './studio-v4-lyrics-batch.js';
+import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import './studio-v4.css';
@@ -78,6 +79,12 @@ const panel=[
   '<label class="v4-batch-check"><input id="v4-lyrics-batch-overwrite" type="checkbox" /> 이미 입력된 해당 절 가사 덮어쓰기 (기본 보호)</label>',
   '<div class="v4-inline"><button id="v4-lyrics-batch-preview" type="button">배치 가능 여부 확인</button><button id="v4-lyrics-batch-apply" type="button">가사 전체 적용</button></div>',
   '<p id="v4-lyrics-batch-status" class="v4-tiny" role="status" aria-live="polite">성부·보표·음표 수를 확인한 후 원자적으로 적용합니다. 기존 음정과 박자는 변경하지 않습니다.</p>',
+  '</div>',
+  '<div class="v4-batch-lyrics" role="group" aria-label="배치 후 가사 위치 수정">',
+  '<p class="v4-subhead">03B / 배치 후 가사 위치 수정</p>',
+  '<p class="v4-tiny">악보에서 가사가 있는 음표를 선택하세요. 선택한 절의 음절부터 뒤에 연속된 가사를 한 음표씩 밀거나 당깁니다. 다른 절·성부·음정·박자는 유지됩니다. 빈 음표가 없거나 멜리스마를 훼손할 위험이 있으면 적용하지 않습니다.</p>',
+  '<div class="v4-inline"><button id="v4-lyric-shift-left" type="button">← 이후 가사 한 음표 당기기</button><button id="v4-lyric-shift-right" type="button">이후 가사 한 음표 밀기 →</button></div>',
+  '<p id="v4-lyric-shift-status" class="v4-tiny" role="status" aria-live="polite">이동할 가사 음절을 선택하고 방향을 눌러 주세요. 3.0 실행 취소·다시 실행과 연결됩니다.</p>',
   '</div>',
   '<label for="v4-tie-next-measure">붙임줄 끝 마디</label><select id="v4-tie-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option></select>',
   '<button id="v4-tie-toggle" type="button">선택 음표와 끝 음표의 붙임줄 연결 / 해제</button>',
@@ -423,6 +430,24 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       event.preventDefault();$('v4-lyrics-batch-apply').click();
     }
   });
+  async function movePlacedLyric(direction){
+    const status=$('v4-lyric-shift-status');
+    if(!state.doc){status.textContent='악보를 먼저 열어 주세요.';return;}
+    const options={...selected(),verse:Number($('v4-lyric-verse').value),direction};
+    let plan;
+    try {plan=planPlacedLyricShift(state.doc,options);}
+    catch(error){status.textContent='이동 불가 · '+(error.message||'가사 선택을 확인해 주세요.');return;}
+    const before=state.doc;
+    await commit(doc=>shiftPlacedLyrics(doc,options),
+      direction==='right'?'가사 한 음표 밀기':'가사 한 음표 당기기');
+    status.textContent=state.doc!==before?
+      '이동 완료 · '+plan.affected+'개 가사 위치 수정 · '+plan.verse+
+        '절 / 성부 '+plan.voice+' / 보표 '+plan.staff+
+        ' · 실행 취소로 되돌릴 수 있습니다.':
+      '악보가 변경되지 않았습니다. 위 편집 상태 메시지를 확인해 주세요.';
+  }
+  $('v4-lyric-shift-left').addEventListener('click',()=>void movePlacedLyric('left'));
+  $('v4-lyric-shift-right').addEventListener('click',()=>void movePlacedLyric('right'));
   $('v4-tie-toggle').addEventListener('click',()=>void commit(doc=>toggleSoundingTie(doc,{
     ...selected(),endMeasureIndex:selected().measureIndex+Number($('v4-tie-next-measure').value),
     endEventIndex:Number($('v4-pro-end').value)-1,
