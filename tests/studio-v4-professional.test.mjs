@@ -196,7 +196,7 @@ test('professional: protect existing notes when no adjacent rest, no precise sub
   const original=fixture(),before=serialize(original);
   assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(0),direction:'later',grid:'16th'}),/쉼표/);
   assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(1),direction:'earlier',grid:'16th'}),/쉼표/);
-  assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(1),direction:'later',grid:'32nd'}),/divisions|정확히/);
-  assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(4),direction:'later',grid:'16th'}),/쉼표|복잡한/);
+  assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(1),direction:'later',grid:'64th'}),/올바르지/);
+  assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(4),direction:'earlier',grid:'16th'}),/쉼표|복잡한/);
   assert.equal(serialize(original),before);
 });
