@@ -1,0 +1,27 @@
+name: Verify score editor
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Run notation and lyric unit tests
+        run: node --test tests/*.test.mjs
+      - name: Build production site
+        run: npm run build
+      - name: Install browser regression runner
+        run: npm install --no-save playwright@1.56.1
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run Chromium MusicXML roundtrip smoke
+        run: node tests/browser-smoke.mjs
