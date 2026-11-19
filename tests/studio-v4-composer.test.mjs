@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setNoteVerse,toggleSoundingTie} from '../src/studio-v4-composer.js';
+import {setKeyAtMeasure,setMeterForEmptyTail} from '../src/studio-v4-meter.js';
 class E {
   constructor(localName,attrs={},children=[],raw=''){
     this.localName=localName;this.map={...attrs};this.children=[];this.raw=String(raw);
@@ -111,4 +112,59 @@ test('composer: malformed partial existing sounding tie cannot be silently norma
   assert.throws(()=>toggleSoundingTie(original,{
     partId:'P1',measureIndex:0,eventIndex:3,endMeasureIndex:1,endEventIndex:0,
   }),/재생·시각/);
+});
+
+function blankMeterScore(){
+  const attrs=()=>el('attributes',[
+    text('divisions',48),el('time',[text('beats',4),text('beat-type',4)]),
+  ]);
+  const upper=()=>el('note',[el('rest'),text('duration',192),text('voice',1),text('type','whole'),text('staff',1)]);
+  const lower=()=>el('note',[el('rest'),text('duration',192),text('voice',2),text('type','whole'),text('staff',2)]);
+  const vocal=()=>el('note',[el('rest'),text('duration',192),text('type','whole')]);
+  const vocalMeasures=[0,1].map(i=>el('measure',[
+    ...(i===0?[attrs()]:[]),vocal(),
+  ],{number:String(i+1)}));
+  const pianoMeasures=[0,1].map(i=>el('measure',[
+    ...(i===0?[el('attributes',[text('divisions',48),
+      el('time',[text('beats',4),text('beat-type',4)]),text('staves',2)])]:[]),
+    upper(),el('backup',[text('duration',192)]),lower(),
+  ],{number:String(i+1)}));
+  return new Document(el('score-partwise',[
+    el('part',vocalMeasures,{id:'P1'}),
+    el('part',pianoMeasures,{id:'P2'}),
+  ]));
+}
+test('composer: part-synchronized mid-score key change preserves all pitches and timing',()=>{
+  const src=score(),before=serializer(src);
+  const changed=setKeyAtMeasure(src,{measureIndex:1,fifths:-3}).doc;
+  assert.equal(serializer(src),before);
+  const attrs=get(measure(changed,1),'attributes');
+  assert.ok(attrs);
+  assert.equal(get(get(attrs,'key'),'fifths').textContent,'-3');
+  assert.deepEqual(gets(measure(changed,1),'note').map(n=>get(n,'duration').textContent),['48','48','48','48']);
+  assert.throws(()=>setKeyAtMeasure(src,{measureIndex:1,fifths:9}),/조표/);
+});
+test('composer: empty 3/4 rebar keeps vocal and two-staff piano voices precisely aligned',()=>{
+  const src=blankMeterScore(),before=serializer(src);
+  const result=setMeterForEmptyTail(src,{measureIndex:0,beats:3,beatType:4});
+  const doc=result.doc;
+  assert.equal(serializer(src),before);
+  for(const part of gets(doc.documentElement,'part')){
+    for(const m of gets(part,'measure')){
+      const notes=gets(m,'note');
+      assert.ok(notes.every(n=>get(n,'duration').textContent==='144'));
+      assert.ok(notes.every(n=>get(n,'type').textContent==='half'));
+      assert.ok(notes.every(n=>gets(n,'dot').length===1));
+      const backup=get(m,'backup');
+      if(backup)assert.equal(get(backup,'duration').textContent,'144');
+    }
+    const time=get(get(gets(part,'measure')[0],'attributes'),'time');
+    assert.equal(get(time,'beats').textContent,'3');
+    assert.equal(get(time,'beat-type').textContent,'4');
+  }
+});
+test('composer: meter change refuses already-written score and unsupported meter',()=>{
+  const src=score();
+  assert.throws(()=>setMeterForEmptyTail(src,{measureIndex:1,beats:3,beatType:4}),/음표·가사·복잡한/);
+  assert.throws(()=>setMeterForEmptyTail(src,{measureIndex:0,beats:5,beatType:8}),/2\/4/);
 });
