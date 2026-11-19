@@ -128,6 +128,16 @@ export function auditMusicXml(doc,{maxIssues=150}={}){
           add('ERROR','MISSING_PITCH','음표에 음정 정보가 없습니다.',label,bar);
         maxEnd=Math.max(maxEnd,start+ticks,cursor);
         const tuple=tupletLength(node,divisions);
+        if(!isGrace&&!direct(node,'time-modification')&&divisions){
+          const type=text(node,'type'),base=quarterFactors[type];
+          if(base){
+            let dottedFactor=1,additional=.5;
+            for(const _ of many(node,'dot')){dottedFactor+=additional;additional/=2;}
+            const expected=divisions*base*dottedFactor;
+            if(Math.abs(expected-ticks)>.05)
+              add('WARNING','NOTE_TYPE_DURATION','음표 기보 길이(type·dot)와 실제 duration이 일치하지 않습니다.',label,bar);
+          }
+        }
         if(direct(node,'time-modification')){
           tuplets++;
           if(!tuple?.valid)add('WARNING','TUPLET_UNSUPPORTED','셋잇단음·잇단음의 시간 비율을 검증할 수 없습니다.',label,bar);
