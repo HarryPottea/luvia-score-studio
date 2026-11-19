@@ -895,6 +895,7 @@ try {
   // engrave only the final state instead of 3 full SVG render passes.
   await page.selectOption('#v4-new-template','vocal-piano');
   await page.selectOption('#v4-new-measures','8');
+  page.once('dialog',dialog=>dialog.accept());
   await page.click('#v4-new');
   await page.waitForFunction(()=>document.querySelector('#score-info')?.textContent.includes('2개 파트 · 8개 마디')&&
     document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false',null,{timeout:30000});
