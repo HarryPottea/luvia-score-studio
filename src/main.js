@@ -107,6 +107,15 @@ function scoreParts() {
   return list ? [...list.children].filter(el => el.localName === 'score-part').map(el => ({ id: el.getAttribute('id'), name: childText(el, 'part-name') || '이름 없는 파트', element: el })) : [];
 }
 
+function scoreMeasureSummary(){
+  const counts=[...state.doc.documentElement.children]
+    .filter(p=>p.localName==='part')
+    .map(p=>[...p.children].filter(m=>m.localName==='measure').length);
+  const label=counts.length&&counts.every(n=>n===counts[0])
+    ?counts[0]+'개 마디'
+    :'파트별 마디 수 불일치 ('+counts.join('/')+')';
+  return scoreParts().length+'개 파트 · '+label;
+}
 function setMessage(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
 function showLoaded() {
   $('editor-controls').hidden = false;
@@ -125,7 +134,7 @@ function showLoaded() {
   refreshRhythmReport();
   v2.refresh();
   v3.reset();
-  $('score-info').textContent = `${parts.length}개 파트 · ${state.doc.querySelectorAll('part > measure').length}개 마디`;
+  $('score-info').textContent = scoreMeasureSummary();
 }
 
 function invalidateRhythmUndo() { state.undoRhythmDoc = null; $('undo-rhythm').disabled = true; }
@@ -240,7 +249,7 @@ async function renderScore() {
     applyLayoutPreset(osmd, $('v2-layout')?.value || 'standard', renderedDoc);
     osmd.render(); state.osmd = osmd;
     try {attachScoreInteractions(osmd);} catch (error) {console.warn('Note selection unavailable',error);}
-    $('score-info').textContent = scoreParts().length+'개 파트 · '+state.doc.querySelectorAll('part > measure').length+'개 마디';
+    $('score-info').textContent = scoreMeasureSummary();
     setMessage('악보가 준비되었습니다. 변경 사항은 MusicXML 저장에 반영됩니다.');
     v4?.onRendered?.();
     return true;
