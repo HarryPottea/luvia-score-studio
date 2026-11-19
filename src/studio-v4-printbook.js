@@ -2,6 +2,7 @@
 // and hand the resulting live SVG pages to the browser's native print-to-PDF.
 // No new npm dependencies, no raster/JPEG conversion, no server upload.
 import {OpenSheetMusicDisplay} from 'opensheetmusicdisplay';
+import {editableScoreRenderOptions} from './osmd-render-policy.js';
 import {applyLayoutPreset} from './layout-profile.js';
 import {applyFixedA4Profile,fixedA4Profile} from './a4-engraving.js';
 
@@ -52,10 +53,10 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
     document.body.appendChild(holder);
     let osmd=null;
     try{
-      osmd=new OpenSheetMusicDisplay(holder,{
+      osmd=new OpenSheetMusicDisplay(holder,editableScoreRenderOptions({
         autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,
         drawMeasureNumbers:measureNumbers,pageFormat,
-      });
+      }));
       await osmd.load(partDoc);
       applyFixedA4Profile(osmd,partDoc,pageFormat);
       applyLayoutPreset(osmd,layout,partDoc);

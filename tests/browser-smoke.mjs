@@ -671,6 +671,30 @@ try {
   assert.match(await page.locator('#score-info').textContent(),/2개 파트 · 5개 마디/);
   console.log('BROWSER_STAGE=V4_WRITTEN_TAIL_MEASURE_PROTECTED');
 
+  // Regression: switching to only the Melody part must not collapse visible
+  // whole-rest bars when measure count changes. The other part stays in XML.
+  await page.selectOption('#export-part','P1');
+  await page.click('#view-part');
+  await page.waitForFunction(()=>document.querySelector('#score-container .staffline .vf-measure'),null,{timeout:30000});
+  await page.locator('#v4-current-total').fill('8');
+  await page.locator('#v4-current-total').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#v4-total-status')?.textContent.includes('적용 완료'),null,{timeout:30000});
+  assert.equal(await page.locator('#v4-current-total').inputValue(),'8');
+  const soloVisibleMeasures=await page.locator('#score-container .staffline .vf-measure').count();
+  assert.equal(soloVisibleMeasures,8,'Melody-only preview should show eight distinct measures, not condensed multirests');
+  const soloXmlEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const soloXml=await fs.readFile(await (await soloXmlEvent).path(),'utf8');
+  assert.equal((soloXml.match(/<measure number="/g)||[]).length,16,'Both original parts retain eight measures');
+  const soloPartEvent=page.waitForEvent('download');
+  await page.click('#download-part-xml');
+  const singlePartXml=await fs.readFile(await (await soloPartEvent).path(),'utf8');
+  assert.equal((singlePartXml.match(/<measure number="/g)||[]).length,8);
+  await page.click('#view-all-parts');
+  await page.waitForFunction(()=>document.querySelectorAll('#score-container .staffline .vf-measure').length>=16,null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_SOLO_MELODY_MEASURE_COUNT_VISIBLE');
+
+
 
 
 
