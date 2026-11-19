@@ -36,9 +36,10 @@ try {
   const svgIcon=page.locator('link[rel="icon"][type="image/svg+xml"]');
   assert.equal(await svgIcon.getAttribute('href'),'./jwoo-favicon-20261119.svg');
   assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute('sizes'),'180x180');
-  assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href'),'./jwoo-touch-20261119.png');
-  assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'),'./jwoo-manifest-20261119.webmanifest');
-  for(const [file,size] of [['jwoo-favicon-20261119.png',32],['jwoo-touch-20261119.png',180],['jwoo-icon-20261119-192.png',192]]) {
+  assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href'),'./jwoo-touch-v3-180.png');
+  assert.equal(await page.locator('meta[name="apple-mobile-web-app-capable"]').getAttribute('content'),'yes');
+  assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'),'./jwoo-app-v3.webmanifest');
+  for(const [file,size] of [['jwoo-favicon-20261119.png',32],['jwoo-touch-v3-180.png',180],['jwoo-app-v3-192.png',192]]) {
     const response=await page.request.get(new URL(file,url).href);
     assert.equal(response.status(),200,file+' must be served');
     const bytes=await response.body();
@@ -49,11 +50,30 @@ try {
   const svgResponse=await page.request.get(new URL('jwoo-favicon-20261119.svg',url).href);
   assert.equal(svgResponse.status(),200);
   assert.match(await svgResponse.text(),/fill="#D9FF7A"/);
-  const manifestResponse=await page.request.get(new URL('jwoo-manifest-20261119.webmanifest',url).href);
+  const manifestResponse=await page.request.get(new URL('jwoo-app-v3.webmanifest',url).href);
   assert.equal(manifestResponse.status(),200);
   const manifest=await manifestResponse.json();
   assert.equal(manifest.short_name,'J-WOO');
   assert.ok(manifest.icons.some(item=>item.sizes==='192x192'));
+  // Safari's two icon consumers must receive the same *actual pixels*.
+  // A PNG header alone cannot detect an accidentally wrong or corrupt icon.
+  const painted=await page.evaluate(async()=>{
+    const check=async(url)=>{
+      const img=new Image(); img.src=url; await img.decode();
+      const can=document.createElement('canvas');can.width=img.naturalWidth;can.height=img.naturalHeight;
+      const c=can.getContext('2d',{willReadFrequently:true});c.drawImage(img,0,0);
+      const at=(x,y)=>[...c.getImageData(Math.round(x*can.width),Math.round(y*can.height),1,1).data];
+      return {size:can.width,dot:at(.8,.73),background:at(.04,.04),glyph:at(.7,.3)};
+    };
+    return {apple:await check('./jwoo-touch-v3-180.png'),manifest:await check('./jwoo-app-v3-192.png')};
+  });
+  for(const item of Object.values(painted)){
+    assert.deepEqual(item.dot.slice(0,3),[216,254,121],'Icon must contain lime J. dot');
+    assert.deepEqual(item.background.slice(0,3),[23,24,21],'Icon must have matching dark background');
+    assert.deepEqual(item.glyph.slice(0,3),[245,245,234],'Icon must contain ivory J glyph');
+  }
+  assert.equal(manifest.icons[0].src,'./jwoo-app-v3-192.png');
+  console.log('BROWSER_STAGE=IOS_TOUCH_AND_PWA_ICONS_PIXELS_MATCH',JSON.stringify(painted));
   console.log('BROWSER_STAGE=J_WOO_ICONS_LOADED');
 
   await page.click('#try-sample');
