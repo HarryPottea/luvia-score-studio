@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {
-  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin
+  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid
 } from '../src/studio-v4-professional.js';
 
 // Deterministic DOM supporting the exact MusicXML tree operations used by the
@@ -162,4 +162,41 @@ test('professional: reject cross-voice spans, impure beams, impossible tuplets a
   assert.equal(values(noDiv).reason,null);
   assert.throws(()=>createEighthTriplet(noDiv,{...params()}),/divisions/);
   assert.equal(values(doc).reason,null);
+});
+
+
+test('professional: nudge a note later into a rest without shifting the other piano voice',()=>{
+  const original=fixture(),before=serialize(original),v2=secondVoice(original);
+  const result=nudgeVoiceNoteOnGrid(original,{...params(1),direction:'later',grid:'16th'});
+  assert.equal(serialize(original),before);
+  assert.deepEqual(secondVoice(result.doc),v2);
+  const events=values(result.doc).events;
+  const shifted=events.find(e=>e.step==='E'&&e.voice==='1');
+  assert.equal(shifted.start,36);
+  assert.equal(shifted.duration,24);
+  assert.equal(events.filter(e=>e.voice==='1'&&!e.chord).reduce((sum,e)=>sum+e.duration,0),192);
+  assert.equal(first(children(measure(result.doc),'backup')[0],'duration').textContent,'192');
+  assert.deepEqual(events.filter(e=>e.voice==='1'&&e.rest).map(e=>e.duration),[12,24,12,96]);
+});
+test('professional: nudge a note earlier into an immediate rest with exact grid math',()=>{
+  const original=fixture();
+  const firstNote=notes(original)[0];
+  measure(original).replaceChild(voiceRest(24,'eighth','1','1'),firstNote);
+  const before=serialize(original),v2=secondVoice(original);
+  const changed=nudgeVoiceNoteOnGrid(original,{...params(1),direction:'earlier',grid:'16th'});
+  assert.equal(serialize(original),before);
+  assert.deepEqual(secondVoice(changed.doc),v2);
+  const events=values(changed.doc).events;
+  const moved=events.find(e=>e.step==='E'&&e.voice==='1');
+  assert.equal(moved.start,12);
+  assert.equal(moved.duration,24);
+  assert.deepEqual(events.filter(e=>e.voice==='1'&&e.rest).map(e=>e.duration),[12,12,48,96]);
+});
+test('professional: protect existing notes when no adjacent rest, no precise subdivision or mismatched voice',()=>{
+  const original=fixture(),before=serialize(original);
+  assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(0),direction:'later',grid:'16th'}),/쉼표/);
+  assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(1),direction:'earlier',grid:'16th'}),/쉼표/);
+  assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(1),direction:'later',grid:'32nd'}),/divisions|정확히/);
+  assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(4),direction:'later',grid:'16th'}),/쉼표|복잡한/);
+  assert.equal(serialize(original),before);
 });
