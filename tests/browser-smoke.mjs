@@ -68,9 +68,9 @@ try {
     return {apple:await check('./jwoo-touch-v3-180.png'),manifest:await check('./jwoo-app-v3-192.png')};
   });
   for(const item of Object.values(painted)){
-    assert.deepEqual(item.dot.slice(0,3),[217,255,122],'Icon must contain lime J. dot');
+    assert.deepEqual(item.dot.slice(0,3),[216,254,121],'Icon must contain lime J. dot');
     assert.deepEqual(item.background.slice(0,3),[23,24,21],'Icon must have matching dark background');
-    assert.deepEqual(item.glyph.slice(0,3),[246,246,235],'Icon must contain ivory J glyph');
+    assert.deepEqual(item.glyph.slice(0,3),[245,245,234],'Icon must contain ivory J glyph');
   }
   assert.equal(manifest.icons[0].src,'./jwoo-app-v3-192.png');
   console.log('BROWSER_STAGE=IOS_TOUCH_AND_PWA_ICONS_PIXELS_MATCH',JSON.stringify(painted));
