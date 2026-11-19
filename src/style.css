@@ -136,3 +136,52 @@
   .preview-column::before{display:none!important}
   .preview-shell{max-height:none!important;min-height:0!important;overflow:visible!important}
 }
+
+
+/* Compact, accessible inspector accordions. Original form controls stay mounted. */
+.jwoo-fold-all{display:flex;align-items:center;gap:7px;margin:0 0 13px;padding:11px 0;
+  border-top:1px solid #5b6b52;border-bottom:1px solid #5b6b52}
+.jwoo-fold-all span{font-size:11px;font-weight:800;color:#e6f1d9;flex:1}
+.jwoo-fold-all button,.jwoo-fold-toggle{border:1px solid #62795c;background:#283426;
+  color:#d7eabf;border-radius:3px;padding:6px 9px;font-size:10px;font-weight:700;
+  white-space:nowrap;cursor:pointer;transition:background-color .17s ease,border-color .17s ease}
+.jwoo-fold-all button:hover,.jwoo-fold-toggle:hover{background:#465e3b;border-color:#a3cb7e}
+.jwoo-fold-all button:focus-visible,.jwoo-fold-toggle:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.control-heading{gap:9px}
+.control-heading>span:first-child{flex:1}
+.control-heading>span:nth-child(2){flex:none}
+.control-heading .jwoo-fold-toggle{flex:none;font-size:10px}
+.jwoo-panel-body{min-width:0}
+.jwoo-v4-section{border-bottom:1px solid rgba(145,173,132,.22);padding-bottom:5px}
+.jwoo-v4-section>.v4-subhead,.v4-batch-lyrics>.v4-subhead{display:flex;align-items:center;justify-content:space-between;gap:9px}
+.jwoo-v4-section>.v4-subhead .jwoo-fold-toggle,.v4-batch-lyrics>.v4-subhead .jwoo-fold-toggle{
+  margin:0;width:auto;min-height:0;padding:5px 9px;line-height:1.45;font-size:10px;
+  letter-spacing:normal;background:#303d2c;color:#e3f0d7;border-color:#607559}
+.jwoo-v4-section-body{min-width:0}
+.jwoo-selected-location{display:inline-flex;align-items:center;border:1px solid #c2f577;
+  background:#314b29;color:#e5ffba;border-radius:3px;padding:5px 7px;
+  font-size:10px;font-weight:800;white-space:nowrap;flex:none}
+#score-container .jwoo-note-selected{filter:drop-shadow(0 0 3px #a8ff46) drop-shadow(0 0 8px #bdff75)}
+#score-container .jwoo-selection-ring{filter:drop-shadow(0 0 3px #9ded4d);
+  animation:jwoo-note-mark .24s ease-out}
+@keyframes jwoo-note-mark{from{opacity:.22}to{opacity:1}}
+@media(max-width:670px){
+  .jwoo-fold-all{gap:5px;flex-wrap:wrap}
+  .jwoo-fold-all span{min-width:100%}
+  .jwoo-fold-all button{flex:1}
+  .control-heading .jwoo-fold-toggle{padding:6px 8px}
+  .preview-summary{flex-wrap:wrap}
+  .jwoo-selected-location{font-size:9px;padding:3px 6px}
+}
+@media(prefers-reduced-motion:reduce){
+  #score-container .jwoo-selection-ring{animation:none!important}
+  .jwoo-fold-all button,.jwoo-fold-toggle{transition:none!important}
+}
+@media print{.jwoo-fold-all,.jwoo-fold-toggle,.jwoo-selected-location{display:none!important}
+  .jwoo-panel-body,.jwoo-v4-section-body{display:block!important}}
+
+/* Selection is an editing cue, never a printed or exported musical mark. */
+@media print{
+  #score-container .jwoo-selection-ring,#score-container .jwoo-hit-area{display:none!important}
+  #score-container .jwoo-note-selected{filter:none!important}
+}

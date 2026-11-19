@@ -12,6 +12,12 @@ export async function createVectorPageZip({svgs,filename='score.musicxml',onProg
     const node=svgs[i];
     if(!node||node.localName!=='svg')throw new Error('SVG 악보 페이지를 찾지 못했습니다.');
     const clone=node.cloneNode(true);
+    // Editing-only overlays must never be burned into exported score pages.
+    for(const overlay of clone.querySelectorAll('.jwoo-selection-ring,.jwoo-hit-area'))overlay.remove();
+    for(const mark of clone.querySelectorAll('.jwoo-note-target,.jwoo-note-selected')){
+      mark.classList.remove('jwoo-note-target','jwoo-note-selected');
+      for(const attr of ['tabindex','role','aria-pressed','aria-label'])mark.removeAttribute(attr);
+    }
     clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
     clone.removeAttribute('data-jwoo-editing');
     const xml='<?xml version="1.0" encoding="UTF-8"?>\n'+new XMLSerializer().serializeToString(clone);

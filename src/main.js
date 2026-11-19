@@ -13,6 +13,7 @@ import { editableScoreRenderOptions } from './osmd-render-policy.js';
 import { sampleScore } from './sample.js';
 import { mountStudioV4 } from './studio-v4.js';
 import { mountStickyPreview } from './sticky-preview.js';
+import { mountSettingsAccordions } from './settings-accordions.js';
 import './style.css';
 
 let v4 = null;
@@ -428,6 +429,24 @@ const v2 = mountV2Controls({ state, $, scoreParts, renderScore, refreshRhythmRep
   onExternalDocChange: () => v3.externalChanged(), onViewChange: () => v3.refresh() });
 const v3 = mountV3Controls({ state, renderScore, refreshRhythmReport, refreshV2: () => {v2.invalidateUndo();v2.refresh();}, invalidateRhythmUndo, setMessage });
 const advanced = mountAdvancedControls({state,v3,setMessage});
-v3.onSelectionChange(() => {advanced.refresh();v4?.onSelectionChange?.();});
+const selectionBadge=document.createElement('span');
+selectionBadge.className='jwoo-selected-location';
+selectionBadge.setAttribute('aria-live','polite');
+selectionBadge.hidden=true;
+document.querySelector('.preview-summary')?.appendChild(selectionBadge);
+function updateSelectionBadge(){
+  if(!state.doc){selectionBadge.hidden=true;return;}
+  const position=v3.getSelection();
+  const part=[...state.doc.documentElement.children]
+    .find(p=>p.localName==='part'&&p.getAttribute('id')===position.partId);
+  const measure=[...(part?.children||[])].filter(e=>e.localName==='measure')[position.measureIndex];
+  const note=[...(measure?.children||[])].filter(e=>e.localName==='note')[position.eventIndex];
+  selectionBadge.hidden=!note||state.showBaseline;
+  if(note)selectionBadge.textContent='● 선택 · '+(position.measureIndex+1)+'마디 / '+
+    (position.eventIndex+1)+'번 '+([...note.children].some(e=>e.localName==='rest')?'쉼표':'음표');
+}
+v3.onSelectionChange(() => {advanced.refresh();v4?.onSelectionChange?.();updateSelectionBadge();});
 v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore });
 mountStickyPreview();
+mountSettingsAccordions();
+updateSelectionBadge();
