@@ -1,6 +1,6 @@
 // J-WOO 4.0 integrated authoring workspace.
 // Reuses V3 commitExternal for immutable edits, history, rollback, and re-render.
-import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak} from './studio-v4-core.js';
+import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,appendBlankMeasures,setSimpleKeySignature} from './studio-v4-core.js';
 import {buildPlaybackTimeline,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
@@ -31,7 +31,12 @@ const panel=[
   '<div class="v4-inline"><button id="v4-add-tempo" type="button">템포 기보</button><button id="v4-add-dynamic" type="button">셈여림 기보</button></div>',
   '<label for="v4-articulation">아티큘레이션</label><select id="v4-articulation"><option value="staccato">스타카토</option><option value="tenuto">테누토</option><option value="accent">악센트</option></select>',
   '<button id="v4-apply-articulation" type="button">선택 음표에 추가 / 해제</button>',
-  '<p class="v4-subhead">02 / 레이아웃과 인쇄</p>',
+  '<p class="v4-subhead">02 / 악보 확장·조표·조판</p>',
+  '<label for="v4-measure-count">빈 4/4 마디 추가</label><select id="v4-measure-count"><option value="1">1마디</option><option value="4" selected>4마디</option><option value="8">8마디</option><option value="16">16마디</option></select>',
+  '<button id="v4-add-measures" type="button">모든 파트에 빈 마디 추가</button>',
+  '<label for="v4-key">조표 (장조 표기·음정 자체는 변경하지 않음)</label>',
+  '<select id="v4-key"><option value="-3">E♭ (플랫 3)</option><option value="-2">B♭ (플랫 2)</option><option value="-1">F (플랫 1)</option><option value="0" selected>C (변화표 없음)</option><option value="1">G (샤프 1)</option><option value="2">D (샤프 2)</option><option value="3">A (샤프 3)</option><option value="4">E (샤프 4)</option><option value="5">B (샤프 5)</option></select>',
+  '<button id="v4-apply-key" type="button">모든 파트 조표 변경</button>',
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
@@ -165,6 +170,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-apply-articulation').addEventListener('click',()=>void commit(doc=>addExpression(doc,{
     ...selected(),kind:$('v4-articulation').value,
   }),'아티큘레이션 토글'));
+  $('v4-add-measures').addEventListener('click',()=>void commit(doc=>appendBlankMeasures(doc,{count:Number($('v4-measure-count').value)}),'빈 마디 추가'));
+  $('v4-apply-key').addEventListener('click',()=>void commit(doc=>setSimpleKeySignature(doc,{fifths:Number($('v4-key').value)}),'전체 조표 변경'));
   $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>setScoreLayoutBreak(doc,{
     measureIndex:selected().measureIndex,kind:$('v4-layout').value,
   }),'줄·페이지 나눔'));
