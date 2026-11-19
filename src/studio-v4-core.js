@@ -218,33 +218,61 @@ export function appendBlankMeasures(source,{count=4}={}){
   for(let index=0;index<parts.length;index++){
     const part=parts[index],measures=allMeasures[index];
     let divisions=0,beats=0,beatType=0,staffCount=1;
-    for(const measure of measures){
-      if([...measure.children].some(x=>['backup','forward'].includes(x.localName)) ||
-        children(measure,'note').some(note=>direct(note,'staff')||direct(note,'voice')))
-        fail('다성부·복수 보표 악보의 자동 마디 추가는 보호됩니다.');
-      for(const attrs of children(measure,'attributes')){
-        const d=Number(text(attrs,'divisions'));
-        if(d)divisions=d;
-        const t=direct(attrs,'time');
-        if(t){beats=Number(text(t,'beats'));beatType=Number(text(t,'beat-type'));}
-        const st=Number(text(attrs,'staves'));
-        if(st>1)staffCount=st;
-      }
+    for(const measure of measures)for(const attrs of children(measure,'attributes')){
+      const d=Number(text(attrs,'divisions'));if(d)divisions=d;
+      const t=direct(attrs,'time');if(t){beats=Number(text(t,'beats'));beatType=Number(text(t,'beat-type'));}
+      const st=Number(text(attrs,'staves'));if(st>1)staffCount=st;
     }
     const previous=Number(measures[measures.length-1].getAttribute('number'));
-    if(!integer(previous,1,20000)||!integer(divisions,1,65536)
-       ||beats!==4||beatType!==4||staffCount!==1)
-      fail('마지막 박자가 4/4이고 단일 보표인 악보만 마디를 추가할 수 있습니다.');
-    allNumbers.push(previous);
+    if(!integer(previous,1,20000)||!integer(divisions,1,65536)||
+       beats!==4||beatType!==4||![1,2].includes(staffCount))
+      fail('마지막 박자가 4/4이며 단일 보표 또는 지원하는 피아노 양손 악보만 마디를 추가할 수 있습니다.');
     const duration=divisions*4;
+    for(const measure of measures){
+      const controls=[...measure.children].filter(x=>['backup','forward'].includes(x.localName));
+      const ns=children(measure,'note');
+      if(staffCount===1){
+        if(controls.length||ns.some(n=>direct(n,'staff')||direct(n,'voice')))
+          fail('다성부·여러 보표가 있는 악보의 자동 마디 추가는 보호됩니다.');
+      }else{
+        // Only our complete, sequential Piano voice-1/staff-1 and voice-2/staff-2
+        // timeline is allowed. This is not a generic multi-voice rebar algorithm.
+        if(controls.length!==1||controls[0].localName!=='backup'||
+           Number(text(controls[0],'duration'))!==duration)
+          fail('그랜드 스태프의 다성부 시간표가 지원되지 않습니다.');
+        const nodes=[...measure.children],at=nodes.indexOf(controls[0]);
+        const upper=nodes.slice(0,at).filter(n=>n.localName==='note');
+        const lower=nodes.slice(at+1).filter(n=>n.localName==='note');
+        const check=(group,voice,staff)=>group.length>0&&group.every(n=>
+          text(n,'voice')===voice&&text(n,'staff')===staff&&
+          integer(Number(text(n,'duration')),1,duration)&&!direct(n,'chord'))&&
+          group.reduce((sum,n)=>sum+Number(text(n,'duration')),0)===duration;
+        if(!check(upper,'1','1')||!check(lower,'2','2'))
+          fail('피아노 두 보표의 박자 합계가 일치하지 않아 마디를 추가하지 않습니다.');
+      }
+    }
+    allNumbers.push(previous);
     for(let k=1;k<=count;k++){
       const measure=element(part,'measure');
       measure.setAttribute('number',String(previous+k));
-      const note=element(measure,'note');
-      note.appendChild(element(note,'rest'));
-      note.appendChild(element(note,'duration',duration));
-      note.appendChild(element(note,'type','whole'));
-      measure.appendChild(note);part.appendChild(measure);
+      const restFor=(voice,staff)=>{
+        const note=element(measure,'note');
+        note.appendChild(element(note,'rest'));
+        note.appendChild(element(note,'duration',duration));
+        if(voice)note.appendChild(element(note,'voice',voice));
+        note.appendChild(element(note,'type','whole'));
+        if(staff)note.appendChild(element(note,'staff',staff));
+        measure.appendChild(note);
+      };
+      if(staffCount===1)restFor(null,null);
+      else{
+        restFor('1','1');
+        const backup=element(measure,'backup');
+        backup.appendChild(element(backup,'duration',duration));
+        measure.appendChild(backup);
+        restFor('2','2');
+      }
+      part.appendChild(measure);
     }
   }
   if(new Set(allNumbers).size!==1)fail('파트별 마디 번호가 일치하지 않아 변경하지 않습니다.');
