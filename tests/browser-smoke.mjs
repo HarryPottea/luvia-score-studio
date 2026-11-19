@@ -38,7 +38,10 @@ try {
   assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute('sizes'),'180x180');
   assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href'),'./jwoo-touch-v3-180.png');
   assert.equal(await page.locator('meta[name="apple-mobile-web-app-capable"]').getAttribute('content'),'yes');
-  assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'),'./jwoo-app-v3.webmanifest');
+  // A Web Manifest was introduced alongside the icon and is being removed
+  // experimentally to restore the iOS 26 pre-icon independent launch behavior.
+  // Keep the older manifest URL available for previously installed users.
+  assert.equal(await page.locator('link[rel="manifest"]').count(),0,'Pre-icon iOS install did not require a web manifest');
   for(const [file,size] of [['jwoo-favicon-20261119.png',32],['jwoo-touch-v3-180.png',180],['jwoo-app-v3-192.png',192]]) {
     const response=await page.request.get(new URL(file,url).href);
     assert.equal(response.status(),200,file+' must be served');
