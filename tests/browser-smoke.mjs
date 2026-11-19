@@ -506,6 +506,22 @@ try {
   assert.ok((revisedScoreXml.match(/<backup><duration>144<\/duration><\/backup>/g)||[]).length>=1);
   console.log('BROWSER_STAGE=V4_MID_SCORE_METER_KEY_EDITED');
 
+  // Both the vocal and true grand-staff Piano parts must be present in one
+  // vector print book, in their original part order.
+  const bothPartsPopup=page.waitForEvent('popup');
+  await page.click('#v4-print-book');
+  const bothPartsTab=await bothPartsPopup;
+  await bothPartsTab.locator('.sheet svg').nth(1).waitFor({timeout:45000});
+  const printedPartIds=await bothPartsTab.locator('.sheet').evaluateAll(
+    list=>[...new Set(list.map(x=>x.dataset.partId))]);
+  assert.deepEqual(printedPartIds,['P1','P2']);
+  const bookPdf=await bothPartsTab.pdf({printBackground:true,preferCSSPageSize:true});
+  assert.equal(bookPdf.subarray(0,5).toString(),'%PDF-');
+  assert.ok(bookPdf.length>1800);
+  await bothPartsTab.close();
+  console.log('BROWSER_STAGE=V4_TWO_PART_VECTOR_PRINT_BOOK');
+
+
 
   // Real browser MusicXML edit + export of multi-verse Korean lyric, melisma,
   // and sounding + visible tie across the bar line.
