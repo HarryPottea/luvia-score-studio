@@ -34,6 +34,10 @@ const panel=[
   '<button id="v4-apply-articulation" type="button">선택 음표에 추가 / 해제</button>',
   '<p class="v4-subhead">02 / 다성부·셋잇단음·이음줄</p>',
   '<p class="v4-tiny">3.0 편집 영역에서 음표를 선택하세요. 같은 성부의 박자 합계를 유지하고, 지원하지 않는 복합 기보는 변경하지 않습니다.</p>',
+  '<p class="v4-tiny">다성부 악보에서는 기존 3.0 입력란이 잠길 수 있으므로 아래의 독립 입력값을 사용합니다.</p>',
+  '<div class="v4-inline"><div><label for="v4-pro-step">음이름</label><select id="v4-pro-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div><div><label for="v4-pro-octave">옥타브</label><select id="v4-pro-octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div></div>',
+  '<label for="v4-pro-alter">변화표</label><select id="v4-pro-alter"><option value="-2">𝄫</option><option value="-1">♭</option><option value="0" selected>♮</option><option value="1">♯</option><option value="2">𝄪</option></select>',
+  '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select>',
   '<button id="v4-pro-duration" type="button">선택 음표 길이 변경 (성부·박자 보존)</button>',
   '<button id="v4-pro-triplet" type="button">8분음표 두 개를 셋잇단음 세 개로 (가운데 음정은 3.0 입력값)</button>',
   '<p class="v4-tiny">정확히 분할 가능한 MusicXML divisions의 동일 성부·보표 8분음표 2개가 필요합니다.</p>',
@@ -168,16 +172,21 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     await v3.commitExternal(transform,label);
   }
   function selected(){return v3.getSelection();}
+  // Keep backward compatibility with 4.0's original simple-score controls,
+  // but never depend on fields disabled for polyphony or tuplets.
+  const editInput=id=>$(id).disabled?$('#v4-pro-'+({ 'v3-step':'step','v3-alter':'alter',
+    'v3-octave':'octave','v3-length':'type'}[id])}:$(id);
+  function pitch(){return {step:editInput('v3-step').value,
+    alter:Number(editInput('v3-alter').value),octave:Number(editInput('v3-octave').value)};}
   $('v4-insert-note').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
-    ...selected(),mode:'insert',step:$('v3-step').value,alter:Number($('v3-alter').value),
-    octave:Number($('v3-octave').value),type:$('v3-length').value,
+    ...selected(),mode:'insert',...pitch(),type:editInput('v3-length').value,
   }),'성부를 보존한 음표 삽입'));
   $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
-    ...selected(),mode:'duration',type:$('v3-length').value,
+    ...selected(),mode:'duration',type:$('v4-pro-type').value,
   }),'성부별 음표 길이 변경'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
-    ...selected(),step:$('v3-step').value,alter:Number($('v3-alter').value),
-    octave:Number($('v3-octave').value),
+    ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
+    octave:Number($('v4-pro-octave').value),
   }),'8분음표 셋잇단음 변환'));
   const span=()=>({...selected(),endEventIndex:Number($('v4-pro-end').value)-1});
   $('v4-pro-slur').addEventListener('click',()=>void commit(doc=>toggleSlur(doc,span()),'이음줄 추가·해제'));
