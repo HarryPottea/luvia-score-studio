@@ -12,6 +12,7 @@ import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { editableScoreRenderOptions } from './osmd-render-policy.js';
 import { sampleScore } from './sample.js';
 import { mountStudioV4 } from './studio-v4.js';
+import { mountStickyPreview } from './sticky-preview.js';
 import './style.css';
 
 let v4 = null;
@@ -429,3 +430,4 @@ const v3 = mountV3Controls({ state, renderScore, refreshRhythmReport, refreshV2:
 const advanced = mountAdvancedControls({state,v3,setMessage});
 v3.onSelectionChange(() => {advanced.refresh();v4?.onSelectionChange?.();});
 v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore });
+mountStickyPreview();
