@@ -490,6 +490,23 @@ try {
   assert.match(await page.locator('#v4-audit-details').textContent(),/Logic 왕복·시각 품질은 미검증/);
   console.log('BROWSER_STAGE=V4_SCORE_INTEGRITY_PREFLIGHT_CLEAN');
 
+  // Mid-score key and time signatures on an otherwise empty voice/staff tail.
+  await page.selectOption('#v3-measure','1');
+  await page.selectOption('#v4-meter','3/4');
+  await page.click('#v4-meter-empty');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('빈 구간 박자표 변경 완료'));
+  await page.selectOption('#v4-key','1');
+  await page.click('#v4-key-from-measure');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('선택 마디 조표 변경 완료'));
+  const revisedScorePromise=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const revisedScoreXml=await fs.readFile(await (await revisedScorePromise).path(),'utf8');
+  assert.equal((revisedScoreXml.match(/<beats>3<\/beats><beat-type>4<\/beat-type>/g)||[]).length,2);
+  assert.equal((revisedScoreXml.match(/<fifths>1<\/fifths>/g)||[]).length,2);
+  assert.ok((revisedScoreXml.match(/<backup><duration>144<\/duration><\/backup>/g)||[]).length>=1);
+  console.log('BROWSER_STAGE=V4_MID_SCORE_METER_KEY_EDITED');
+
+
   // Real browser MusicXML edit + export of multi-verse Korean lyric, melisma,
   // and sounding + visible tie across the bar line.
   const vocalXml='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
