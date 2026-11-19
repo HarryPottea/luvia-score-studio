@@ -31,6 +31,30 @@ try {
   await page.goto(url,{waitUntil:'domcontentloaded'});
   console.log('BROWSER_STAGE=PAGE_OPEN');
   assert.ok((await page.title()).includes('JaeWoo'));
+
+  // Brand assets must be served as real resources, not SPA fallback HTML.
+  const svgIcon=page.locator('link[rel="icon"][type="image/svg+xml"]');
+  assert.equal(await svgIcon.getAttribute('href'),'./favicon.svg');
+  assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute('sizes'),'180x180');
+  assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'),'./site.webmanifest');
+  for(const [file,size] of [['favicon-32x32.png',32],['apple-touch-icon.png',180],['icon-192.png',192]]) {
+    const response=await page.request.get(new URL(file,url).href);
+    assert.equal(response.status(),200,file+' must be served');
+    const bytes=await response.body();
+    assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a',file+' must be a PNG');
+    assert.equal(bytes.readUInt32BE(16),size,file+' width');
+    assert.equal(bytes.readUInt32BE(20),size,file+' height');
+  }
+  const svgResponse=await page.request.get(new URL('favicon.svg',url).href);
+  assert.equal(svgResponse.status(),200);
+  assert.match(await svgResponse.text(),/fill="#D9FF7A"/);
+  const manifestResponse=await page.request.get(new URL('site.webmanifest',url).href);
+  assert.equal(manifestResponse.status(),200);
+  const manifest=await manifestResponse.json();
+  assert.equal(manifest.short_name,'J-WOO');
+  assert.ok(manifest.icons.some(item=>item.sizes==='192x192'));
+  console.log('BROWSER_STAGE=J_WOO_ICONS_LOADED');
+
   await page.click('#try-sample');
   await page.locator('#score-container svg').first().waitFor({timeout:30000});
   console.log('BROWSER_STAGE=SCORE_RENDERED');
