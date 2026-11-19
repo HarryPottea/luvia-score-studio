@@ -566,6 +566,17 @@ try {
   assert.match(composerXml,/<duration>144<\/duration>/);
   console.log('BROWSER_STAGE=V4_KOREAN_LYRICS_AND_CROSS_BAR_TIE');
 
+  await page.click('#v4-play');
+  await page.waitForFunction(()=>document.querySelector('#v4-play-status')?.textContent?.includes('재생 중'));
+  assert.match(await page.locator('#v4-play-status').textContent(),/1음/);
+  await page.click('#v4-stop');
+  await page.locator('#file-input').setInputFiles({name:'vocal-lyric-tie-roundtrip.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(composerXml)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'));
+  assert.ok((await page.locator('#score-container svg').count())>0);
+  console.log('BROWSER_STAGE=V4_TIED_PLAYBACK_AND_XML_REIMPORT');
+
+
   // The native print book keeps the score as live SVG vector graphics and
   // produces a PDF through Chromium's own print engine (not via JPEG pages).
   const popupPromise=page.waitForEvent('popup');
