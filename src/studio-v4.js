@@ -9,6 +9,7 @@ import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid} from './studio-v4-professional.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
+import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
 import {planBatchLyrics,applyBatchLyrics} from './studio-v4-lyrics-batch.js';
 import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
@@ -117,10 +118,30 @@ const panel=[
   '</section>',
 ].join('');
 
+const chordPanel=[
+  '<section class="control-group v4-chord-editor" aria-label="악보 코드 기호 편집">',
+  '<div class="control-heading"><span>코드 기호 · CHORD SYMBOLS</span><span>12</span></div>',
+  '<p class="control-hint">악보 위 음표를 선택한 뒤 C, Am7, F#maj7, Bb/D처럼 코드를 입력하세요. 음정과 박자는 변경하지 않습니다.</p>',
+  '<p id="v4-chord-location" class="v4-tiny" role="status">코드를 넣을 음표를 선택해 주세요.</p>',
+  '<label for="v4-chord-input">선택 음표의 코드</label>',
+  '<input id="v4-chord-input" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="예: Am7 · F#maj7 · Bb/D" />',
+  '<div class="v4-chord-presets" aria-label="자주 사용하는 코드">',
+  '<button type="button" data-chord="C">C</button><button type="button" data-chord="Am7">Am7</button>',
+  '<button type="button" data-chord="F">F</button><button type="button" data-chord="G7">G7</button>',
+  '<button type="button" data-chord="Bb/D">Bb/D</button>',
+  '</div>',
+  '<div class="v4-inline"><button id="v4-chord-apply" type="button">코드 입력 · 교체</button>',
+  '<button id="v4-chord-remove" type="button" disabled>선택 코드 삭제</button></div>',
+  '<p id="v4-chord-status" class="v4-tiny" role="status" aria-live="polite">코드 입력 후 적용을 누르면 MusicXML과 악보에 반영됩니다. 실행 취소가 가능합니다.</p>',
+  '<p class="v4-tiny">지원: 장·단화음, 6·7·9·11·13, maj7, sus2·sus4, dim·aug, m7b5, add9, 슬래시 코드. 복잡한 기존 코드 표기는 보호됩니다.</p>',
+  '</section>',
+].join('');
+
 export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   const $=id=>document.getElementById(id);
   document.querySelector('.sample-action').insertAdjacentHTML('afterend',intro);
   $('editor-controls').insertAdjacentHTML('beforeend',panel);
+  $('editor-controls').insertAdjacentHTML('beforeend',chordPanel);
   let saveTimer=null,pending=null,skipRendered=false,currentRenderedDoc=null,writing=false;
   let changingMeasureCount=false;
   let disabledDraft=false;
@@ -182,6 +203,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   function onRendered(){
     syncCurrentMeasureCount();
     renderVoiceGrid();
+    syncChordSelection();
     $('v4-audit-result').textContent='악보 변경 또는 재렌더링됨 · 저장 전 다시 검사해 주세요.';
     $('v4-audit-details').replaceChildren();
     if(state.doc!==currentRenderedDoc){
@@ -197,7 +219,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){syncCurrentMeasureCount();void refreshDrafts();}
+  function onLoaded(){syncCurrentMeasureCount();syncChordSelection();void refreshDrafts();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{
@@ -290,6 +312,49 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     await v3.commitExternal(transform,label);
   }
   function selected(){return v3.getSelection();}
+
+  function syncChordSelection(){
+    const where=$('v4-chord-location'),input=$('v4-chord-input');
+    const apply=$('v4-chord-apply'),remove=$('v4-chord-remove');
+    if(!state.doc||state.showBaseline){
+      where.textContent='악보를 연 뒤 음표를 선택해 주세요.';
+      input.disabled=true;apply.disabled=true;remove.disabled=true;return;
+    }
+    try{
+      const position=selected();
+      const found=readChordSymbol(state.doc,position);
+      const part=[...state.doc.documentElement.children].find(p=>p.localName==='part'&&p.getAttribute('id')===position.partId);
+      const name=part?.getAttribute('id')||'선택 파트';
+      where.textContent=name+' · '+(position.measureIndex+1)+'마디 · '+(position.eventIndex+1)+
+        '번째 음표 · 성부 '+found.voice+' / 보표 '+found.staff+
+        (found.exists?(found.editable?' · 현재 코드 '+found.symbol:' · 복잡한 코드 보호'):' · 코드 없음');
+      input.value=found.symbol;
+      input.disabled=!found.editable;
+      apply.disabled=!found.editable;remove.disabled=!found.editable||!found.exists;
+    }catch(error){
+      where.textContent='코드를 넣을 수 없는 음표입니다: '+(error.message||'위치 확인 실패');
+      input.disabled=true;apply.disabled=true;remove.disabled=true;
+    }
+  }
+  $('v4-chord-apply').addEventListener('click',()=>void commit(doc=>editChordSymbol(doc,selected(),{
+    symbol:$('v4-chord-input').value,mode:'set'
+  }),'코드 기호 입력·교체'));
+  $('v4-chord-remove').addEventListener('click',()=>void commit(doc=>editChordSymbol(doc,selected(),{
+    mode:'remove'
+  }),'코드 기호 삭제'));
+  $('v4-chord-input').addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&!event.isComposing){
+      event.preventDefault();$('v4-chord-apply').click();
+    }
+  });
+  for(const button of document.querySelectorAll('.v4-chord-presets [data-chord]')){
+    button.addEventListener('click',()=>{
+      if($('v4-chord-input').disabled)return;
+      $('v4-chord-input').value=button.dataset.chord;
+      $('v4-chord-input').focus();
+    });
+  }
+
   function renderVoiceGrid(){
     const host=$('v4-beat-grid');
     host.replaceChildren();
@@ -562,5 +627,5 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }
   });
   void refreshDrafts();
-  return {beforeOpen,onRendered,onLoaded,onSelectionChange:renderVoiceGrid,stop:()=>player.stop()};
+  return {beforeOpen,onRendered,onLoaded,onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();},stop:()=>player.stop()};
 }
