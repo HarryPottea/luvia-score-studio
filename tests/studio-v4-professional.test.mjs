@@ -1,0 +1,160 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {inspectAdvancedMeasure} from '../src/advanced-score.js';
+import {
+  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin
+} from '../src/studio-v4-professional.js';
+
+// Deterministic DOM supporting the exact MusicXML tree operations used by the
+// isolated notation functions. Chromium separately tests real XML DOM parsing.
+class Element {
+  constructor(localName,attributes={},children=[],raw=''){
+    this.localName=localName;this.map={...attributes};this.children=[];this.raw=String(raw);
+    this.ownerDocument=null;this.namespaceURI=null;this.parentNode=null;
+    for(const child of children)this.appendChild(child);
+  }
+  get attributes(){return Object.entries(this.map).map(([name,value])=>({name,value}));}
+  get textContent(){return this.children.length?this.children.map(x=>x.textContent).join(''):this.raw;}
+  set textContent(t){this.raw=String(t);this.children=[];}
+  get nextSibling(){if(!this.parentNode)return null;const siblings=this.parentNode.children;return siblings[siblings.indexOf(this)+1]||null;}
+  get firstChild(){return this.children[0]||null;}
+  getAttribute(k){return this.map[k]??null;}
+  setAttribute(k,v){this.map[k]=String(v);}
+  removeAttribute(k){delete this.map[k];}
+  appendChild(n){this.children.push(n);n.parentNode=this;n.assignDocument(this.ownerDocument);return n;}
+  insertBefore(n,old){
+    if(!old)return this.appendChild(n);
+    const idx=this.children.indexOf(old);
+    if(idx<0)throw new Error('Insert into missing sibling');
+    if(n.parentNode)n.parentNode.removeChild(n);
+    this.children.splice(idx,0,n);n.parentNode=this;n.assignDocument(this.ownerDocument);return n;
+  }
+  removeChild(n){const idx=this.children.indexOf(n);if(idx<0)throw new Error('Detached child');this.children.splice(idx,1);n.parentNode=null;return n;}
+  replaceChild(n,old){const idx=this.children.indexOf(old);if(idx<0)throw new Error('Detached child');this.children[idx]=n;n.parentNode=this;n.assignDocument(this.ownerDocument);old.parentNode=null;return old;}
+  remove(){this.parentNode?.removeChild(this);}
+  assignDocument(doc){this.ownerDocument=doc;for(const ch of this.children)ch.assignDocument(doc);}
+  cloneNode(deep=false){
+    const copy=new Element(this.localName,this.map,deep?this.children.map(x=>x.cloneNode(true)):[],this.raw);
+    copy.namespaceURI=this.namespaceURI;
+    copy.assignDocument(this.ownerDocument);
+    return copy;
+  }
+}
+class Doc {
+  constructor(root){this.documentElement=root;root.assignDocument(this);}
+  createElementNS(ns,name){const n=new Element(name);n.namespaceURI=ns;n.assignDocument(this);return n;}
+  cloneNode(){return new Doc(this.documentElement.cloneNode(true));}
+}
+const E=(name,kids=[],attrs={},raw='')=>new Element(name,attrs,kids,raw);
+const T=(name,text)=>E(name,[],{},String(text));
+const children=(n,name)=>n.children.filter(c=>c.localName===name);
+const first=(n,name)=>n.children.find(c=>c.localName===name);
+const voiceNote=(step,octave,duration,type,voice,staff,beam='')=>{
+  const nodes=[E('pitch',[T('step',step),T('octave',octave)]),T('duration',duration),
+    T('voice',voice),T('type',type),T('staff',staff)];
+  if(beam)nodes.push(E('beam',[],{number:'1'},beam));
+  return E('note',nodes);
+};
+const voiceRest=(duration,type,voice,staff)=>E('note',[
+  E('rest'),T('duration',duration),T('voice',voice),T('type',type),T('staff',staff)
+]);
+function fixture({withBeam=false,firstVoiceRest=false}={}){
+  const firstNotes=[
+    voiceNote('C',4,24,'eighth','1','1',withBeam?'begin':''),
+    voiceNote('E',4,24,'eighth','1','1',withBeam?'end':''),
+    voiceRest(48,'quarter','1','1'),
+    voiceRest(96,'half','1','1'),
+  ];
+  const measure=E('measure',[
+    E('attributes',[
+      T('divisions',48),E('time',[T('beats',4),T('beat-type',4)]),T('staves',2),
+    ]),
+    ...firstNotes,
+    E('backup',[T('duration',192)]),
+    voiceNote('C',3,48,'quarter','2','2'),
+    voiceRest(48,'quarter','2','2'),
+    voiceNote('G',3,96,'half','2','2'),
+  ],{number:'1'});
+  if(firstVoiceRest)measure.children[0+1]=voiceRest(24,'eighth','1','1');
+  return new Doc(E('score-partwise',[E('part',[measure],{id:'P1'})]));
+}
+const params=(eventIndex=0)=>({partId:'P1',measureIndex:0,eventIndex});
+const part=doc=>first(doc.documentElement,'part');
+const measure=doc=>first(part(doc),'measure');
+const notes=doc=>children(measure(doc),'note');
+const serialize=doc=>{
+  function walk(node){return [node.localName,node.attributes,
+    node.children.map(walk),node.children.length?'':node.textContent];}
+  return JSON.stringify(walk(doc.documentElement));
+};
+const secondVoice=doc=>inspectAdvancedMeasure(doc,'P1',0).events
+  .filter(x=>x.voice==='2')
+  .map(x=>[x.start,x.duration,x.rest,x.step,x.octave]);
+const values=doc=>inspectAdvancedMeasure(doc,'P1',0);
+test('professional: changing voice-2 note consumes its rest without touching voice-1 or backup',()=>{
+  const original=fixture(),before=serialize(original),beforeVoice1=values(original).events.filter(x=>x.voice==='1');
+  const {doc}=editVoiceRhythm(original,{...params(4),mode:'duration',type:'half'});
+  assert.equal(serialize(original),before);
+  assert.equal(first(children(measure(doc),'backup')[0],'duration').textContent,'192');
+  assert.deepEqual(values(doc).events.filter(x=>x.voice==='1'),beforeVoice1);
+  assert.deepEqual(secondVoice(doc).map(x=>[x[0],x[1]]),[[0,96],[96,96]]);
+});
+test('professional: separate-voice rest entry emits a note and conserves both clocks',()=>{
+  const original=fixture(),v2=secondVoice(original);
+  const {doc}=editVoiceRhythm(original,{...params(2),mode:'insert',type:'eighth',step:'A',octave:4});
+  assert.equal(notes(doc).length,8);
+  assert.deepEqual(secondVoice(doc),v2);
+  assert.deepEqual(values(doc).events.filter(x=>x.voice==='1').map(x=>x.duration),[24,24,24,24,96]);
+  assert.equal(values(doc).events[2].step,'A');
+  assert.equal(values(original).events[2].rest,true);
+});
+test('professional: shortening a voice note adds an identical-lane rest',()=>{
+  const original=fixture(),v2=secondVoice(original);
+  const {doc}=editVoiceRhythm(original,{...params(4),mode:'duration',type:'eighth'});
+  assert.deepEqual(secondVoice(doc).map(x=>x[1]),[24,24,48,96]);
+  assert.deepEqual(v2.map(x=>x[0]),[0,48,96]);
+  assert.equal(first(children(measure(doc),'backup')[0],'duration').textContent,'192');
+});
+test('professional: beamed eighths become a correctly timed 3:2 bracketed triplet',()=>{
+  const original=fixture({withBeam:true}),before=serialize(original),v2=secondVoice(original);
+  const {doc}=createEighthTriplet(original,{...params(),step:'D',octave:4});
+  assert.equal(serialize(original),before);
+  assert.equal(notes(doc).length,8);
+  assert.deepEqual(secondVoice(doc),v2);
+  assert.deepEqual(values(doc).events.slice(0,3).map(x=>[x.start,x.duration,x.tuplet]),[
+    [0,16,true],[16,16,true],[32,16,true]
+  ]);
+  const first3=notes(doc).slice(0,3);
+  assert.deepEqual(first3.map(x=>first(x,'beam')?.textContent),['begin','continue','end']);
+  assert.deepEqual(first3.map(x=>first(first(x,'time-modification'),'actual-notes').textContent),['3','3','3']);
+  assert.equal(first(first(first3[0],'notations'),'tuplet').getAttribute('type'),'start');
+  assert.equal(first(first(first3[2],'notations'),'tuplet').getAttribute('type'),'stop');
+  assert.throws(()=>editVoiceRhythm(doc,{...params(),mode:'duration',type:'quarter'}),/셋잇단음/);
+});
+test('professional: hairpin and slur do not change pitch, duration or backup controls',()=>{
+  const original=fixture(),before=values(original);
+  const slur=toggleSlur(original,{...params(),endEventIndex:1}).doc;
+  assert.equal(first(first(notes(slur)[0],'notations'),'slur').getAttribute('type'),'start');
+  assert.equal(first(first(notes(slur)[1],'notations'),'slur').getAttribute('type'),'stop');
+  const removed=toggleSlur(slur,{...params(),endEventIndex:1}).doc;
+  assert.equal(first(notes(removed)[0],'notations'),undefined);
+  const wedges=addHairpin(original,{...params(),endEventIndex:1,kind:'crescendo'}).doc;
+  const types=children(measure(wedges),'direction')
+    .map(d=>first(first(d,'direction-type'),'wedge').getAttribute('type'));
+  assert.deepEqual(types,['crescendo','stop']);
+  assert.deepEqual(values(wedges).events,before.events);
+  assert.deepEqual(values(slur).events.map(x=>[x.start,x.duration]),before.events.map(x=>[x.start,x.duration]));
+});
+test('professional: reject cross-voice spans, impure beams, impossible tuplets and insufficient rests',()=>{
+  const doc=fixture();
+  assert.throws(()=>toggleSlur(doc,{...params(),endEventIndex:5}),/같은 성부/);
+  assert.throws(()=>addHairpin(doc,{...params(),endEventIndex:5}),/같은 성부/);
+  assert.throws(()=>editVoiceRhythm(doc,{...params(4),mode:'duration',type:'whole'}),/쉼표가 충분하지/);
+  const bad=fixture({withBeam:true});
+  first(notes(bad)[1],'beam').textContent='continue';
+  assert.throws(()=>createEighthTriplet(bad,{...params()}),/빔/);
+  const noDiv=fixture();
+  first(first(measure(noDiv),'attributes'),'divisions').textContent='16';
+  assert.throws(()=>createEighthTriplet(noDiv,{...params()}),/divisions/);
+  assert.equal(values(doc).reason,null);
+});
