@@ -1,0 +1,130 @@
+// J-WOO vector print book: render each individual part with local OSMD
+// and hand the resulting live SVG pages to the browser's native print-to-PDF.
+// No new npm dependencies, no raster/JPEG conversion, no server upload.
+import {OpenSheetMusicDisplay} from 'opensheetmusicdisplay';
+import {applyLayoutPreset} from './layout-profile.js';
+import {applyFixedA4Profile,fixedA4Profile} from './a4-engraving.js';
+
+const FORMATS={A4_P:{w:'210mm',h:'297mm'},A4_L:{w:'297mm',h:'210mm'}};
+const MAX_PARTS=12,MAX_PAGES=80,MAX_PART_PAGES=24;
+const direct=(n,t)=>n?[...n.children].find(x=>x.localName===t)||null:null;
+const partsOf=doc=>[...doc.documentElement.children].filter(x=>x.localName==='part');
+export function partOnlyDocument(source,partId){
+  if(source?.documentElement?.localName!=='score-partwise'||typeof partId!=='string')
+    throw new Error('파트별 인쇄는 MusicXML partwise 악보만 지원합니다.');
+  const document=source.cloneNode(true);
+  const part=partsOf(document).find(p=>p.getAttribute('id')===partId);
+  if(!part)throw new Error('인쇄할 악기 파트를 찾지 못했습니다.');
+  for(const p of partsOf(document))if(p!==part)p.remove();
+  const partList=direct(document.documentElement,'part-list');
+  if(partList)for(const node of [...partList.children]){
+    if(node.localName==='part-group'||node.localName==='score-part'&&node.getAttribute('id')!==partId)
+      node.remove();
+  }
+  return document;
+}
+export function inspectPrintableSvg(svg){
+  if(!svg||svg.localName!=='svg')throw new Error('악보 SVG 페이지가 유효하지 않습니다.');
+  if(svg.querySelector('script, foreignObject, iframe, image'))
+    throw new Error('원격 이미지나 실행 요소가 포함된 SVG는 인쇄하지 않습니다.');
+  for(const node of [svg,...svg.querySelectorAll('*')]){
+    for(const attr of [...node.attributes]){
+      if(/^on/i.test(attr.name))throw new Error('악보 SVG에 이벤트 실행 속성이 있습니다.');
+      if(['href','xlink:href','src'].includes(attr.name.toLowerCase())&&
+        /^(?:https?:|\/\/|data:|javascript:)/i.test(attr.value.trim()))
+        throw new Error('외부 리소스가 참조된 악보 SVG는 인쇄하지 않습니다.');
+    }
+  }
+  return true;
+}
+export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='auto',measureNumbers=true,
+  onProgress=()=>{}}={}){
+  if(!FORMATS[pageFormat]||!Array.isArray(parts)||parts.length<1||parts.length>MAX_PARTS)
+    throw new Error('벡터 파트보는 A4 규격에서 1~12개 파트까지 출력합니다.');
+  const output=[];
+  for(const [index,p] of parts.entries()){
+    if(!p||typeof p.id!=='string'||!p.id)throw new Error('인쇄 파트를 선택해 주세요.');
+    const partDoc=partOnlyDocument(doc,p.id);
+    const holder=document.createElement('div');
+    const profile=fixedA4Profile(partDoc,pageFormat);
+    holder.style.cssText='position:fixed;left:-100000px;top:0;visibility:hidden;pointer-events:none;'+
+      'width:'+profile.pageWidthPx+'px;max-width:none;background:white;';
+    document.body.appendChild(holder);
+    let osmd=null;
+    try{
+      osmd=new OpenSheetMusicDisplay(holder,{
+        autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,
+        drawMeasureNumbers:measureNumbers,pageFormat,
+      });
+      await osmd.load(partDoc);
+      applyFixedA4Profile(osmd,partDoc,pageFormat);
+      applyLayoutPreset(osmd,layout,partDoc);
+      osmd.render();
+      const rendered=[...holder.querySelectorAll('svg')];
+      if(rendered.length<1||rendered.length>MAX_PART_PAGES)
+        throw new Error('파트별 페이지가 없거나 너무 많아 벡터 출력이 중단됐습니다.');
+      if(output.length+rendered.length>MAX_PAGES)
+        throw new Error('벡터 파트보는 전체 80페이지까지만 한 번에 인쇄할 수 있습니다.');
+      for(const svg of rendered){
+        inspectPrintableSvg(svg);
+        output.push({partName:String(p.name||p.id),partId:p.id,svg:svg.cloneNode(true)});
+      }
+    }finally{
+      try{osmd?.clear?.();}catch{}
+      holder.remove();
+    }
+    onProgress((index+1)+'/'+parts.length+' · '+p.name+' 렌더링 완료');
+  }
+  return output;
+}
+export function populateVectorPrintWindow(win,{pages,title='J-WOO Score Studio',pageFormat='A4_P'}={}){
+  if(!win||!Array.isArray(pages)||!pages.length||!FORMATS[pageFormat])
+    throw new Error('출력할 페이지와 창을 확인할 수 없습니다.');
+  const d=win.document;
+  d.title=String(title);
+  d.documentElement.lang='ko';
+  d.head.replaceChildren();
+  const meta=d.createElement('meta');meta.setAttribute('charset','utf-8');d.head.append(meta);
+  const viewport=d.createElement('meta');
+  viewport.setAttribute('name','viewport');viewport.setAttribute('content','width=device-width,initial-scale=1');
+  d.head.append(viewport);
+  const css=d.createElement('style');
+  const {w,h}=FORMATS[pageFormat];
+  css.textContent=':root{font-family:system-ui,sans-serif;background:#e5e5e1;color:#182015}'+
+    'body{margin:0}.controls{position:sticky;top:0;background:#1a241a;color:white;padding:13px 18px;'+
+    'display:flex;gap:12px;align-items:center;justify-content:space-between;z-index:30}'+
+    '.controls button{border:0;background:#d8fa8a;color:#131b10;padding:10px 15px;font-weight:700;cursor:pointer}'+
+    '.sheet{width:'+w+';height:'+h+';margin:16px auto;overflow:hidden;background:white;'+
+    'box-shadow:0 2px 16px #0002;break-after:page;page-break-after:always}'+
+    '.sheet svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%}'+
+    '.hint{font-size:12px;opacity:.8}'+
+    '@page{size:'+w+' '+h+';margin:0}'+
+    '@media print{html,body{margin:0!important;padding:0!important;background:white!important}'+
+    '.controls{display:none!important}.sheet{margin:0;box-shadow:none;border:0;break-after:page;'+
+    'page-break-after:always}.sheet:last-child{break-after:auto;page-break-after:auto}'+
+    '*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}';
+  d.head.append(css);
+  d.body.replaceChildren();
+  const bar=d.createElement('header');bar.className='controls';
+  const titleEl=d.createElement('div');const bold=d.createElement('strong');
+  bold.textContent='J-WOO · 벡터 파트보 인쇄';
+  const hint=d.createElement('div');hint.className='hint';
+  hint.textContent=pages.length+'페이지 · '+w+' × '+h+
+    ' · 인쇄 메뉴에서 PDF로 저장하세요. 글꼴과 페이지 넘김은 반드시 검수하세요.';
+  titleEl.append(bold,hint);
+  const button=d.createElement('button');button.type='button';button.textContent='인쇄 / PDF 저장';
+  button.addEventListener('click',()=>win.print());
+  bar.append(titleEl,button);d.body.append(bar);
+  for(const page of pages){
+    inspectPrintableSvg(page.svg);
+    const section=d.createElement('section');section.className='sheet';
+    section.dataset.partId=page.partId;
+    section.setAttribute('aria-label',page.partName+' 파트 악보');
+    const svg=d.importNode(page.svg,true);
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
+    section.append(svg);d.body.append(section);
+  }
+  return {pages:pages.length,format:pageFormat,mode:'NATIVE_VECTOR_PRINT',
+    pdfVerified:false,visualQualityVerified:false};
+}
