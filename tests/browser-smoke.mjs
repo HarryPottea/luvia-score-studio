@@ -757,6 +757,72 @@ try {
   assert.ok((await page.locator('#score-container svg').count())>0);
   console.log('BROWSER_STAGE=V4_SMART_KOREAN_LYRICS_UNDO_REDO_XML_REIMPORT');
 
+  // Sticky score follows the long inspector instead of scrolling away.
+  // A4 SVG dimensions must be stable, and the score viewport remains scrollable.
+  await page.evaluate(()=>document.querySelector('#v4-lyrics-batch-text')
+    .scrollIntoView({block:'center',behavior:'instant'}));
+  await page.waitForFunction(()=>document.querySelector('.preview-column')?.classList.contains('is-pinned'),null,{timeout:10000});
+  const stickyDesktop=await page.evaluate(()=>{
+    const preview=document.querySelector('.preview-column');
+    const shell=document.querySelector('#preview-shell');
+    const svg=document.querySelector('#score-container svg');
+    return {top:preview.getBoundingClientRect().top,position:getComputedStyle(preview).position,
+      height:preview.getBoundingClientRect().height,shellHeight:shell.clientHeight,
+      scrollHeight:shell.scrollHeight,svgWidth:svg?.getBoundingClientRect().width,
+      viewportHeight:window.innerHeight};
+  });
+  assert.equal(stickyDesktop.position,'sticky');
+  assert.ok(Math.abs(stickyDesktop.top-14)<4,'Desktop score should follow at 14px from viewport top');
+  assert.ok(stickyDesktop.height<=stickyDesktop.viewportHeight-20,'Pinned preview must fit in viewport');
+  assert.ok(stickyDesktop.scrollHeight>stickyDesktop.shellHeight,'Long score pages remain independently scrollable');
+  assert.ok(Math.abs(stickyDesktop.svgWidth-210*96/25.4)<3,'Sticky score must keep fixed A4 geometry');
+  const internalScroll=await page.evaluate(()=>{
+    const shell=document.querySelector('#preview-shell');
+    const available=shell.scrollHeight-shell.clientHeight;
+    const target=Math.min(90,available);
+    shell.scrollTop=target;
+    return {available,target,actual:shell.scrollTop,overflowY:getComputedStyle(shell).overflowY};
+  });
+  assert.equal(internalScroll.overflowY,'auto');
+  assert.ok(internalScroll.available>0,'The score viewport should have independently scrollable content');
+  assert.ok(Math.abs(internalScroll.actual-internalScroll.target)<=2,'Preview scroll position remains under user control');
+  await page.screenshot({path:output+'/sticky-desktop.png'});
+  console.log('BROWSER_STAGE=FOLLOW_ALONG_SCORE_DESKTOP '+JSON.stringify(stickyDesktop));
+
+  // Phone: the score appears above the settings, with a compact sticky viewport.
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>document.querySelector('#v4-lyrics-batch-text')
+    .scrollIntoView({block:'center',behavior:'instant'}));
+  await page.waitForFunction(()=>document.querySelector('.preview-column')?.classList.contains('is-pinned'),null,{timeout:10000});
+  const stickyPhone=await page.evaluate(()=>{
+    const preview=document.querySelector('.preview-column');
+    const shell=document.querySelector('#preview-shell');
+    return {top:preview.getBoundingClientRect().top,height:preview.getBoundingClientRect().height,
+      shellHeight:shell.clientHeight,position:getComputedStyle(preview).position,
+      order:getComputedStyle(preview).order,viewportHeight:window.innerHeight};
+  });
+  assert.equal(stickyPhone.position,'sticky');
+  assert.equal(stickyPhone.order,'-1');
+  assert.ok(Math.abs(stickyPhone.top)<4,'Phone score should remain pinned at top of viewport');
+  assert.ok(stickyPhone.height<400,'Phone score must not cover most of the settings');
+  assert.ok(stickyPhone.shellHeight<=190,'Phone preview is compact and scrollable');
+  await page.screenshot({path:output+'/sticky-phone.png'});
+  console.log('BROWSER_STAGE=FOLLOW_ALONG_SCORE_PHONE '+JSON.stringify(stickyPhone));
+
+  // Printing must restore unbounded A4 pages, without clipping the sticky shell.
+  await page.emulateMedia({media:'print'});
+  const printPreview=await page.evaluate(()=>({
+    position:getComputedStyle(document.querySelector('.preview-column')).position,
+    maxHeight:getComputedStyle(document.querySelector('#preview-shell')).maxHeight,
+    overflow:getComputedStyle(document.querySelector('#preview-shell')).overflow,
+  }));
+  assert.equal(printPreview.position,'static');
+  assert.equal(printPreview.maxHeight,'none');
+  assert.equal(printPreview.overflow,'visible');
+  await page.emulateMedia({media:'screen'});
+  await page.setViewportSize({width:1440,height:1000});
+  console.log('BROWSER_STAGE=FOLLOW_ALONG_SCORE_PRINT_UNCLIPPED');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));

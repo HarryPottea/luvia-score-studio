@@ -80,3 +80,59 @@
 
 /* A4 pages retain a fixed physical preview geometry. The dark viewport scrolls instead of shrinking the score on phones. */
 .preview-shell{overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch}
+
+
+/* Follow-along score: the control column drives document scroll; the score stays
+   independently scrollable without changing fixed A4 SVG dimensions. */
+.workspace{overflow:visible}
+.work-grid{align-items:start}
+.preview-column{
+  position:sticky;top:14px;align-self:start;z-index:4;min-height:0;
+  max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);
+  transition:background-color .24s ease,box-shadow .3s ease,border-radius .24s ease;
+}
+.preview-shell{
+  flex:0 1 auto;min-height:0;
+  max-height:min(1120px,calc(100vh - 158px));
+  max-height:min(1120px,calc(100dvh - 158px));
+  overscroll-behavior:contain;
+}
+.preview-column.is-pinned{
+  background:#1c231d;border-radius:7px;
+  box-shadow:0 17px 42px rgba(0,0,0,.37),inset 0 0 0 1px rgba(189,224,147,.16);
+}
+.preview-column::before{
+  content:"";position:absolute;left:38px;right:38px;top:0;height:2px;
+  background:linear-gradient(90deg,var(--lime),transparent 75%);
+  opacity:0;pointer-events:none;transition:opacity .28s ease;
+}
+.preview-column.is-pinned::before{opacity:1}
+@media(max-width:920px) and (min-width:671px){
+  .preview-column::before{left:22px;right:22px}
+}
+@media(max-width:670px){
+  /* On phones the original score lived below all controls. Put a compact score
+     above the controls so it can remain visible while settings are edited. */
+  .work-grid{display:flex;flex-direction:column;align-items:stretch}
+  .preview-column{
+    order:-1;position:sticky;top:0;align-self:stretch;z-index:12;
+    width:100%;padding:9px 17px 11px;min-height:0;
+    max-height:min(360px,calc(100dvh - 12px));
+    background:#202720;border-bottom:1px solid #465745;
+  }
+  .preview-column::before{left:17px;right:17px}
+  .preview-toolbar{padding:6px 0 8px;gap:6px}
+  .preview-shell{flex:0 1 auto;min-height:100px;max-height:clamp(120px,24dvh,185px)}
+  .preview-column .message{max-height:2.7em;overflow-y:auto}
+  .controls :is(button,input,select,textarea){scroll-margin-top:330px}
+}
+@media(prefers-reduced-motion:reduce){
+  .preview-column,.preview-column::before{transition:none!important}
+}
+@media print{
+  .preview-column{position:static!important;top:auto!important;z-index:auto!important;
+    max-height:none!important;background:white!important;border:0!important;
+    border-radius:0!important;box-shadow:none!important;transition:none!important}
+  .preview-column::before{display:none!important}
+  .preview-shell{max-height:none!important;min-height:0!important;overflow:visible!important}
+}
