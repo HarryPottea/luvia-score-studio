@@ -107,6 +107,14 @@ try {
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('셈여림 기보 완료'));
   await page.click('#v4-apply-articulation');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('아티큘레이션 토글 완료'));
+  await page.selectOption('#v4-measure-count','1');
+  await page.click('#v4-add-measures');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('빈 마디 추가 완료'));
+  assert.match(await page.locator('#score-info').textContent(),/5개 마디/);
+  await page.selectOption('#v4-key','-1');
+  await page.click('#v4-apply-key');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('전체 조표 변경 완료'));
+  console.log('BROWSER_STAGE=V4_MEASURE_EXTENSION_AND_KEY_SIGNATURE');
   await page.selectOption('#v3-measure','1');
   await page.click('#v4-apply-layout');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('줄·페이지 나눔 완료'));
@@ -117,6 +125,8 @@ try {
   assert.match(v4Text,/<direction-type>/);
   assert.match(v4Text,/<metronome>/);
   assert.match(v4Text,/<staccato/);
+  assert.match(v4Text,/<fifths>-1<\/fifths>/);
+  assert.equal((v4Text.match(/<measure number="/g)||[]).length,5);
   assert.match(v4Text,/new-system="yes"/);
   assert.match(v4Text,/<duration>16<\/duration>/);
   assert.match(v4Text,/<step>C<\/step>/);
