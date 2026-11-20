@@ -141,3 +141,6 @@ export function transposeMeasurePassage(source,{
   return {doc,change:{action:'transpose-measure-passage',partId,start,end,semitones,
     spelling,notes:changes.length,chords,nextMeasureIndex:start,nextEventIndex:0}};
 }
+
+// Shared vetted pitch operations for scoped single-voice transposition.
+export {noteMIDI as readWrittenMidi,replacePitch as writeWrittenMidi};
