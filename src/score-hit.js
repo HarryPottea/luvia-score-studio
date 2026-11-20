@@ -43,8 +43,12 @@ function staffOffsets(doc,visibleParts) {
   }
   return {offsets,total};
 }
-const signature=e=>e&&e.step&&Number.isInteger(e.alter)&&Number.isInteger(e.octave)&&Number.isInteger(e.start)&&Number.isInteger(e.duration)
-  ?[e.start,e.duration,e.step,e.alter,e.octave].join('/') : null;
+const signature=e=>{
+  if(!e||!Number.isInteger(e.start)||!Number.isInteger(e.duration))return null;
+  if(e.rest===true)return ['rest',e.start,e.duration].join('/');
+  return e.step&&Number.isInteger(e.alter)&&Number.isInteger(e.octave)
+    ?['note',e.start,e.duration,e.step,e.alter,e.octave].join('/') : null;
+};
 // Do not infer voice identities from sequence order: duplicated identities stay read-only.
 export function matchScoreEvents(events,graphics) {
   const source=new Map(),visual=new Map();
@@ -83,6 +87,18 @@ function noteHead(gn,host) {
   if(live?.length>1&&Number.isInteger(idx)&&valid(live[idx]))return live[idx];
   return null;
 }
+function restGlyph(gn,host) {
+  const group=gn?.getSVGGElement?.();
+  if(!group?.isConnected||!host.contains(group))return null;
+  const stave=group.closest?.('.vf-stavenote')||group;
+  if(!host.contains(stave)||stave.querySelectorAll?.('.vf-notehead')?.length)return null;
+  const restMarks=stave.querySelectorAll?.('.vf-rest')||[];
+  if(restMarks.length===1)return restMarks[0];
+  // OSMD and VexFlow expose ordinary rests as a single stavenote group.
+  // Unknown or multiple glyphs are not bound to avoid ambiguous hit regions.
+  return stave.matches?.('.vf-stavenote')&&
+    stave.querySelectorAll?.('.vf-stavenote')?.length===0?stave:null;
+}
 export function graphicalTargets(osmd,doc,visibleParts,host) {
   if(!osmd?.GraphicSheet||!doc||!Array.isArray(visibleParts)||!host)return [];
   const layout=staffOffsets(doc,visibleParts);
@@ -99,23 +115,27 @@ export function graphicalTargets(osmd,doc,visibleParts,host) {
       for(let staff=1;staff<=location.count;staff++) {
         const staffEntries=row[location.offset+staff-1]?.staffEntries;
         if(!Array.isArray(staffEntries))continue;
-        const expected=measure.events.filter(e=>Number(e.staff)===staff&&e.editablePitch&&!e.protectedMarkup);
+        const expected=measure.events.filter(e=>Number(e.staff)===staff&&
+          !e.protectedMarkup&&(e.editablePitch||e.rest));
         const drawn=[];
         for(const entry of staffEntries)for(const voice of entry.graphicalVoiceEntries||[])for(const gn of voice.notes||[]) {
           const src=gn?.sourceNote;
-          if(!src||src.isRest?.()!==false)continue;
-          const pitch=sourcePitch(src),time=src.ParentVoiceEntry?.Timestamp?.RealValue,duration=src.Length?.RealValue;
-          if(!pitch||!Number.isFinite(time)||!Number.isFinite(duration))continue;
+          if(!src||typeof src.isRest!=='function')continue;
+          const rest=src.isRest()===true;
+          const pitch=rest?null:sourcePitch(src);
+          const time=src.ParentVoiceEntry?.Timestamp?.RealValue,duration=src.Length?.RealValue;
+          if(!rest&&!pitch||!Number.isFinite(time)||!Number.isFinite(duration))continue;
           const start=Math.round(time*measure.divisions*4),length=Math.round(duration*measure.divisions*4);
           if(!close(start/(measure.divisions*4),time)||!close(length/(measure.divisions*4),duration))continue;
-          drawn.push({...pitch,start,duration:length,gn});
+          drawn.push({...pitch,start,duration:length,rest,gn});
         }
         for(const pair of matchScoreEvents(expected,drawn)) {
-          const element=noteHead(pair.graphic.gn,host);
+          const rest=pair.event.rest===true;
+          const element=rest?restGlyph(pair.graphic.gn,host):noteHead(pair.graphic.gn,host);
           if(!element||used.has(element))continue;
           used.add(element);
           found.push({partId:part.id,measureIndex:measure.index,eventIndex:pair.event.eventIndex,
-            voice:pair.event.voice,staff,element});
+            voice:pair.event.voice,staff,element,rest});
         }
       }
     }
@@ -182,18 +202,18 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   function clearHandlers(){for(const off of cleanups)off();cleanups=[];drag=null;}
   function attach(item){
     const el=item.element;
-    el.classList.add('jwoo-note-target');el.setAttribute('tabindex','0');
+    el.classList.add(item.rest?'jwoo-rest-target':'jwoo-note-target');el.setAttribute('tabindex','0');
     el.setAttribute('role','button');
-    el.setAttribute('aria-label',(item.measureIndex+1)+'마디 '+item.voice+'성부 '+item.staff+'보표 음표');
+    el.setAttribute('aria-label',(item.measureIndex+1)+'마디 '+item.voice+'성부 '+item.staff+'보표 '+(item.rest?'쉼표':'음표'));
     addHitArea(el);
     el.setAttribute('aria-pressed','false');
     function key(event) {
       if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
       event.preventDefault();selected=item;onMeasurePointer(item.measureIndex,!!event.shiftKey);select(item);highlight();
-      if(isLyricMode()&&(event.key==='Enter'||event.key===' ')){
+      if(!item.rest&&isLyricMode()&&(event.key==='Enter'||event.key===' ')){
         editLyric(item,el);return;
       }
-      if(!isLyricMode()&&(event.key==='ArrowUp'||event.key==='ArrowDown'))
+      if(!item.rest&&!isLyricMode()&&(event.key==='ArrowUp'||event.key==='ArrowDown'))
         movePitch(item,event.key==='ArrowUp'?1:-1);
     }
     el.addEventListener('keydown',key);
@@ -236,6 +256,11 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     }
     if(!item)return;
     selected=item;onMeasurePointer(item.measureIndex,!!event.shiftKey);select(item);highlight();
+    if(item.rest){
+      drag=null;
+      event.preventDefault();event.stopPropagation();
+      return;
+    }
     if(isLyricMode()){
       drag=null;
       editLyric(item,item.element);
@@ -249,7 +274,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   function rootDouble(event){
     if(disposed||!selected)return;
     const item=targets.find(item=>same(item,selected));
-    if(!item||item.element.closest?.('.vf-stavenote')!==event.target?.closest?.('.vf-stavenote'))return;
+    if(!item||item.rest||item.element.closest?.('.vf-stavenote')!==event.target?.closest?.('.vf-stavenote'))return;
     const box=item.element.getBoundingClientRect(),pad=5;
     if(event.clientX<box.left-pad||event.clientX>box.right+pad||
       event.clientY<box.top-pad||event.clientY>box.bottom+pad)return;
