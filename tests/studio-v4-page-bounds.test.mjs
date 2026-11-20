@@ -40,3 +40,10 @@ test('valid pixel width and height provide bounds when viewBox is absent',()=>{
   assert.equal(report.measuredPages,1);
   assert.equal(report.overflowPages,0);
 });
+
+test('an empty SVG bounding box is not a validated zero-overflow page',()=>{
+  const result=inspectSvgPageBounds([svg({ink:{x:0,y:0,width:0,height:0}})]);
+  assert.equal(result.measuredPages,0);
+  assert.equal(result.unknownPages,1);
+  assert.equal(result.complete,false);
+});
