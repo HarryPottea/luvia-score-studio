@@ -3,6 +3,7 @@ import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from './studio-v4-measure-blocks.js';
 import {transposeMeasurePassage} from './studio-v4-passage-transpose.js';
 import {transposeWrittenVoice} from './studio-v4-voice-transpose.js';
+import {editArticulationForVoice} from './studio-v4-articulation-batch.js';
 import './studio-v4-measure-toolbar.css';
 
 const direct=(n,tag)=>n?[...n.children].filter(c=>c.localName===tag):[];
@@ -35,6 +36,12 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     '<label>대상 성부 <select id="jwoo-transpose-voice" aria-label="선택 악기에서 이조할 성부"><option value="1">1성부</option><option value="2">2성부</option><option value="3">3성부</option><option value="4">4성부</option></select></label>',
     '<label class="jwoo-transpose-chords"><input id="jwoo-transpose-chords" type="checkbox" checked /> 코드 기호도 함께 이조 (전체/파트 선택)</label>',
     '<button type="button" data-act="transpose">선택 구간 음정 일괄 이조</button>',
+    '</div>',
+    '<div class="jwoo-articulation-controls">',
+    '<label>표현 기호 <select id="jwoo-batch-articulation-kind"><option value="staccato">스타카토</option><option value="staccatissimo">스타카티시모</option><option value="tenuto">테누토</option><option value="accent">악센트</option><option value="strong-accent">강한 악센트</option><option value="detached-legato">데타셰 레가토</option><option value="spiccato">스피카토</option></select></label>',
+    '<label>작업 <select id="jwoo-batch-articulation-mode"><option value="add">일괄 적용</option><option value="remove">일괄 제거</option></select></label>',
+    '<label>현재 악기의 성부 <select id="jwoo-batch-articulation-voice"><option value="1">1성부</option><option value="2">2성부</option><option value="3">3성부</option><option value="4">4성부</option></select></label>',
+    '<button type="button" data-act="articulation">선택 마디의 성부 표현 기호 일괄 편집</button>',
     '</div>',
     '<p class="jwoo-bar-hint">마디 번호를 누르거나 악보 음표를 클릭해 선택하세요. Shift+클릭은 여러 마디 선택,',
     ' 모바일에서는 시작·끝 번호로 범위를 지정합니다. 모든 파트에 동일하게 적용되며 실행 취소할 수 있습니다.',
@@ -167,6 +174,19 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
   async function execute(action){
     try{
       const region=scope();
+      if(action==='articulation'){
+        const activePart=$('v3-part')?.value;
+        if(!activePart)throw new Error('작곡 편집기에서 악기 파트를 선택해 주세요.');
+        const kind=$('jwoo-batch-articulation-kind').value,
+          mode=$('jwoo-batch-articulation-mode').value,
+          voice=$('jwoo-batch-articulation-voice').value;
+        const before=state.doc;
+        await commit(doc=>editArticulationForVoice(doc,{
+          ...region,partId:activePart,kind,mode,voice
+        }),mode==='add'?'선택 성부 표현 기호 일괄 적용':'선택 성부 표현 기호 일괄 제거');
+        if(before!==state.doc)render();
+        return;
+      }
       if(action==='transpose'){
         const semitones=Number($('jwoo-transpose-semitones').value);
         const spelling=$('jwoo-transpose-spelling').value;
