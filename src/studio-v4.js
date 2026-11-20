@@ -5,6 +5,7 @@ import {deleteScoreMeasure} from './studio-v4-measure-delete.js';
 import {mountMeasureToolbar} from './studio-v4-measure-toolbar.js';
 import {buildPlaybackTimeline,clipPlaybackToMeasures,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
+import {saveLocalCheckpoint,listLocalCheckpoints,loadLocalCheckpoint,removeLocalCheckpoint} from './studio-v4-checkpoints.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {createPartSvgZip} from './studio-v4-part-svg.js';
 import {baseScoreName} from './part-export.js';
@@ -43,6 +44,16 @@ const intro=[
   '<div class="v4-draft-area"><label for="v4-draft-select">기기에 임시 저장된 악보</label><select id="v4-draft-select"><option value="">불러오는 중…</option></select>',
   '<div class="v4-inline"><button id="v4-restore" type="button" disabled>임시 저장 복원</button><button id="v4-delete-draft" type="button" disabled>임시본 삭제</button></div>',
   '<p id="v4-draft-status" class="v4-tiny" role="status">기기 저장소를 확인합니다.</p></div>',
+  '<div class="v4-draft-area"><strong>복원 시점 직접 보관 (덮어쓰기 방지)</strong>',
+  '<label for="v4-checkpoint-label">복원 시점 메모</label><input id="v4-checkpoint-label" type="text" maxlength="80" placeholder="예: 후렴 편집 전" />',
+  '<button id="v4-checkpoint-save" type="button" disabled>현재 악보를 복원 시점으로 저장</button>',
+  '<label for="v4-checkpoint-select">이 기기에 보관된 복원 시점</label>',
+  '<select id="v4-checkpoint-select"><option value="">불러오는 중…</option></select>',
+  '<div class="v4-inline"><button id="v4-checkpoint-restore" type="button" disabled>선택 시점 복원</button>',
+  '<button id="v4-checkpoint-delete" type="button" disabled>선택 시점 삭제</button></div>',
+  '<p id="v4-checkpoint-status" class="v4-tiny" role="status">각 시점은 별도 저장되며 자동 저장에 덮어써지지 않습니다.</p>',
+  '<p class="v4-tiny">최대 20개 · 총 32MiB. 삭제는 직접 확인해야 합니다. 이 브라우저의 저장소에만 보관됩니다.',
+  ' 기기 초기화·브라우저 데이터 삭제에 대비해 MusicXML 파일도 별도 저장하세요.</p></div>',
   '</section>',
 ].join('');
 const panel=[
@@ -206,6 +217,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   let changingMeasureCount=false;
   let disabledDraft=false;
   let measureToolbar=null;
+  let savingCheckpoint=false;
   const player=createAuditionPlayer({onState:playing=>{
     $('v4-play').disabled=playing;
     $('v4-play-range').disabled=playing;
@@ -214,6 +226,31 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   }});
   const localeTime=ms=>new Date(ms).toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'});
   function draftStatus(text){$('v4-draft-status').textContent=text;}
+  function checkpointStatus(text){$('v4-checkpoint-status').textContent=text;}
+  async function refreshCheckpoints(){
+    try{
+      const list=await listLocalCheckpoints(),select=$('v4-checkpoint-select');
+      const previous=select.value;
+      select.replaceChildren();
+      const blank=document.createElement('option');
+      blank.value='';blank.textContent=list.length?'복원할 시점 선택':'보관된 시점 없음';
+      select.append(blank);
+      for(const record of list){
+        const item=document.createElement('option');
+        item.value=record.id;
+        item.textContent=record.filename+' · '+record.label+' · '+localeTime(record.savedAt);
+        select.append(item);
+      }
+      if(list.some(x=>x.id===previous))select.value=previous;
+      $('v4-checkpoint-restore').disabled=!select.value;
+      $('v4-checkpoint-delete').disabled=!select.value;
+      if(!savingCheckpoint)checkpointStatus(list.length+'개 복원 시점 보관 중 · 자동 임시 저장과 독립');
+    }catch(error){
+      $('v4-checkpoint-restore').disabled=true;
+      $('v4-checkpoint-delete').disabled=true;
+      checkpointStatus('체크포인트 목록을 읽을 수 없습니다: '+(error.message||'브라우저 제한'));
+    }
+  }
   async function refreshDrafts(){
     try{
       const list=await listLocalDrafts();
@@ -268,6 +305,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     inlineLyrics.onRendered();
     syncCurrentMeasureCount();
     syncMeasureDelete();
+    $('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;
     measureToolbar?.render();
     renderVoiceGrid();
     syncChordSelection();
@@ -286,7 +324,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();void refreshDrafts();}
+  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;void refreshDrafts();void refreshCheckpoints();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{
@@ -384,6 +422,45 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     const id=$('v4-draft-select').value;if(!id)return;
     if(!confirm('선택한 로컬 임시 저장본을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.'))return;
     try{await removeLocalDraft(id);await refreshDrafts();}catch(error){draftStatus('삭제 실패: '+error.message);}
+  });
+  $('v4-checkpoint-save').addEventListener('click',async()=>{
+    if(!state.doc||state.showBaseline||savingCheckpoint)return;
+    savingCheckpoint=true;$('v4-checkpoint-save').disabled=true;
+    try{
+      const xml=new XMLSerializer().serializeToString(state.doc);
+      const saved=await saveLocalCheckpoint({filename:state.filename,xml,label:$('v4-checkpoint-label').value});
+      await refreshCheckpoints();
+      $('v4-checkpoint-select').value=saved.id;
+      $('v4-checkpoint-restore').disabled=false;
+      $('v4-checkpoint-delete').disabled=false;
+      checkpointStatus(saved.label+' · '+localeTime(saved.savedAt)+' 복원 시점 저장 완료 (SHA-256 확인 가능)');
+    }catch(error){checkpointStatus('체크포인트 저장 실패: '+(error.message||'저장소 제한'));}
+    finally{savingCheckpoint=false;$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline;}
+  });
+  $('v4-checkpoint-select').addEventListener('change',()=>{
+    const selected=!!$('v4-checkpoint-select').value;
+    $('v4-checkpoint-restore').disabled=!selected;
+    $('v4-checkpoint-delete').disabled=!selected;
+  });
+  $('v4-checkpoint-restore').addEventListener('click',async()=>{
+    const id=$('v4-checkpoint-select').value;
+    if(!id||state.showBaseline)return;
+    if(state.doc&&!confirm('현재 작업 화면을 선택한 복원 시점으로 교체합니다. 현재 내용을 MusicXML로 저장했나요?'))return;
+    try{
+      const saved=await loadLocalCheckpoint(id);
+      const ok=await openScore(saved.xml,saved.filename);
+      checkpointStatus(ok?'무결성 검사 통과 · '+saved.label+' · '+localeTime(saved.savedAt)+' 복원 완료':
+        '복원본 MusicXML을 표시하지 못했습니다. 원래 화면과 저장된 시점을 확인해 주세요.');
+    }catch(error){checkpointStatus('체크포인트 복원 차단: '+(error.message||'무결성 확인 실패'));}
+  });
+  $('v4-checkpoint-delete').addEventListener('click',async()=>{
+    const id=$('v4-checkpoint-select').value;if(!id)return;
+    if(!confirm('선택한 복원 시점을 이 브라우저에서 영구 삭제할까요? 이 작업은 되돌릴 수 없습니다.'))return;
+    try{
+      await removeLocalCheckpoint(id);
+      await refreshCheckpoints();
+      checkpointStatus('선택한 복원 시점을 삭제했습니다. 다른 복원 시점은 유지됩니다.');
+    }catch(error){checkpointStatus('복원 시점 삭제 실패: '+(error.message||'저장소 제한'));}
   });
   async function commit(transform,label){
     if(!state.doc){setMessage('먼저 악보를 열어 주세요.',true);return;}
@@ -880,6 +957,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }
   });
   void refreshDrafts();
+  void refreshCheckpoints();
   return {beforeOpen,onRendered,onLoaded,onMeasurePointer:(index,extend=false,context)=>context?measureToolbar?.openContext(index,context):measureToolbar?.pick(index,extend),onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();syncMeasureDelete();inlineLyrics.onSelectionChange(selected());},
     lyricMode:()=>inlineLyrics.isMode(),
     openLyricFromScore:(position,element)=>inlineLyrics.openFromScore(position,element),
