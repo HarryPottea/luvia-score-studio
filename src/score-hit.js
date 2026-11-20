@@ -135,7 +135,8 @@ function addHitArea(element) {
 }
 // OSMD autoResize replaces SVG nodes. Rebind after a DOM replacement instead of
 // assuming one-off graphical objects survive responsive re-rendering.
-export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce}) {
+export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce,
+  isLyricMode=()=>false,editLyric=()=>false}) {
   const host=document.getElementById('score-container');
   let targets=[],cleanups=[],selected=null,drag=null,disposed=false;
   const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
@@ -180,7 +181,11 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     function key(event) {
       if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
       event.preventDefault();selected=item;select(item);highlight();
-      if(event.key==='ArrowUp'||event.key==='ArrowDown')movePitch(item,event.key==='ArrowUp'?1:-1);
+      if(isLyricMode()&&(event.key==='Enter'||event.key===' ')){
+        editLyric(item,el);return;
+      }
+      if(!isLyricMode()&&(event.key==='ArrowUp'||event.key==='ArrowDown'))
+        movePitch(item,event.key==='ArrowUp'?1:-1);
     }
     el.addEventListener('keydown',key);
     cleanups.push(()=>el.removeEventListener('keydown',key));
@@ -222,11 +227,29 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     }
     if(!item)return;
     selected=item;select(item);highlight();
+    if(isLyricMode()){
+      drag=null;
+      editLyric(item,item.element);
+      event.preventDefault();event.stopPropagation();
+      return;
+    }
     const box=item.element.getBoundingClientRect();
     drag={item,y:event.clientY,pointerId:event.pointerId,unit:Math.max(7,Math.min(18,box.height*.6))};
     event.preventDefault();event.stopPropagation();
   }
+  function rootDouble(event){
+    if(disposed||!selected)return;
+    const item=targets.find(item=>same(item,selected));
+    if(!item||item.element.closest?.('.vf-stavenote')!==event.target?.closest?.('.vf-stavenote'))return;
+    const box=item.element.getBoundingClientRect(),pad=5;
+    if(event.clientX<box.left-pad||event.clientX>box.right+pad||
+      event.clientY<box.top-pad||event.clientY>box.bottom+pad)return;
+    drag=null;
+    event.preventDefault();event.stopPropagation();
+    editLyric(item,item.element);
+  }
   host?.addEventListener('pointerdown',rootDown,true);
+  host?.addEventListener('dblclick',rootDouble,true);
   document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancel);
   // Observe subtree replacements only; class/attribute changes are not watched.
   // addHitArea modifies childList once, but remap's identity check prevents loops.
@@ -234,11 +257,16 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   observer?.observe(host,{childList:true,subtree:true});
   remap();
   return {get count(){return targets.length;},highlight(next){selected=next;highlight();},
+    rectFor(next){
+      const item=targets.find(item=>same(item,next));
+      return item?.element?.getBoundingClientRect?.()||null;
+    },
     dispose(){
       if(disposed)return;disposed=true;
       observer?.disconnect();clearHandlers();
       for(const item of targets)markSelected(item,false);
       host?.removeEventListener('pointerdown',rootDown,true);
+      host?.removeEventListener('dblclick',rootDouble,true);
       document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);
     }};
 }
