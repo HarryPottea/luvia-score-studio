@@ -11,6 +11,10 @@ const first=(n,t)=>all(n,t)[0]||null;
 const val=(n,t)=>first(n,t)?.textContent?.trim()||'';
 const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
 const fail=m=>{throw new Error(m);};
+const SHARP=Object.freeze([['C',0],['C',1],['D',0],['D',1],['E',0],['F',0],
+  ['F',1],['G',0],['G',1],['A',0],['A',1],['B',0]]);
+const FLAT=Object.freeze([['C',0],['D',-1],['D',0],['E',-1],['E',0],
+  ['F',0],['G',-1],['G',0],['A',-1],['A',0],['B',-1],['B',0]]);
 function snapshot(n){
   if(!n)return null;
   const attrs=[...n.attributes].map(a=>[a.name,a.value]).sort((a,b)=>
@@ -62,12 +66,13 @@ function validateTieBoundary(part,voice,start,end){
   if(pending.size)fail('종료되지 않은 붙임줄이 있어 선택 성부 이조를 보호합니다.');
 }
 export function transposeWrittenVoice(source,{
-  partId,voice='1',start,end,semitones=2,spelling='sharp'
+  partId,voice='1',start,end,semitones=2,spelling='sharp',enharmonicOnly=false
 }={}){
   if(source?.documentElement?.localName!=='score-partwise'||
      typeof partId!=='string'||!partId||!/^[1-4]$/.test(String(voice))||
      !integer(start,0,127)||!integer(end,start,127)||end-start+1>16||
-     !integer(semitones,-12,12)||semitones===0||
+     !integer(semitones,-12,12)||typeof enharmonicOnly!=='boolean'||
+     (enharmonicOnly?semitones!==0:semitones===0)||
      !['sharp','flat'].includes(spelling))
     fail('악기·성부(1~4)·마디 범위 또는 이조 설정을 확인해 주세요.');
   const parts=all(source.documentElement,'part');
@@ -108,6 +113,14 @@ export function transposeWrittenVoice(source,{
         fail('이조 결과가 지원 음역을 벗어납니다.');
       const event=audit.events[eventIndex];
       if(!event)fail('성부 음표 위치의 시간표가 올바르지 않습니다.');
+      if(enharmonicOnly){
+        const expected=(spelling==='flat'?FLAT:SHARP)[target%12];
+        const oldStep=val(p,'step'),oldAlter=Number(val(p,'alter')||'0'),
+          oldOctave=Number(val(p,'octave'));
+        const newOctave=Math.floor(target/12)-1;
+        if(oldStep===expected[0]&&oldAlter===expected[1]&&
+           oldOctave===newOctave)continue;
+      }
       if(event.tuplet)tuplets++;
       if(first(note,'chord'))chords++;
       changes.push({index,eventIndex,midi:target});
@@ -115,7 +128,8 @@ export function transposeWrittenVoice(source,{
     }
   }
   if(!changes.length)
-    fail('선택한 성부와 마디에 이조할 음표가 없습니다.');
+    fail(enharmonicOnly?'선택한 성부에 바꿀 이명동음 표기가 없습니다.':
+      '선택한 성부와 마디에 이조할 음표가 없습니다.');
   const doc=source.cloneNode(true);
   const changedPart=all(doc.documentElement,'part')
     .find(p=>p.getAttribute('id')===partId),newBars=all(changedPart,'measure');
@@ -148,7 +162,10 @@ export function transposeWrittenVoice(source,{
   }
   assertScopedScoreMutation(source,doc,{partIds:[partId],
     start,end,kind:'pitches'});
-  return {doc,change:{action:'transpose-written-voice',partId,
-    voice:String(voice),start,end,semitones,spelling,notes:changes.length,
-    tuplets,chords,nextMeasureIndex:start,nextEventIndex:0}};
+  return {doc,change:{action:enharmonicOnly?'respell-written-voice':'transpose-written-voice',
+    partId,voice:String(voice),start,end,semitones,spelling,notes:changes.length,
+    tuplets,chords,enharmonicOnly,nextMeasureIndex:start,nextEventIndex:0}};
+}
+export function respellWrittenVoice(source,options={}){
+  return transposeWrittenVoice(source,{...options,semitones:0,enharmonicOnly:true});
 }
