@@ -6,6 +6,7 @@ import {toggleAdvancedArticulation} from '../src/studio-v4-articulations.js';
 import {toggleMusicXmlOrnament} from '../src/studio-v4-ornaments.js';
 import {insertGraceNote,editGraceNote,removeGraceNote} from '../src/studio-v4-grace-notes.js';
 import {assertNotationMutation,insertOrderedNotation} from '../src/studio-v4-notation-guard.js';
+import {applyBatchLyrics,planBatchLyrics} from '../src/studio-v4-lyrics-batch.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from '../src/studio-v4-meter.js';
 class E {
   constructor(localName,attrs={},children=[],raw=''){
@@ -284,4 +285,29 @@ test('stage3: invalid preexisting notation order is safely blocked, never auto-r
   assert.throws(()=>toggleMusicXmlOrnament(original,{partId:'P1',
     measureIndex:0,eventIndex:1,kind:'trill-mark'}),/순서/);
   assert.equal(serializer(original),before);
+});
+
+test('stage3: smart multi-verse lyrics skip tied continuation and preserve mixed expressions',()=>{
+  const original=score(),pos={partId:'P1',measureIndex:0,eventIndex:1};
+  let result=toggleSoundingTie(original,{...pos,endEventIndex:2}).doc;
+  result=toggleSlur(result,{...pos,endEventIndex:2}).doc;
+  result=toggleMusicXmlOrnament(result,{...pos,kind:'mordent'}).doc;
+  result=toggleAdvancedArticulation(result,{...pos,kind:'tenuto'}).doc;
+  result=setNoteVerse(result,{...pos,verse:1,text:'함께'}).doc;
+  const before=serializer(result);
+  const plan=planBatchLyrics(result,{...pos,verse:2,text:'우리 함께'});
+  assert.equal(plan.syllables,4);
+  assert.equal(plan.skippedTies,1,'a sounding tied continuation is not another lyric slot');
+  assert.equal(plan.assignments[0].eventIndex,1);
+  assert.equal(plan.assignments[1].eventIndex,3);
+  assert.equal(plan.assignments[2].measureIndex,1);
+  const applied=applyBatchLyrics(result,{...pos,verse:2,text:'우리 함께'}).doc;
+  assert.equal(serializer(result),before);
+  assert.deepEqual(get(note(applied,1),'notations').children.map(x=>x.localName),
+    ['tied','slur','ornaments','articulations']);
+  assert.equal(gets(note(applied,1),'lyric').length,2);
+  assert.equal(get(gets(note(applied,1),'lyric')[0],'text').textContent,'함께');
+  assert.equal(get(gets(note(applied,1),'lyric')[1],'text').textContent,'우');
+  assert.equal(gets(note(applied,2),'lyric').length,0,'second tied note remains lyric-free');
+  assert.equal(get(note(applied,2),'tie').getAttribute('type'),'stop');
 });
