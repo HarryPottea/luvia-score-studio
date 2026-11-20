@@ -1746,7 +1746,7 @@ try {
   const bar2=movedChordXml.match(/<measure number="2">([\s\S]*?)<\/measure>/)?.[1]||'';
   assert.match(bar2,/<root-step>D<\/root-step>/);
   assert.match(bar2,/<bass-step>A<\/bass-step>/);
-  assert.match(bar2,/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(bar2,/<step>E<\/step><octave>4<\/octave>/);
   assert.match(bar2,/<kind text="maj7">major-seventh<\/kind>/);
   console.log('BROWSER_STAGE=V4_CHORD_AND_NOTE_SEMITONE_TRANSPOSE_TOGETHER');
 
