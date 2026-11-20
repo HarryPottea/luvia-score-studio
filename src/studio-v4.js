@@ -15,6 +15,9 @@ import {planBatchLyrics,applyBatchLyrics} from './studio-v4-lyrics-batch.js';
 import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
+import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
+import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
+import {changeSingleEmptyMeasureMeter} from './studio-v4-meter-single.js';
 import './studio-v4.css';
 
 const intro=[
@@ -52,11 +55,18 @@ const panel=[
   '<p class="v4-tiny">다성부 악보에서는 09 / 음표 편집의 일부 입력이 제한되므로, 아래의 별도 음정·길이 설정을 사용하세요.</p>',
   '<div class="v4-inline"><div><label for="v4-pro-step">음이름</label><select id="v4-pro-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div><div><label for="v4-pro-octave">옥타브</label><select id="v4-pro-octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div></div>',
   '<label for="v4-pro-alter">변화표</label><select id="v4-pro-alter"><option value="-2">𝄫</option><option value="-1">♭</option><option value="0" selected>♮</option><option value="1">♯</option><option value="2">𝄪</option></select>',
-  '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select>',
+  '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="half-dotted">점2분음표</option><option value="quarter" selected>4분음표</option><option value="quarter-dotted">점4분음표</option><option value="eighth">8분음표</option><option value="eighth-dotted">점8분음표</option><option value="16th">16분음표</option><option value="16th-dotted">점16분음표</option><option value="32nd">32분음표</option></select>',
+  '<button id="v4-pro-insert" type="button">전문 입력 · 선택 쉼표에 음표 삽입</button>',
   '<div class="v4-inline"><button id="v4-pro-duration" type="button">선택 음표 길이 변경</button><button id="v4-pro-to-rest" type="button">선택 음표 → 쉼표</button></div>',
   '<p class="v4-tiny">다성부에서도 성부·보표를 유지합니다. 가사·붙임줄·화음·셋잇단음 등 복합 기보는 보호됩니다.</p>',
   '<div class="v4-inline"><div><label for="v4-split-type">붙임줄로 나눌 첫 음표 길이</label><select id="v4-split-type"><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select></div><button id="v4-split-tie" type="button">선택 음표 분할·붙임줄 연결</button></div>',
   '<p class="v4-tiny">선택 음표를 정확한 길이의 두 음표로 나누고 재생·기보용 붙임줄을 함께 만듭니다. 가사는 첫 음표에 보존합니다. 분할 가능한 길이만 적용됩니다.</p>',
+  '<div class="v4-crossbar"><p class="v4-subhead">마디 경계 · 이어지는 음표</p>',
+  '<div class="v4-inline"><div><label for="v4-crossbar-type">다음 마디에서 이어질 음표 길이</label><select id="v4-crossbar-type"><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select></div>',
+  '<button id="v4-crossbar-extend" type="button">마디 넘어 붙임줄로 연장</button></div>',
+  '<button id="v4-crossbar-move" type="button">선택 음표를 다음 마디 첫 박자로 이동</button>',
+  '<p class="v4-tiny">위의 연장과 달리 실제 음표를 다음 마디로 옮깁니다. 원래 위치는 같은 길이의 쉼표로 바꾸며, 다음 마디에 충분한 쉼표가 있는 경우만 이동합니다.</p>',
+  '<p class="v4-tiny">현재 마디 끝 음표와 다음 마디 첫 쉼표를 연결합니다. 기존 음정·가사·성부는 보존하고, 다른 성부는 변경하지 않습니다.</p></div>',
   '<label for="v4-grid-step">시작 위치 이동 간격</label><select id="v4-grid-step"><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select>',
   '<div class="v4-inline"><button id="v4-nudge-earlier" type="button">← 선택 음표를 앞 쉼표로 이동</button><button id="v4-nudge-later" type="button">선택 음표를 뒤 쉼표로 이동 →</button></div>',
   '<div class="v4-relocate-panel"><label for="v4-relocate-beat">선택 음표를 이동할 박자 위치 (1부터, 4분음표 기준)</label>',
@@ -68,11 +78,14 @@ const panel=[
   '<p class="v4-tiny">같은 성부·보표의 연속된 쉼표 안에서 이동합니다. 다른 음표·마디·붙임줄·셋잇단음·빔은 넘지 않습니다. 변경은 실행 취소할 수 있습니다.</p></div>',
   '<p class="v4-subhead">현재 마디 성부 시간표</p>',
   '<p class="v4-tiny">음표를 선택해 위치를 확인하세요. Shift+←/→로 한 격자씩 이동하거나, 위에서 이동·입력 모드를 선택하고 빈 쉼표를 클릭하세요.</p>',
-  '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치"></div>',
+  '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치" tabindex="0"></div>',
+  '<label class="v4-timeline-move-check v4-keyboard-enable"><input id="v4-keys-enabled" type="checkbox" /> 키보드 작곡 단축키 사용 (선택 기능)</label>',
+  '<p class="v4-tiny">편집 화면에서 영문 N: 선택 쉼표에 음표 입력 · R: 음표를 쉼표로 변경 · [ / ]: 앞/뒤 쉼표로 한 격자 이동. 텍스트 입력 중에는 작동하지 않습니다.</p>',
   '<button id="v4-pro-triplet" type="button">4·8·16분음표 두 개 → 셋잇단음 세 개</button>',
   '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
   '<input id="v4-pro-end" type="number" min="2" max="9999" step="1" value="2" />',
+  '<label for="v4-slur-next-measure">이음줄 끝 마디</label><select id="v4-slur-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option><option value="2">2마디 뒤</option><option value="3">3마디 뒤</option><option value="4">4마디 뒤</option><option value="8">8마디 뒤</option></select>',
   '<button id="v4-pro-slur" type="button">선택 음표부터 끝 음표까지 이음줄 추가 / 해제</button>',
   '<label for="v4-pro-wedge">셈여림 변화</label><select id="v4-pro-wedge"><option value="crescendo">크레셴도 &lt;</option><option value="diminuendo">디미누엔도 &gt;</option></select>',
   '<button id="v4-pro-hairpin" type="button">선택 음표부터 끝 음표까지 셈여림 변화 추가</button>',
@@ -108,11 +121,19 @@ const panel=[
   '<button id="v4-apply-key" type="button">모든 파트 조표 변경</button>',
   '<button id="v4-key-from-measure" type="button">선택 마디부터 모든 파트 조표 변경</button>',
   '<label for="v4-meter">선택 마디 이후 비어 있는 구간의 박자표</label><select id="v4-meter"><option value="2/4">2/4</option><option value="3/4" selected>3/4</option><option value="4/4">4/4</option><option value="6/8">6/8</option><option value="3/8">3/8</option><option value="2/2">2/2</option></select>',
-  '<button id="v4-meter-empty" type="button">선택 마디부터 빈 악보 구간 박자 변경</button>',
-  '<p class="v4-tiny">이미 음표가 작성된 마디를 자동으로 다시 나누지는 않습니다. 빈 구간의 쉼표·피아노 양손 시간 이동만 정확하게 조정합니다.</p>',
+  '<div class="v4-inline"><button id="v4-meter-empty" type="button">선택 마디 이후 빈 구간 박자 변경</button>',
+  '<button id="v4-meter-single" type="button">선택한 빈 마디만 박자 변경</button></div>',
+  '<p class="v4-tiny">선택한 빈 마디만 변경하면 다음 마디에는 기존 박자표를 자동 복구합니다. 다른 음표가 작성된 마디를 자동으로 재분할하지는 않습니다.</p>',
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
+  '<div class="v4-cadence-panel"><p class="v4-subhead">악보 전체 자동 줄·페이지 나눔 계획</p>',
+  '<div class="v4-inline"><div><label for="v4-cadence-bars">한 줄에 배치할 마디 수</label><select id="v4-cadence-bars"><option value="2">2마디</option><option value="3">3마디</option><option value="4" selected>4마디</option><option value="5">5마디</option><option value="6">6마디</option><option value="8">8마디</option></select></div>',
+  '<div><label for="v4-cadence-systems">한 페이지에 배치할 줄 수</label><select id="v4-cadence-systems"><option value="2">2줄</option><option value="3">3줄</option><option value="4" selected>4줄</option><option value="5">5줄</option><option value="6">6줄</option></select></div></div>',
+  '<label class="v4-timeline-move-check"><input id="v4-cadence-replace" type="checkbox" /> 기존 수동 줄·페이지 나눔 대체 허용</label>',
+  '<button id="v4-cadence-apply" type="button">모든 파트에 줄·페이지 나눔 적용</button>',
+  '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">모든 파트의 마디 수가 같아야 합니다. 기존 수동 나눔은 기본적으로 보호됩니다.</p>',
+  '<p class="v4-tiny">이 기능은 MusicXML 줄·페이지 나눔을 한꺼번에 작성합니다. 음표·가사 충돌을 자동 해소하는 조판 엔진은 아닙니다.</p></div>',
   '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
   '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
   '<button id="v4-part-svg-zip" type="button">모든 파트 SVG ZIP 저장 (벡터)</button>',
@@ -483,6 +504,31 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     void commit(doc=>relocateVoiceNote(doc,{...position,targetBeat,
       grid:$('v4-grid-step').value}),'음표를 지정한 박자로 이동');
   });
+  document.addEventListener('keydown',event=>{
+    if(!$('v4-keys-enabled').checked||!state.doc||state.showBaseline||
+      event.ctrlKey||event.metaKey||event.altKey||event.isComposing||event.repeat)return;
+    const target=event.target;
+    if(target?.closest?.('input,textarea,select,button,[contenteditable="true"]'))return;
+    if(!document.activeElement?.closest?.('.site-shell'))return;
+    const key=event.key.toLowerCase();
+    if(!['n','r','[',']'].includes(key))return;
+    event.preventDefault();
+    const current=selected();
+    if(key==='n')void commit(doc=>editVoiceRhythm(doc,{...current,mode:'insert',
+      type:$('v4-pro-type').value,step:$('v4-pro-step').value,
+      alter:Number($('v4-pro-alter').value),octave:Number($('v4-pro-octave').value)}),
+      '키보드 음표 입력');
+    if(key==='r')void commit(doc=>replaceVoiceNoteWithRest(doc,current),'키보드 음표를 쉼표로 변경');
+    if(key==='['||key===']')
+      void commit(doc=>nudgeVoiceNoteOnGrid(doc,{...current,
+        direction:key==='['?'earlier':'later',grid:$('v4-grid-step').value}),
+        '키보드 음표 시작 위치 이동');
+  });
+  $('v4-pro-insert').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
+    ...selected(),mode:'insert',step:$('v4-pro-step').value,
+    alter:Number($('v4-pro-alter').value),octave:Number($('v4-pro-octave').value),
+    type:$('v4-pro-type').value,
+  }),'전문 음표 입력'));
   $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
     ...selected(),mode:'duration',type:$('v4-pro-type').value,
   }),'성부별 음표 길이 변경'));
@@ -492,12 +538,21 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-split-tie').addEventListener('click',()=>void commit(doc=>splitVoiceNoteWithTie(doc,{
     ...selected(),firstType:$('v4-split-type').value,
   }),'음표 분할·붙임줄 연결'));
+  $('v4-crossbar-extend').addEventListener('click',()=>void commit(doc=>
+    extendVoiceAcrossBarline(doc,{...selected(),continuationType:$('v4-crossbar-type').value}),
+    '다음 마디로 음표 붙임줄 연장'));
+  $('v4-crossbar-move').addEventListener('click',()=>void commit(doc=>
+    moveVoiceIntoNextMeasure(doc,selected()),'선택 음표를 다음 마디로 이동'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
   }),'8분음표 셋잇단음 변환'));
   const span=()=>({...selected(),endEventIndex:Number($('v4-pro-end').value)-1});
-  $('v4-pro-slur').addEventListener('click',()=>void commit(doc=>toggleSlur(doc,span()),'이음줄 추가·해제'));
+  $('v4-pro-slur').addEventListener('click',()=>void commit(doc=>
+    Number($('v4-slur-next-measure').value)>0?
+      toggleSlurAcrossBarline(doc,{...span(),
+        endMeasureOffset:Number($('v4-slur-next-measure').value)}):
+      toggleSlur(doc,span()),'이음줄 추가·해제'));
   $('v4-pro-hairpin').addEventListener('click',()=>void commit(doc=>addHairpin(doc,{
     ...span(),kind:$('v4-pro-wedge').value,
   }),'셈여림 변화 기보'));
@@ -581,10 +636,34 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     const [beats,beatType]=$('v4-meter').value.split('/').map(Number);
     return setMeterForEmptyTail(doc,{measureIndex:selected().measureIndex,beats,beatType});
   },'빈 구간 박자표 변경'));
+  $('v4-meter-single').addEventListener('click',()=>void commit(doc=>{
+    const [beats,beatType]=$('v4-meter').value.split('/').map(Number);
+    return changeSingleEmptyMeasureMeter(doc,{measureIndex:selected().measureIndex,beats,beatType});
+  },'선택 빈 마디 박자표 변경'));
 
   $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>setScoreLayoutBreak(doc,{
     measureIndex:selected().measureIndex,kind:$('v4-layout').value,
   }),'줄·페이지 나눔'));
+  $('v4-cadence-apply').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    const options={barsPerSystem:Number($('v4-cadence-bars').value),
+      systemsPerPage:Number($('v4-cadence-systems').value),
+      replaceExisting:$('v4-cadence-replace').checked};
+    const status=$('v4-cadence-status');
+    let plan;
+    try{
+      plan=planLayoutCadence(state.doc,options);
+    }catch(error){
+      status.textContent='나눔 적용 불가: '+(error.message||'설정 확인이 필요합니다.');
+      setMessage(status.textContent,true);return;
+    }
+    const before=state.doc;
+    await commit(doc=>applyLayoutCadence(doc,options),'전체 악보 줄·페이지 나눔');
+    if(state.doc!==before){
+      status.textContent='모든 파트 '+plan.parts+'개 · '+plan.total+'마디 · 새 줄 시작 '+
+        plan.systemStarts+'곳 · 페이지 시작 '+plan.pageStarts+'곳 기록 완료';
+    }else status.textContent='악보가 변경되지 않았습니다. 위 편집 상태를 확인해 주세요.';
+  });
   $('v4-play').addEventListener('click',async()=>{
     if(!state.doc)return;
     try{

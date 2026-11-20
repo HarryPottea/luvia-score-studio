@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
+import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
+import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
+import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
 import {
   editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie
 } from '../src/studio-v4-professional.js';
@@ -340,4 +343,290 @@ test('professional: unrepresentable or protected note splits are blocked',()=>{
   notes(marked)[6].appendChild(E('tie',[],{type:'start'}));
   assert.throws(()=>splitVoiceNoteWithTie(marked,{...params(6),firstType:'quarter'}),/보호|복합/);
   assert.equal(serialize(original),serial);
+});
+
+
+function crossbarFixture(){
+  const doc=fixture();
+  part(doc).appendChild(E('measure',[
+    voiceRest(192,'whole','1','1'),
+    E('backup',[T('duration',192)]),
+    voiceRest(96,'half','2','2'),
+    voiceNote('A',3,96,'half','2','2'),
+  ],{number:'2'}));
+  return doc;
+}
+const secondMeasure=doc=>children(part(doc),'measure')[1];
+const secondAudit=doc=>inspectAdvancedMeasure(doc,'P1',1);
+
+test('crossbar: continue last piano voice note into next bar while preserving the other staff',()=>{
+  const source=crossbarFixture(),original=serialize(source),b=secondAudit(source);
+  assert.equal(b.reason,null);
+  const result=extendVoiceAcrossBarline(source,{...params(6),continuationType:'quarter'});
+  assert.equal(serialize(source),original);
+  assert.deepEqual(values(result.doc).events.filter(e=>e.voice==='1'),values(source).events.filter(e=>e.voice==='1'));
+  assert.deepEqual(secondAudit(result.doc).events.filter(e=>e.voice==='1'),b.events.filter(e=>e.voice==='1'));
+  const events=secondAudit(result.doc).events.filter(e=>e.voice==='2');
+  assert.deepEqual(events.map(e=>[e.start,e.duration,e.rest,e.step]),[
+    [0,48,false,'G'],[48,48,true,''],[96,96,false,'A']
+  ]);
+  assert.equal(first(children(measure(result.doc),'backup')[0],'duration').textContent,'192');
+  assert.equal(first(children(secondMeasure(result.doc),'backup')[0],'duration').textContent,'192');
+  const firstBar=children(measure(result.doc),'note')[6];
+  const continuation=children(secondMeasure(result.doc),'note')[1];
+  assert.equal(first(firstBar,'tie').getAttribute('type'),'start');
+  assert.equal(first(continuation,'tie').getAttribute('type'),'stop');
+  assert.equal(first(first(firstBar,'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(first(first(continuation,'notations'),'tied').getAttribute('type'),'stop');
+});
+test('crossbar: disallow overwriting written music, unsupported timing, or existing ties',()=>{
+  const source=crossbarFixture(),original=serialize(source);
+  assert.throws(()=>extendVoiceAcrossBarline(source,{...params(5),continuationType:'quarter'}),/마디 끝/);
+  assert.throws(()=>extendVoiceAcrossBarline(source,{...params(6),continuationType:'whole'}),/쉼표보다 긴/);
+  assert.throws(()=>extendVoiceAcrossBarline(source,{...params(6),continuationType:'invalid'}),/길이/);
+  const noRest=crossbarFixture();
+  secondMeasure(noRest).replaceChild(voiceNote('F',3,96,'half','2','2'),children(secondMeasure(noRest),'note')[1]);
+  assert.throws(()=>extendVoiceAcrossBarline(noRest,{...params(6),continuationType:'quarter'}),/첫 박자|쉼표/);
+  const marked=crossbarFixture();
+  children(measure(marked),'note')[6].appendChild(E('tie',[],{type:'start'}));
+  assert.throws(()=>extendVoiceAcrossBarline(marked,{...params(6),continuationType:'quarter'}),/보호/);
+  assert.equal(serialize(source),original);
+});
+test('crossbar: cross-measure slurs are reversible and leave voice timing unchanged',()=>{
+  const source=crossbarFixture(),original=serialize(source);
+  const opts={...params(6),endEventIndex:2};
+  const attached=toggleSlurAcrossBarline(source,opts).doc;
+  assert.equal(serialize(source),original);
+  const from=children(measure(attached),'note')[6],to=children(secondMeasure(attached),'note')[2];
+  assert.equal(first(first(from,'notations'),'slur').getAttribute('type'),'start');
+  assert.equal(first(first(to,'notations'),'slur').getAttribute('type'),'stop');
+  assert.deepEqual(secondAudit(attached).events.map(e=>[e.start,e.duration,e.voice,e.staff]),
+    secondAudit(source).events.map(e=>[e.start,e.duration,e.voice,e.staff]));
+  const detached=toggleSlurAcrossBarline(attached,opts).doc;
+  assert.equal(serialize(detached),original);
+});
+test('crossbar: slurs cannot silently cross voices or missing measures',()=>{
+  const source=crossbarFixture();
+  assert.throws(()=>toggleSlurAcrossBarline(source,{...params(6),endEventIndex:0}),/같은 성부/);
+  assert.throws(()=>toggleSlurAcrossBarline(source,{...params(6),endEventIndex:99}),/음표가 없습니다/);
+  const single=fixture();
+  assert.throws(()=>extendVoiceAcrossBarline(single,{...params(6)}),/다음 마디/);
+});
+
+
+function layoutFixture(){
+  const doc=fixture(),original=measure(doc);
+  for(let i=2;i<=8;i++){
+    const copy=original.cloneNode(true);copy.setAttribute('number',String(i));
+    part(doc).appendChild(copy);
+  }
+  const second=part(doc).cloneNode(true);second.setAttribute('id','P2');
+  doc.documentElement.appendChild(second);
+  return doc;
+}
+test('engraving: cadence writes repeatable system and page breaks across every part',()=>{
+  const original=layoutFixture(),before=serialize(original);
+  const planned=planLayoutCadence(original,{barsPerSystem:2,systemsPerPage:2});
+  assert.equal(planned.parts,2);
+  assert.equal(planned.total,8);
+  assert.equal(planned.systemStarts,2);
+  assert.equal(planned.pageStarts,1);
+  const {doc}=applyLayoutCadence(original,{barsPerSystem:2,systemsPerPage:2});
+  assert.equal(serialize(original),before);
+  for(const p of children(doc.documentElement,'part')){
+    const measures=children(p,'measure');
+    assert.equal(first(measures[2],'print').getAttribute('new-system'),'yes');
+    assert.equal(first(measures[4],'print').getAttribute('new-page'),'yes');
+    assert.equal(first(measures[6],'print').getAttribute('new-system'),'yes');
+    assert.equal(first(measures[1],'print'),undefined);
+    assert.equal(first(measures[3],'print'),undefined);
+    assert.deepEqual(children(measures[7],'note').map(n=>first(n,'duration').textContent),
+      children(measure(original),'note').map(n=>first(n,'duration').textContent));
+  }
+});
+test('engraving: manual break conflicts are protected until user opts into replacement',()=>{
+  const original=layoutFixture(),measure4=children(part(original),'measure')[3];
+  const print=E('print',[],{'new-page':'yes','staff-spacing':'18'});
+  measure4.insertBefore(print,measure4.children[0]);
+  const before=serialize(original);
+  assert.throws(()=>applyLayoutCadence(original,{barsPerSystem:2,systemsPerPage:2}),/수동|충돌/);
+  const applied=applyLayoutCadence(original,{barsPerSystem:2,systemsPerPage:2,replaceExisting:true}).doc;
+  assert.equal(serialize(original),before);
+  const preserved=first(children(part(applied),'measure')[3],'print');
+  assert.equal(preserved.getAttribute('new-page'),null);
+  assert.equal(preserved.getAttribute('staff-spacing'),'18','Other print settings remain intact');
+  assert.throws(()=>planLayoutCadence(original,{barsPerSystem:7,systemsPerPage:2}),/지원 범위/);
+});
+
+
+test('professional: dotted eighth entry consumes only correct ticks in an independent voice',()=>{
+  const source=fixture(),other=secondVoice(source),before=serialize(source);
+  const {doc}=editVoiceRhythm(source,{...params(2),mode:'insert',
+    type:'eighth-dotted',step:'A',octave:4});
+  assert.equal(serialize(source),before);
+  assert.deepEqual(secondVoice(doc),other);
+  assert.deepEqual(values(doc).events.slice(2,4).map(e=>[e.duration,e.type,e.rest]),[
+    [36,'eighth',false],[12,'16th',true]
+  ]);
+  assert.equal(children(notes(doc)[2],'dot').length,1);
+  const removed=replaceVoiceNoteWithRest(doc,params(2)).doc;
+  assert.equal(values(removed).events[2].duration,36);
+  assert.equal(values(removed).events[2].rest,true);
+  assert.equal(children(notes(removed)[2],'dot').length,1);
+});
+test('professional: dotted quarter duration and tied split preserve unrelated piano voice',()=>{
+  const original=fixture(),other=secondVoice(original);
+  const shortened=editVoiceRhythm(original,{...params(6),mode:'duration',type:'quarter-dotted'}).doc;
+  assert.deepEqual(values(shortened).events.filter(e=>e.voice==='2').map(e=>[e.start,e.duration,e.rest]),[
+    [0,48,false],[48,48,true],[96,72,false],[168,24,true]]);
+  assert.equal(children(notes(shortened)[6],'dot').length,1);
+  const tied=splitVoiceNoteWithTie(shortened,{...params(6),firstType:'quarter'}).doc;
+  const second=values(tied).events.filter(e=>e.voice==='2');
+  assert.deepEqual(second.map(e=>[e.start,e.duration,e.rest]),[
+    [0,48,false],[48,48,true],[96,48,false],[144,24,false],[168,24,true]
+  ]);
+  assert.equal(children(notes(tied)[6],'dot').length,0);
+  assert.equal(children(notes(tied)[7],'dot').length,0);
+  assert.equal(first(notes(tied)[6],'tie').getAttribute('type'),'start');
+  assert.equal(first(notes(tied)[7],'tie').getAttribute('type'),'stop');
+  assert.deepEqual(values(tied).events.filter(e=>e.voice==='1'),
+    values(original).events.filter(e=>e.voice==='1'));
+  assert.equal(first(children(measure(tied),'backup')[0],'duration').textContent,'192');
+});
+
+function isolatedEmptyMeterFixture(){
+  const doc=fixture();
+  part(doc).appendChild(E('measure',[
+    voiceRest(192,'whole','1','1'),E('backup',[T('duration',192)]),
+    voiceRest(192,'whole','2','2'),
+  ],{number:'2'}));
+  const populated=measure(doc).cloneNode(true);
+  populated.setAttribute('number','3');
+  const attrs=first(populated,'attributes');
+  populated.removeChild(attrs);
+  part(doc).appendChild(populated);
+  return doc;
+}
+test('meter: change only an empty middle bar and restore 4/4 before following written voices',()=>{
+  const original=isolatedEmptyMeterFixture(),before=serialize(original);
+  const {doc}=changeSingleEmptyMeasureMeter(original,{measureIndex:1,beats:3,beatType:4});
+  assert.equal(serialize(original),before);
+  const bars=children(part(doc),'measure');
+  const changed=bars[1],following=bars[2];
+  assert.equal(first(first(first(changed,'attributes'),'time'),'beats').textContent,'3');
+  assert.equal(first(first(first(following,'attributes'),'time'),'beats').textContent,'4');
+  assert.deepEqual(children(changed,'note').map(n=>first(n,'duration').textContent),['144','144']);
+  assert.deepEqual(children(changed,'note').map(n=>first(n,'type').textContent),['half','half']);
+  assert.deepEqual(children(changed,'note').map(n=>children(n,'dot').length),[1,1]);
+  assert.equal(first(first(changed,'backup'),'duration').textContent,'144');
+  assert.deepEqual(children(following,'note').map(n=>first(n,'duration').textContent),
+    children(measure(original),'note').map(n=>first(n,'duration').textContent));
+  assert.equal(first(first(following,'backup'),'duration').textContent,'192');
+});
+test('meter: isolated change refuses written music or missing part clocks',()=>{
+  const original=isolatedEmptyMeterFixture(),before=serialize(original);
+  assert.throws(()=>changeSingleEmptyMeasureMeter(original,{measureIndex:0,beats:3,beatType:4}),/빈 쉼표|음표·가사/);
+  assert.throws(()=>changeSingleEmptyMeasureMeter(original,{measureIndex:1,beats:7,beatType:8}),/지원 범위/);
+  const modified=isolatedEmptyMeterFixture();
+  const second=children(part(modified),'measure')[1];
+  second.replaceChild(voiceNote('C',3,192,'whole','2','2'),children(second,'note')[1]);
+  assert.throws(()=>changeSingleEmptyMeasureMeter(modified,{measureIndex:1,beats:2,beatType:4}),/빈 쉼표|음표·가사/);
+  assert.equal(serialize(original),before);
+});
+
+
+test('professional: note entry spans two successive rests while leaving the other piano voice unchanged',()=>{
+  const original=fixture(),before=serialize(original),other=secondVoice(original);
+  // The original 48+96 tick consecutive rests can accommodate a 96 tick half.
+  const updated=editVoiceRhythm(original,{...params(2),mode:'insert',
+    type:'half',step:'A',octave:4}).doc;
+  assert.equal(serialize(original),before);
+  assert.deepEqual(secondVoice(updated),other);
+  assert.deepEqual(values(updated).events.filter(e=>e.voice==='1').map(e=>
+    [e.start,e.duration,e.rest,e.step]),[
+    [0,24,false,'C'],[24,24,false,'E'],
+    [48,96,false,'A'],[144,48,true,'']
+  ]);
+  assert.equal(first(children(measure(updated),'backup')[0],'duration').textContent,'192');
+  assert.equal(values(updated).reason,null);
+});
+test('professional: multi-rest entry blocks an occupied beat and leaves source unchanged',()=>{
+  const original=fixture(),before=serialize(original);
+  assert.throws(()=>editVoiceRhythm(original,{...params(2),mode:'insert',
+    type:'whole',step:'A',octave:4}),/연속된 쉼표/);
+  const blocked=fixture();
+  measure(blocked).insertBefore(E('direction',[E('direction-type',[T('words','rit.')])]),notes(blocked)[3]);
+  const old=serialize(blocked);
+  assert.throws(()=>editVoiceRhythm(blocked,{...params(2),mode:'insert',
+    type:'half',step:'A',octave:4}),/연속된 쉼표/);
+  assert.equal(serialize(original),before);
+  assert.equal(serialize(blocked),old);
+});
+
+test('crossbar: moving an onset to the next bar preserves both piano voices and selection',()=>{
+  const source=crossbarFixture(),before=serialize(source);
+  const leftVoice=values(source).events.filter(e=>e.voice==='1');
+  const rightVoice=secondAudit(source).events.filter(e=>e.voice==='1');
+  const moved=moveVoiceIntoNextMeasure(source,params(6));
+  assert.equal(serialize(source),before);
+  assert.deepEqual(values(moved.doc).events.filter(e=>e.voice==='1'),leftVoice);
+  assert.deepEqual(secondAudit(moved.doc).events.filter(e=>e.voice==='1'),rightVoice);
+  assert.deepEqual(values(moved.doc).events.filter(e=>e.voice==='2')
+    .map(e=>[e.start,e.duration,e.rest,e.step]),[
+    [0,48,false,'C'],[48,48,true,''],[96,96,true,'']
+  ]);
+  assert.deepEqual(secondAudit(moved.doc).events.filter(e=>e.voice==='2')
+    .map(e=>[e.start,e.duration,e.rest,e.step]),[
+    [0,96,false,'G'],[96,96,false,'A']
+  ]);
+  assert.equal(moved.change.nextMeasureIndex,1);
+  assert.equal(moved.change.nextEventIndex,1);
+  assert.equal(first(children(measure(moved.doc),'backup')[0],'duration').textContent,'192');
+  assert.equal(first(children(secondMeasure(moved.doc),'backup')[0],'duration').textContent,'192');
+});
+test('crossbar: moving a lyric note preserves attached lyric and rejects key changes',()=>{
+  const source=crossbarFixture();
+  notes(source)[6].appendChild(E('lyric',[T('text','함께')]));
+  const result=moveVoiceIntoNextMeasure(source,params(6)).doc;
+  assert.equal(first(first(children(secondMeasure(result),'note')[1],'lyric'),'text').textContent,'함께');
+  assert.equal(first(notes(source)[6],'pitch')!==undefined,true);
+  const keyed=crossbarFixture();
+  const attrs=E('attributes',[E('key',[T('fifths',1)])]);
+  secondMeasure(keyed).insertBefore(attrs,secondMeasure(keyed).children[0]);
+  assert.throws(()=>moveVoiceIntoNextMeasure(keyed,params(6)),/조표/);
+});
+test('crossbar: move cannot silently overwrite a note, bridge a longer rest or lose source',()=>{
+  const source=crossbarFixture(),before=serialize(source);
+  assert.throws(()=>moveVoiceIntoNextMeasure(source,params(5)),/마디 끝/);
+  const occupied=crossbarFixture();
+  secondMeasure(occupied).replaceChild(voiceNote('F',3,96,'half','2','2'),
+    children(secondMeasure(occupied),'note')[1]);
+  assert.throws(()=>moveVoiceIntoNextMeasure(occupied,params(6)),/쉼표/);
+  const tooShort=crossbarFixture();
+  const rest=children(secondMeasure(tooShort),'note')[1];
+  first(rest,'duration').textContent='48';first(rest,'type').textContent='quarter';
+  secondMeasure(tooShort).insertBefore(voiceRest(48,'quarter','2','2'),
+    children(secondMeasure(tooShort),'note')[2]);
+  assert.throws(()=>moveVoiceIntoNextMeasure(tooShort,params(6)),/짧습니다/);
+  assert.equal(serialize(source),before);
+});
+
+
+test('crossbar: multi-measure slur connects endpoints while preserving the intervening bar',()=>{
+  const original=crossbarFixture();
+  const extra=secondMeasure(original).cloneNode(true);extra.setAttribute('number','3');
+  part(original).appendChild(extra);
+  const untouched=serialize(original);
+  const middle=serialize(new Doc(secondMeasure(original).cloneNode(true)));
+  const options={...params(6),endMeasureOffset:2,endEventIndex:2};
+  const connected=toggleSlurAcrossBarline(original,options).doc;
+  assert.equal(serialize(original),untouched);
+  assert.equal(serialize(new Doc(secondMeasure(connected).cloneNode(true))),middle);
+  const opening=first(first(notes(connected)[6],'notations'),'slur');
+  const closing=first(first(children(children(part(connected),'measure')[2],'note')[2],'notations'),'slur');
+  assert.equal(opening.getAttribute('type'),'start');
+  assert.equal(closing.getAttribute('type'),'stop');
+  const restored=toggleSlurAcrossBarline(connected,options).doc;
+  assert.equal(serialize(restored),untouched);
+  assert.throws(()=>toggleSlurAcrossBarline(original,{...options,endMeasureOffset:9}),/거리/);
 });

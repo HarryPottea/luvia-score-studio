@@ -549,9 +549,119 @@ try {
   assert.match(insertedXml,/<backup><duration>192<\/duration><\/backup>/);
   assert.match(insertedXml,/<step>G<\/step><octave>3<\/octave>/);
   console.log('BROWSER_STAGE=V4_DIRECT_TIMELINE_NOTE_ENTRY');
+  await page.locator('#v4-timeline-insert').uncheck();
+  await page.locator('.v4-beat-lane').first().locator('.v4-beat-event.rest').first().click();
+  assert.match(await page.locator('#v3-selection').textContent(),/쉼표/);
+  await page.locator('#v4-keys-enabled').check();
+  await page.locator('#v4-beat-grid').focus();
+  await page.keyboard.press('n');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('키보드 음표 입력 완료'),null,{timeout:30000});
+  await page.locator('#v4-beat-grid').focus();
+  await page.keyboard.press('r');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('키보드 음표를 쉼표로 변경 완료'),null,{timeout:30000});
+  await page.locator('#v4-keys-enabled').uncheck();
+  console.log('BROWSER_STAGE=V4_OPT_IN_KEYBOARD_NOTE_COMPOSING');
+  // The professional editor can now consume a run of same-lane rests rather
+  // than requiring the selected rest to fit the entire note by itself.
+  await page.locator('#file-input').setInputFiles({name:'piano-multirest-entry.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(nudgeXml)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(2).click();
+  await page.selectOption('#v4-pro-type','half');
+  await page.selectOption('#v4-pro-step','A');
+  await page.click('#v4-pro-insert');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('전문 음표 입력 완료'),null,{timeout:30000});
+  const longEntryDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const longEntryXml=await fs.readFile(await (await longEntryDownload).path(),'utf8');
+  assert.match(longEntryXml,/<step>A<\/step><octave>4<\/octave><\/pitch><duration>96<\/duration>/);
+  assert.match(longEntryXml,/<step>G<\/step><octave>3<\/octave><\/pitch><duration>96<\/duration>/);
+  assert.match(longEntryXml,/<backup><duration>192<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_MULTI_REST_SINGLE_NOTE_ENTRY');
+
+
+  const crossbarScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves>'+
+    '<clef number="1"><sign>G</sign><line>2</line></clef>'+
+    '<clef number="2"><sign>F</sign><line>4</line></clef></attributes>'+
+    '<note><rest/><duration>192</duration><voice>1</voice><type>whole</type><staff>1</staff></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><pitch><step>G</step><octave>3</octave></pitch><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '<note><pitch><step>B</step><octave>3</octave></pitch><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '</measure><measure number="2">'+
+    '<note><rest/><duration>192</duration><voice>1</voice><type>whole</type><staff>1</staff></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '<note><pitch><step>A</step><octave>3</octave></pitch><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'crossbar-voice.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(crossbarScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(2).click();
+  assert.match(await page.locator('#v3-selection').textContent(),/96\/48/);
+  await page.selectOption('#v4-crossbar-type','quarter');
+  await page.click('#v4-crossbar-extend');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('다음 마디로 음표 붙임줄 연장 완료'),null,{timeout:30000});
+  const crossbarDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const crossbarEditedXml=await fs.readFile(await (await crossbarDownload).path(),'utf8');
+  assert.equal((crossbarEditedXml.match(/<tie type="start"\s*\/>/g)||[]).length,1);
+  assert.equal((crossbarEditedXml.match(/<tie type="stop"\s*\/>/g)||[]).length,1);
+  assert.equal((crossbarEditedXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,2);
+  assert.match(crossbarEditedXml,/<step>B<\/step><octave>3<\/octave>/);
+  console.log('BROWSER_STAGE=V4_CROSSBAR_SUSTAINING_NOTE_WITH_VOICE_TIMING');
+
+  await page.fill('#v4-pro-end','4');
+  await page.selectOption('#v4-slur-next-measure','1');
+  await page.click('#v4-pro-slur');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('이음줄 추가·해제 완료'),null,{timeout:30000});
+  const crossSlurDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const crossSlurXml=await fs.readFile(await (await crossSlurDownload).path(),'utf8');
+  assert.match(crossSlurXml,/<slur type="start" number="1"\s*\/>/);
+  assert.match(crossSlurXml,/<slur type="stop" number="1"\s*\/>/);
+  assert.equal((crossSlurXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,2);
+  console.log('BROWSER_STAGE=V4_CROSSBAR_SLUR_ADDED_AND_EXPORTED');
+  // Moving a pitch to another bar is distinct from lengthening it with a
+  // sounding tie: it must retain one source attack and update the selection.
+  await page.locator('#file-input').setInputFiles({name:'crossbar-onset-move.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(crossbarScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(2).click();
+  await page.click('#v4-crossbar-move');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 음표를 다음 마디로 이동 완료'),null,{timeout:30000});
+  assert.equal(await page.locator('#v3-measure').inputValue(),'1');
+  assert.match(await page.locator('#v3-selection').textContent(),/시작 0\/48/);
+  const crossMovedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const crossMovedXml=await fs.readFile(await (await crossMovedDownload).path(),'utf8');
+  assert.equal((crossMovedXml.match(/<step>B<\/step><octave>3<\/octave>/g)||[]).length,1);
+  assert.equal((crossMovedXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,2);
+  assert.match(crossMovedXml,/<step>A<\/step><octave>3<\/octave>/);
+  console.log('BROWSER_STAGE=V4_CROSSBAR_ONSET_MOVE_AND_SELECTION');
 
 
 
+
+
+
+
+  await page.selectOption('#v4-new-template','melody');
+  await page.fill('#v4-new-title','점음표 전문 입력');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.locator('#v3-events .v3-event').first().waitFor();
+  await page.selectOption('#v4-pro-step','A');
+  await page.selectOption('#v4-pro-type','quarter-dotted');
+  await page.click('#v4-pro-insert');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('전문 음표 입력 완료'),null,{timeout:30000});
+  const dottedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const dottedXml=await fs.readFile(await (await dottedDownload).path(),'utf8');
+  assert.match(dottedXml,/<duration>72<\/duration><type>quarter<\/type><dot\s*\/>/);
+  console.log('BROWSER_STAGE=V4_EXACT_DOTTED_NOTE_COMPOSED_AND_EXPORTED');
 
   await page.fill('#v4-new-title','셋잇단음 편집 검증');
   page.once('dialog',dialog=>dialog.accept());
@@ -629,6 +739,18 @@ try {
   assert.equal((revisedScoreXml.match(/<fifths>1<\/fifths>/g)||[]).length,2);
   assert.ok((revisedScoreXml.match(/<backup><duration>144<\/duration><\/backup>/g)||[]).length>=1);
   console.log('BROWSER_STAGE=V4_MID_SCORE_METER_KEY_EDITED');
+  await page.selectOption('#v4-meter','2/4');
+  await page.click('#v4-meter-single');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 빈 마디 박자표 변경 완료'),null,{timeout:30000});
+  const isolatedMeterDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const isolatedMeterXml=await fs.readFile(await (await isolatedMeterDownload).path(),'utf8');
+  assert.equal((isolatedMeterXml.match(/<beats>2<\/beats><beat-type>4<\/beat-type>/g)||[]).length,2);
+  assert.equal((isolatedMeterXml.match(/<beats>3<\/beats><beat-type>4<\/beat-type>/g)||[]).length,2);
+  assert.ok((isolatedMeterXml.match(/<backup><duration>96<\/duration><\/backup>/g)||[]).length>=1);
+  assert.ok((isolatedMeterXml.match(/<backup><duration>144<\/duration><\/backup>/g)||[]).length>=1);
+  console.log('BROWSER_STAGE=V4_ISOLATED_EMPTY_METER_AND_FOLLOWING_RESTORE');
+
 
   // Both the vocal and true grand-staff Piano parts must be present in one
   // vector print book, in their original part order.
@@ -660,6 +782,21 @@ try {
     assert.doesNotMatch(text,/<image[\s>]|<script[\s>]/i);
   }
   console.log('BROWSER_STAGE=V4_INDIVIDUAL_PART_VECTOR_SVG_ZIP');
+  await page.selectOption('#v4-cadence-bars','2');
+  await page.selectOption('#v4-cadence-systems','2');
+  await page.click('#v4-cadence-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('전체 악보 줄·페이지 나눔 완료'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-cadence-status').textContent(),/모든 파트 2개/);
+  const scoreCadenceDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const scoreCadenceXml=await fs.readFile(await (await scoreCadenceDownload).path(),'utf8');
+  assert.equal((scoreCadenceXml.match(/<print new-system="yes"/g)||[]).length,2,
+    'The third bar must start a new system in each part');
+  assert.equal((scoreCadenceXml.match(/<print new-page="yes"/g)||[]).length,2,
+    'The fifth bar must start a new page in each part');
+  assert.match(scoreCadenceXml,/<backup><duration>144<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_MULTIPART_CADENCE_SYSTEM_PAGE_WRITTEN');
+
 
 
 

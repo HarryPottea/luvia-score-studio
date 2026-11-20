@@ -56,8 +56,8 @@ function validateChange(source,original,partId,measureIndex,changedLanes){
   return newState;
 }
 function guardNote(n,{rest=false,beam=false}={}){
-  const keys=rest?['rest','duration','voice','type','staff']:
-    ['pitch','duration','voice','type','staff','stem','accidental','lyric',...(beam?['beam']:[])];
+  const keys=rest?['rest','duration','voice','type','dot','staff']:
+    ['pitch','duration','voice','type','dot','staff','stem','accidental','lyric',...(beam?['beam']:[])];
   if(n.attributes?.length||[...n.children].some(x=>!keys.includes(x.localName))||
      !direct(n,'duration')||!direct(n,'type'))fail('붙임줄·장식·복잡한 기보가 있는 음표는 이 리듬 변경에서 보호됩니다.');
   if(rest){
@@ -65,11 +65,20 @@ function guardNote(n,{rest=false,beam=false}={}){
   }else if(!direct(n,'pitch'))fail('일반 음표를 선택해 주세요.');
 }
 function durationFor(type,divisions){
-  const found=TYPES.find(([t])=>t===type);
+  const dotted=typeof type==='string'&&type.endsWith('-dotted');
+  const base=dotted?type.slice(0,-7):type;
+  const found=TYPES.find(([t])=>t===base);
   if(!found)fail('지원하지 않는 기보 길이입니다.');
-  const result=found[1]*divisions;
+  const result=found[1]*divisions*(dotted?1.5:1);
   if(!int(result,1,1e6))fail('이 악보의 divisions로는 음표 길이를 정확히 표현할 수 없습니다.');
   return result;
+}
+function setWrittenDuration(note,type,duration){
+  const dotted=type.endsWith('-dotted'),base=dotted?type.slice(0,-7):type;
+  direct(note,'duration').textContent=String(duration);
+  direct(note,'type').textContent=base;
+  for(const mark of all(note,'dot'))note.removeChild(mark);
+  if(dotted)note.insertBefore(make(note,'dot'),direct(note,'type').nextSibling);
 }
 function decomposeRest(duration,divisions){
   if(!int(duration,0,262144))fail('쉼표 길이가 올바르지 않습니다.');
@@ -165,16 +174,35 @@ export function editVoiceRhythm(source,{partId,measureIndex,eventIndex,type,mode
     guardNote(note,{rest:true});
     if(!STEPS.includes(step)||step.length!==1||!int(alter,-2,2)||!int(octave,1,8))
       fail('음정 입력값이 잘못되었습니다.');
-    if(desired>old)fail('선택한 쉼표보다 긴 음표는 넣을 수 없습니다.');
-    const chunks=decomposeRest(old-desired,divisions);
+    // Extend the selected rest across subsequent ordinary rests in the same
+    // voice/staff. Written notes, backup/forward and decorated rests are
+    // boundaries: an insertion never silently displaces existing material.
+    let remaining=Math.max(0,desired-old),cursor=note.nextSibling;
+    const consumed=[];
+    while(remaining>0){
+      if(cursor?.localName!=='note'||!direct(cursor,'rest')||!sameLaneNote(note,cursor))
+        fail('필요한 길이만큼 같은 성부의 연속된 쉼표가 없습니다.');
+      guardNote(cursor,{rest:true});
+      const len=Number(value(cursor,'duration'));
+      if(!int(len,1,262144))fail('연속된 쉼표의 길이가 올바르지 않습니다.');
+      consumed.push({node:cursor,left:len-Math.min(remaining,len)});
+      remaining-=Math.min(remaining,len);
+      cursor=cursor.nextSibling;
+    }
+    const chunks=decomposeRest(Math.max(0,old-desired),divisions);
+    const retained=consumed.map(x=>({...x,chunks:decomposeRest(x.left,divisions)}));
     const pitch=make(note,'pitch');
     pitch.appendChild(make(pitch,'step',step));
     if(alter) pitch.appendChild(make(pitch,'alter',alter));
     pitch.appendChild(make(pitch,'octave',octave));
     note.replaceChild(pitch,direct(note,'rest'));
-    direct(note,'duration').textContent=String(desired);
-    direct(note,'type').textContent=type;
+    setWrittenDuration(note,type,desired);
     emitRests(measure,note,note,chunks);
+    for(const item of retained){
+      for(const rest of item.chunks)
+        measure.insertBefore(makeRest(measure,item.node,rest.duration,rest.type),item.node);
+      measure.removeChild(item.node);
+    }
   } else {
     if(event.rest)fail('쉼표의 길이 변경은 음표 삽입으로 처리하세요.');
     if(event.tuplet)fail('기존 셋잇단음의 개별 길이 변경은 별도 튜플릿 그룹 기능에서 처리해야 합니다.');
@@ -182,8 +210,7 @@ export function editVoiceRhythm(source,{partId,measureIndex,eventIndex,type,mode
     if(desired===old)fail('현재 음표와 같은 길이입니다.');
     if(desired<old){
       const chunks=decomposeRest(old-desired,divisions);
-      direct(note,'duration').textContent=String(desired);
-      direct(note,'type').textContent=type;
+      setWrittenDuration(note,type,desired);
       const stem=direct(note,'stem');if(stem)note.removeChild(stem);
       emitRests(measure,note,note,chunks);
     }else{
@@ -200,7 +227,7 @@ export function editVoiceRhythm(source,{partId,measureIndex,eventIndex,type,mode
         needed-=use;cursor=cursor.nextSibling;
       }
       const replacements=entries.map(e=>({...e,chunks:decomposeRest(e.left,divisions)}));
-      direct(note,'duration').textContent=String(desired);direct(note,'type').textContent=type;
+      setWrittenDuration(note,type,desired);
       const stem=direct(note,'stem');if(stem)note.removeChild(stem);
       for(const item of replacements){
         let before=item.node;
@@ -247,6 +274,8 @@ export function createTimedTriplet(source,{partId,measureIndex,eventIndex,
     other.start!==event.start+unit||event.start%(unit*2)!==0)
     fail('동일 길이의 인접 음표 두 개가 정상 박자 경계에 있어야 합니다.');
   guardNote(note,{beam:true});guardNote(following,{beam:true});
+  if(all(note,'dot').length||all(following,'dot').length)
+    fail('점음표의 셋잇단음 변환은 기존 길이를 보호합니다.');
   if(all(following,'lyric').length)
     fail('두 번째 음표의 가사를 보존할 수 없어 셋잇단음 변환을 차단했습니다.');
   const firstBeam=all(note,'beam'),lastBeam=all(following,'beam');
@@ -481,10 +510,12 @@ export function replaceVoiceNoteWithRest(source,{partId,measureIndex,eventIndex}
     fail('붙임줄·화음·셋잇단음 등 보호된 음표는 쉼표로 바꾸지 않습니다.');
   guardNote(note);
   if(all(note,'lyric').length)fail('가사가 있는 음표는 가사를 먼저 삭제해 주세요.');
-  if(!TYPES.some(([type])=>type===event.type)||
-    durationFor(event.type,audit.divisions)!==event.duration)
+  const dotted=all(note,'dot').length===1;
+  if(all(note,'dot').length>1||!TYPES.some(([type])=>type===event.type)||
+    durationFor(event.type+(dotted?'-dotted':''),audit.divisions)!==event.duration)
     fail('원래 음표 길이를 일반 쉼표로 안전하게 표현할 수 없습니다.');
   const replacement=makeRest(measure,note,event.duration,event.type);
+  if(dotted)replacement.insertBefore(make(replacement,'dot'),direct(replacement,'type').nextSibling);
   measure.replaceChild(replacement,note);
   const after=validateChange(doc,{...loc,measure:loc.sourceMeasure,part:loc.sourcePart},
     partId,measureIndex,new Set([identity(event)]));
@@ -520,8 +551,7 @@ export function splitVoiceNoteWithTie(source,{partId,measureIndex,eventIndex,
   // belongs to the first attack, not duplicated as a second printed symbol.
   for(const accidental of all(continuation,'accidental'))continuation.removeChild(accidental);
   const setLength=(node,length,type)=>{
-    direct(node,'duration').textContent=String(length);
-    direct(node,'type').textContent=type;
+    setWrittenDuration(node,type,length);
     const stem=direct(node,'stem');if(stem)node.removeChild(stem);
   };
   setLength(note,duration,firstType);
