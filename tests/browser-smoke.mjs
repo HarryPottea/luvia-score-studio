@@ -1580,6 +1580,20 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_UNEMBEDDED_KOREAN_FONT_VECTOR_PDF_BLOCKED_SAFELY');
 
+  await page.check('#v4-pdf-unicode-raster');
+  const hybridPdfDownload=page.waitForEvent('download',{timeout:90000});
+  await page.click('#v4-part-pdf-zip');
+  const hybridZipFile=await hybridPdfDownload;
+  const hybridZip=await JSZip.loadAsync(await fs.readFile(await hybridZipFile.path()));
+  const hybridPdfEntries=Object.keys(hybridZip.files).filter(x=>x.endsWith('.pdf'));
+  assert.equal(hybridPdfEntries.length,1);
+  const hybridPdfBytes=await hybridZip.file(hybridPdfEntries[0]).async('nodebuffer');
+  assert.equal(hybridPdfBytes.subarray(0,5).toString(),'%PDF-');
+  assert.match(hybridPdfBytes.toString('latin1'),/\/Subtype\s*\/Image/);
+  assert.match(await page.locator('#message').textContent(),/하이브리드/);
+  console.log('BROWSER_STAGE=V4_KOREAN_HYBRID_VECTOR_STAFF_PNG_TEXT_PDF_ZIP');
+
+
 
   await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).focus();
   await page.keyboard.press('ControlOrMeta+c');
