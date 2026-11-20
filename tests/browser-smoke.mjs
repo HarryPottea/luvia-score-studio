@@ -1493,6 +1493,7 @@ try {
   assert.equal(vectorPartPdfBytes.subarray(0,5).toString(),'%PDF-');
   assert.ok(vectorPartPdfBytes.length>1000);
   assert.match(vectorPartPdfBytes.toString('latin1'),/\/Type\s*\/Page/);
+  await fs.writeFile(output+'/vector-parts-english.pdf',vectorPartPdfBytes);
   console.log('BROWSER_STAGE=V4_LOCAL_VECTOR_PART_PDF_ZIP');
 
   await page.locator('#jwoo-measure-toolbar [data-act="duplicate"]').click();
@@ -1619,6 +1620,7 @@ try {
   const hybridPdfBytes=await hybridZip.file(hybridPdfEntries[0]).async('nodebuffer');
   assert.equal(hybridPdfBytes.subarray(0,5).toString(),'%PDF-');
   assert.match(hybridPdfBytes.toString('latin1'),/\/Subtype\s*\/Image/);
+  await fs.writeFile(output+'/hybrid-parts-korean.pdf',hybridPdfBytes);
   assert.match(await page.locator('#message').textContent(),/하이브리드/);
   console.log('BROWSER_STAGE=V4_KOREAN_HYBRID_VECTOR_STAFF_PNG_TEXT_PDF_ZIP');
 
