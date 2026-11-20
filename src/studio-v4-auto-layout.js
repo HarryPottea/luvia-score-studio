@@ -110,22 +110,37 @@ export function planDensityLayout(source,{pageFormat='A4_P',
   const systemsPerPage=Math.max(1,Math.min(7,
     Math.floor((pageFormat==='A4_L'?17:28)/(Math.max(2,staves*2.5)+2))));
   const penalties=connectionPenalties(parts,len);
-  const balanced=balanceMusicSystems(widths,{capacity,maxBars,breakPenalties:penalties});
+  const sourceBreaks=parts.map(breaksAt);
+  const manual=Array(len).fill('none');
+  if(!replaceExisting){
+    for(let i=1;i<len;i++){
+      const declared=new Set(sourceBreaks.map(row=>row[i]).filter(x=>x!=='none'));
+      if(declared.size>1)
+        fail((i+1)+'마디의 수동 줄·페이지 지시가 파트마다 달라 자동 조판하지 않습니다.');
+      manual[i]=[...declared][0]||'none';
+    }
+  }
+  const hardBreaks=manual.map((type,i)=>type==='none'?null:i)
+    .filter(i=>i!==null&&i>0);
+  const balanced=balanceMusicSystems(widths,{capacity,maxBars,
+    breakPenalties:penalties,hardBreaks});
   const starts=balanced.systemStarts,systemWeights=balanced.systemWeights,
     systemBars=balanced.systemBars;
   const expected=Array(len).fill('none');
-  for(let i=1;i<starts.length;i++)
-    expected[starts[i]]=i%systemsPerPage===0?'page':'system';
-  for(let p=0;p<parts.length;p++){
-    const previous=breaksAt(parts[p]);
-    for(let i=1;i<len;i++){
-      if(previous[i]!=='none'&&!replaceExisting&&previous[i]!==expected[i])
-        fail((i+1)+'마디에 기존 수동 페이지·줄 나눔이 있어 자동 배치를 차단했습니다.');
-    }
+  let systemsOnPage=0,pages=1;
+  for(let k=1;k<starts.length;k++){
+    const at=starts[k];
+    const newPage=manual[at]==='page'||systemsOnPage+1>=systemsPerPage;
+    expected[at]=newPage?'page':'system';
+    if(newPage){pages++;systemsOnPage=0;}
+    else systemsOnPage++;
   }
+  // An authored new-page is never weakened to a system break.
+  for(const at of hardBreaks)if(manual[at]==='page'&&expected[at]!=='page')
+    fail('수동 페이지 나눔 보존에 실패했습니다.');
   return {pageFormat,totalMeasures:len,parts:parts.length,totalStaves:staves,
     widths,capacity,systemStarts:starts,systems:starts.length,
-    systemsPerPage,pages:Math.ceil(starts.length/systemsPerPage),
+    systemsPerPage,pages,manualBreaks:hardBreaks,manualPages:hardBreaks.filter(i=>manual[i]==='page'),
     systemWeights,systemBars,expected,breakPenaltyTotal:penalties.reduce((a,b)=>a+b,0),
     balancePolicy:balanced.policy,
     kind:'DENSITY_HEURISTIC_NOT_COLLISION_CERTIFIED'};
