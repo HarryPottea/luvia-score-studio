@@ -1908,6 +1908,40 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_MOVE_NOTE_BETWEEN_VOICES_WITH_KOREAN_LYRIC_AND_UNDO');
 
+  const secondBeatTransfer='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list>'+
+    '<score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><rest/><duration>48</duration><voice>1</voice><type>quarter</type></note>'+
+    '<note><pitch><step>G</step><octave>4</octave></pitch>'+
+    '<duration>48</duration><voice>1</voice><type>quarter</type>'+
+    '<lyric number="1"><text>달빛</text></lyric></note>'+
+    '<note><rest/><duration>96</duration><voice>1</voice><type>half</type></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>192</duration><voice>2</voice><type>whole</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'beat-two-voice.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(secondBeatTransfer)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===4,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-transfer-voice','2');
+  await page.click('#v4-transfer-note');
+  await page.waitForFunction(()=>document.querySelector('#v4-transfer-status')?.textContent?.includes('이동 완료'),
+    null,{timeout:30000});
+  const secondBeatXmlEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const secondBeatXml=await fs.readFile(await (await secondBeatXmlEvent).path(),'utf8');
+  assert.match(secondBeatXml,/<note><rest\s*\/><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type>/);
+  assert.match(secondBeatXml,/<note><pitch><step>G<\/step><octave>4<\/octave><\/pitch><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type>/);
+  assert.match(secondBeatXml,/<note><rest\s*\/><duration>96<\/duration><voice>2<\/voice><type>half<\/type>/);
+  assert.match(secondBeatXml,/<text>달빛<\/text>/);
+  assert.equal((secondBeatXml.match(/<backup>/g)||[]).length,1);
+  console.log('BROWSER_STAGE=V4_TRANSFER_MIDMEASURE_NOTE_INTO_SURROUNDING_RESTS');
+
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
