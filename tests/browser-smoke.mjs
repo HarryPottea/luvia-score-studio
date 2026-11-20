@@ -1836,6 +1836,39 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_CROSSBAR_TIE_CHAIN_PITCH_CHANGE_AND_UNDO');
 
+
+  // A tiny originally synthesized TTF with Han/Geul glyphs validates actual
+  // embedded Unicode vector text without shipping a proprietary font.
+  const tinyLocalTTF='AAEAAAAKAIAAAwAgT1MvMkT9GlAAAAEoAAAAYGNtYXD9NYcYAAABlAAAAExnbHlmSbfnvgAAAewAAABOaGVhZGFiQ/YAAACsAAAANmhoZWEFSAH2AAAA5AAAACRobXR4ArwAlgAAAYgAAAAMbG9jYQAaADQAAAHgAAAADG1heHAABwAGAAABCAAAACBuYW1l0XA3DgAAAjwAAAE4cG9zdHTbyAoAAAN0AAAANQABAAAAAQAALhz75l8PPPUAAQPoAAAAAAAAAAAAAAAAAAAAAABGAEYCCALQAAAAAwACAAAAAAAAAAEAAAMg/zgAAAJYADIAZAH0AAEAAAAAAAAAAAAAAAAAAAABAAEAAAAFAAQAAQAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAwJYAZAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQAAAAAAAAAAAAAAPz8/PwAAACDVXAMg/zgAAAMgAMgAAAAAAAAAAAAAAAAAAAAgAAACWAAyADIAMgAyADIAAAACAAAAAwAAABQAAwABAAAAFAAEADgAAAAKAAgAAgACACAAQa4A1Vz//wAAACAAQa4A1Vz////h/8FSBCqnAAEAAAAAAAAAAAAAAAAAAAAAAA0AGgAnAAEARgBGAggC0AADAAA3ESERRgHCRgKK/XYAAQBGAEYCCALQAAMAADcRIRFGAcJGAor9dgABAEYARgIIAtAAAwAANxEhEUYBwkYCiv12AAAAAAAKAH4AAQAAAAAAAQANAAAAAQAAAAAAAgAHAA0AAQAAAAAAAwANAAAAAQAAAAAABAAVABQAAQAAAAAABgAVACkAAwABBAkAAQAaAD4AAwABBAkAAgAOAFgAAwABBAkAAwAaAD4AAwABBAkABAAqAGYAAwABBAkABgAqAJBKV09PU3ludGhldGljUmVndWxhckpXT09TeW50aGV0aWMgUmVndWxhckpXT09TeW50aGV0aWMtUmVndWxhcgBKAFcATwBPAFMAeQBuAHQAaABlAHQAaQBjAFIAZQBnAHUAbABhAHIASgBXAE8ATwBTAHkAbgB0AGgAZQB0AGkAYwAgAFIAZQBnAHUAbABhAHIASgBXAE8ATwBTAHkAbgB0AGgAZQB0AGkAYwAtAFIAZQBnAHUAbABhAHIAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAwAkAQIBAwNoYW4EZ2V1bAAAAA==';
+  const oneBarHangul='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><work><work-title>Test</work-title></work>'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>192</duration>'+
+    '<type>whole</type><lyric number="1"><text>한글</text></lyric></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'test-hangul.ttf-score.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(oneBarHangul)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===1,
+    null,{timeout:30000});
+  await page.locator('#v4-pdf-local-font').setInputFiles({name:'synthetic.ttf',
+    mimeType:'font/ttf',buffer:Buffer.from(tinyLocalTTF,'base64')});
+  await page.uncheck('#v4-pdf-unicode-raster');
+  const embeddedVectorZipEvent=page.waitForEvent('download',{timeout:90000});
+  await page.click('#v4-part-pdf-zip');
+  const embeddedVectorZip=await JSZip.loadAsync(
+    await fs.readFile(await (await embeddedVectorZipEvent).path()));
+  const embeddedEntries=Object.keys(embeddedVectorZip.files).filter(x=>x.endsWith('.pdf'));
+  assert.equal(embeddedEntries.length,1);
+  const embeddedBytes=await embeddedVectorZip.file(embeddedEntries[0]).async('nodebuffer');
+  assert.match(embeddedBytes.toString('latin1'),/\/FontFile2\b/);
+  assert.match(embeddedBytes.toString('latin1'),/\/ToUnicode\b/);
+  assert.doesNotMatch(embeddedBytes.toString('latin1'),/\/Subtype\s*\/Image\b/);
+  assert.match(await page.locator('#message').textContent(),/TTF 벡터 글자/);
+  console.log('BROWSER_STAGE=V4_SYNTHETIC_KOREAN_TTF_EMBEDDED_VECTOR_PDF');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
