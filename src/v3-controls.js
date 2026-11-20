@@ -149,17 +149,19 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
         setMessage('변경 후 악보 렌더링 실패: 원본 상태로 복원했습니다.',true);return;
       }
       history.record(before,result.doc,label);
-      // Preserve the actual selected note when an immutable edit inserts,
-      // removes or reorders rests before it. Legacy transforms omit this hint.
-      if(Number.isSafeInteger(result.change?.nextEventIndex)&&
-        result.change.nextEventIndex>=0&&
-        result.change.partId===selection.partId&&
-        result.change.measureIndex===selection.measureIndex){
-        if(Number.isSafeInteger(result.change.nextMeasureIndex)&&
-          result.change.nextMeasureIndex>=0)
-          selection.measureIndex=result.change.nextMeasureIndex;
-        selection.eventIndex=result.change.nextEventIndex;
+      // Structural measure operations can remap a bar even when no note-level
+      // hint exists. Clamp to a surviving measure after the immutable commit.
+      if(Number.isSafeInteger(result.change?.nextMeasureIndex)&&
+         result.change.nextMeasureIndex>=0){
+        const parts=[...result.doc.documentElement.children].filter(n=>n.localName==='part');
+        const selectedPart=parts.find(n=>n.getAttribute('id')===selection.partId)||parts[0];
+        const length=selectedPart?[...selectedPart.children].filter(n=>n.localName==='measure').length:0;
+        if(length)selection.measureIndex=Math.min(result.change.nextMeasureIndex,length-1);
       }
+      if(Number.isSafeInteger(result.change?.nextEventIndex)&&
+         result.change.nextEventIndex>=0&&
+         (result.change.partId===undefined||result.change.partId===selection.partId))
+        selection.eventIndex=result.change.nextEventIndex;
       invalidateRhythmUndo();refreshRhythmReport();refreshV2();
       setMessage(label+' 완료. 악보와 원본 비교를 확인한 뒤 저장하세요.');
     }catch(error){
