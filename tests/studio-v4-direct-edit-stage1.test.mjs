@@ -56,6 +56,14 @@ test('identical pitches in simultaneous voices resolve only by explicit voice id
   assert.equal(map.find(x=>x.event.eventIndex===1).graphic.gn,'voice2');
   assert.equal(matchScoreEvents(source,drawn.map(({voice,...x})=>x)).length,0);
 });
+test('partially overlapping OSMD voice IDs never swap identical notes',()=>{
+  const original=[
+    {step:'A',alter:0,octave:3,start:0,duration:12,voice:'1',staff:'1'},
+    {step:'A',alter:0,octave:3,start:0,duration:12,voice:'2',staff:'1'},
+  ];
+  const renumbered=[{...original[0],voice:'0'},{...original[1],voice:'1'}];
+  assert.equal(matchScoreEvents(original,renumbered).length,0);
+});
 test('unison duplicates inside the same voice remain non-interactive',()=>{
   const source=[{step:'D',alter:0,octave:4,start:0,duration:48,voice:'1',staff:'1'},
     {step:'D',alter:0,octave:4,start:0,duration:48,voice:'1',staff:'1'}];
