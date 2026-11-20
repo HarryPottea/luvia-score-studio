@@ -23,6 +23,7 @@ import {toggleMusicXmlOrnament} from './studio-v4-ornaments.js';
 import {insertGraceNote,removeGraceNote,editGraceNote} from './studio-v4-grace-notes.js';
 import {authorTupletGroup} from './studio-v4-tuplet-groups.js';
 import {editTupletPitches,inspectEditableTuplet} from './studio-v4-tuplet-pitch-edit.js';
+import {redistributeVoiceRhythm,reshapeTupletRhythm} from './studio-v4-rhythm-group.js';
 import {rebarWrittenScore} from './studio-v4-rebar-written.js';
 import {transposeChordChromatically} from './studio-v4-chord-transpose.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
@@ -164,6 +165,14 @@ const panel=[
   '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치" tabindex="0"></div>',
   '<label class="v4-timeline-move-check v4-keyboard-enable"><input id="v4-keys-enabled" type="checkbox" /> 키보드 작곡 단축키 사용 (선택 기능)</label>',
   '<p class="v4-tiny">편집 화면에서 영문 N: 선택 쉼표에 음표 입력 · R: 음표를 쉼표로 변경 · [ / ]: 앞/뒤 쉼표로 한 격자 이동. 텍스트 입력 중에는 작동하지 않습니다.</p>',
+  '<div class="v4-rhythm-group"><p class="v4-subhead">2단계 · 다성부 리듬 재분배</p>',
+  '<p class="v4-tiny">같은 성부의 연속 음표·쉼표·화음 2~8개를 새 길이로 재구성합니다. 다른 성부와 구간의 총 박자·마지막 시점은 변경하지 않습니다.</p>',
+  '<label for="v4-rhythm-group-end">선택 구간 마지막 음표 목록 번호 (1부터)</label>',
+  '<input id="v4-rhythm-group-end" type="number" min="2" max="99999" step="1" value="2" />',
+  '<label for="v4-rhythm-group-types">새 음표 길이 순서</label>',
+  '<input id="v4-rhythm-group-types" type="text" maxlength="150" value="eighth-dotted,16th" placeholder="eighth-dotted,16th" />',
+  '<button id="v4-rhythm-group-apply" type="button">선택 성부 리듬 일괄 재분배</button>',
+  '<p class="v4-tiny">길이: whole · half · quarter · eighth · 16th · 32nd. 점음표는 -dotted를 붙입니다. 화음은 전체가 함께 변경됩니다.</p></div>',
   '<button id="v4-pro-triplet" type="button">4·8·16분음표 두 개 → 셋잇단음 세 개</button>',
   '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
   '<div class="v4-common-tuplets"><p class="v4-subhead">잇단음 그룹 · 3:2 / 5:4 / 6:4 / 7:4</p>',
@@ -173,6 +182,10 @@ const panel=[
   '<label for="v4-tuplet-pitches">기존 잇단음 그룹 음정 일괄 수정</label>',
   '<div class="v4-inline"><input id="v4-tuplet-pitches" type="text" maxlength="180" placeholder="C4 D4 Eb4 F#4 G4" aria-describedby="v4-tuplet-pitches-status" />',
   '<button id="v4-tuplet-pitches-apply" type="button">선택 잇단음 음정 수정</button></div>',
+  '<label for="v4-tuplet-rhythm-types">기존 잇단음의 리듬 구조 편집</label>',
+  '<div class="v4-inline"><input id="v4-tuplet-rhythm-types" type="text" maxlength="150" value="quarter,16th,16th" placeholder="quarter,16th,16th" />',
+  '<button id="v4-tuplet-rhythm-apply" type="button">선택 잇단음 리듬 수정</button></div>',
+  '<p class="v4-tiny">기존 3:2·5:4·6:4·7:4의 모든 음표 길이를 순서대로 입력하세요. 비율과 전체 박자는 보존합니다.</p>',
   '<p id="v4-tuplet-pitches-status" class="v4-tiny" role="status" aria-live="polite">잇단음 중 한 음표를 선택하고 그룹의 3~7개 위치를 음정으로 입력하세요. 기존 쉼표 위치는 R로 입력합니다. 리듬·쉼표·가사·다른 성부는 유지합니다.</p>',
   '<p class="v4-tiny">3:2는 원래 음표 2개, 5:4·6:4·7:4는 4개가 필요합니다. 동일 성부의 동일 길이 일반 음표가 연속되어야 하며, 생성되는 추가 음은 위 음이름·변화표·옥타브를 사용합니다.</p>',
   '<p class="v4-tiny">분할값이 부족하면 해당 파트의 MusicXML divisions를 정확히 확장합니다. 복잡한 빔·붙임줄·화음·보호된 표시가 있으면 변경하지 않습니다.</p></div>',
@@ -938,6 +951,14 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
   }),'잇단음 그룹 생성'));
+  $('v4-rhythm-group-apply').addEventListener('click',()=>void commit(doc=>
+    redistributeVoiceRhythm(doc,{...selected(),
+      endEventIndex:Number($('v4-rhythm-group-end').value)-1,
+      types:$('v4-rhythm-group-types').value}),
+    '성부별 음표·화음 리듬 재분배'));
+  $('v4-tuplet-rhythm-apply').addEventListener('click',()=>void commit(doc=>
+    reshapeTupletRhythm(doc,{...selected(),types:$('v4-tuplet-rhythm-types').value}),
+    '잇단음 그룹 리듬 구조 변경'));
   $('v4-tuplet-pitches-apply').addEventListener('click',async()=>{
     const status=$('v4-tuplet-pitches-status'),params=selected();
     try{
