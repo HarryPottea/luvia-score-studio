@@ -134,7 +134,8 @@ export function authorTupletGroup(source,{partId,measureIndex,eventIndex,
   for(const current of candidates){
     one(current,'duration').textContent=String(tick);
     const tm=node(current,'time-modification');
-    tm.append(node(tm,'actual-notes',actual),node(tm,'normal-notes',normal),node(tm,'normal-type',type));
+    for(const [tag,value] of [['actual-notes',actual],['normal-notes',normal],['normal-type',type]])
+      tm.appendChild(node(tm,tag,value));
     const afterType=one(current,'type').nextSibling;
     current.insertBefore(tm,afterType);
     const stem=one(current,'stem');if(stem)current.removeChild(stem);
