@@ -261,6 +261,7 @@ function attachScoreInteractions(osmd){
     select:position=>v3.select(position),
     onMeasurePointer:(measureIndex,extend,context)=>v4?.onMeasurePointer?.(measureIndex,extend,context),
     movePitch:(position,steps)=>v3.movePitch(position,steps),
+    onDirectEdit:(position,action)=>v3.directEdit(position,action),
     isLyricMode:()=>v4?.lyricMode?.()===true,
     editLyric:(position,element)=>v4?.openLyricFromScore?.(position,element),
     announce:count=>{ const el=document.getElementById('v3-graphic-hint');
