@@ -4,7 +4,7 @@
 // substituting broken glyphs; use native Chromium/Safari print for Korean text.
 import JSZip from 'jszip';
 import {baseScoreName,safeFileName} from './part-export.js';
-import {inspectPrintableSvg} from './studio-v4-printbook.js';
+import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 
 const MAX_PAGES=80,MAX_PARTS=12,MAX_FILE_BYTES=24*1024*1024;
 const FORMAT={A4_P:{w:595.2756,h:841.8898,orientation:'p'},
