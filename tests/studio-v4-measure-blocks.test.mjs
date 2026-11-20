@@ -41,6 +41,7 @@ class XmlNode {
     const i=this.children.indexOf(node);if(i<0)throw Error('Not a child');
     this.children.splice(i,1);node.parentNode=null;return node;
   }
+  replaceChild(next,previous){this.insertBefore(next,previous);this.removeChild(previous);return previous;}
   cloneNode(deep=false){
     return new XmlNode(this.localName,this._attributes,deep?this.children.map(n=>n.cloneNode(true)):[],this._value);
   }
