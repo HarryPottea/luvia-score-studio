@@ -994,3 +994,32 @@ test('stage2: parsing has a narrow explicit vocabulary',()=>{
   assert.deepEqual(parseRhythmTypes('eighth-dotted, 16th'),['eighth-dotted','16th']);
   assert.throws(()=>parseRhythmTypes('eighth, 64th'),/리듬/);
 });
+
+test('stage2: rebarring a newly redistributed polyphonic score preserves absolute onsets and ties',()=>{
+  const source=fixture(),saved=serialize(source);
+  const modified=redistributeVoiceRhythm(source,{...params(0),endEventIndex:1,
+    types:'eighth-dotted,16th'}).doc;
+  const result=rebarWrittenScore(modified,{meter:'3/4'});
+  const bars=children(part(result.doc),'measure');
+  assert.equal(serialize(source),saved);
+  assert.equal(bars.length,2);
+  const actual=[];
+  for(const [index] of bars.entries()){
+    const bar=inspectAdvancedMeasure(result.doc,'P1',index);
+    assert.equal(bar.reason,null);
+    for(const e of bar.events.filter(e=>!e.rest))
+      actual.push({name:e.step+e.octave,voice:e.voice,abs:index*144+e.start,
+        duration:e.duration,measure:index});
+  }
+  assert.ok(actual.some(e=>e.name==='C4'&&e.voice==='1'&&e.abs===0&&e.duration===36));
+  assert.ok(actual.some(e=>e.name==='E4'&&e.voice==='1'&&e.abs===36&&e.duration===12));
+  assert.ok(actual.some(e=>e.name==='C3'&&e.voice==='2'&&e.abs===0&&e.duration===48));
+  assert.ok(actual.some(e=>e.name==='G3'&&e.voice==='2'&&e.abs===96&&e.duration===48));
+  assert.ok(actual.some(e=>e.name==='G3'&&e.voice==='2'&&e.abs===144&&e.duration===48));
+  const start=children(bars[0],'note').find(n=>first(first(n,'pitch')||E('none'),'step')?.textContent==='G'&&
+    first(first(n,'pitch')||E('none'),'octave')?.textContent==='3');
+  const stop=children(bars[1],'note').find(n=>first(first(n,'pitch')||E('none'),'step')?.textContent==='G'&&
+    first(first(n,'pitch')||E('none'),'octave')?.textContent==='3');
+  assert.equal(first(start,'tie')?.getAttribute('type'),'start');
+  assert.equal(first(stop,'tie')?.getAttribute('type'),'stop');
+});
