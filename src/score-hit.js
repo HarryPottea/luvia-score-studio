@@ -136,7 +136,7 @@ function addHitArea(element) {
 // OSMD autoResize replaces SVG nodes. Rebind after a DOM replacement instead of
 // assuming one-off graphical objects survive responsive re-rendering.
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce,
-  isLyricMode=()=>false,editLyric=()=>false}) {
+  isLyricMode=()=>false,editLyric=()=>false,onMeasurePointer=()=>{}}) {
   const host=document.getElementById('score-container');
   let targets=[],cleanups=[],selected=null,drag=null,disposed=false;
   const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
@@ -161,7 +161,12 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     ring.classList.add('jwoo-selection-ring');
     el.insertBefore(ring,el.firstChild);
   }
-  function highlight(){for(const item of targets)markSelected(item,!!same(selected,item));}
+  let activeRange=null;
+  function highlightRange(){
+    for(const item of targets)item.element.classList.toggle('jwoo-measure-selected',
+      !!activeRange&&item.measureIndex>=activeRange.start&&item.measureIndex<=activeRange.end);
+  }
+  function highlight(){for(const item of targets)markSelected(item,!!same(selected,item));highlightRange();}
   function up(event) {
     if(disposed||!drag||drag.pointerId!==event.pointerId)return;
     const {item,unit,y}=drag;
@@ -180,7 +185,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     el.setAttribute('aria-pressed','false');
     function key(event) {
       if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
-      event.preventDefault();selected=item;select(item);highlight();
+      event.preventDefault();selected=item;onMeasurePointer(item.measureIndex,!!event.shiftKey);select(item);highlight();
       if(isLyricMode()&&(event.key==='Enter'||event.key===' ')){
         editLyric(item,el);return;
       }
@@ -226,7 +231,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       if(ranked.length===1||ranked[1].distance-ranked[0].distance>=3)item=ranked[0].candidate;
     }
     if(!item)return;
-    selected=item;select(item);highlight();
+    selected=item;onMeasurePointer(item.measureIndex,!!event.shiftKey);select(item);highlight();
     if(isLyricMode()){
       drag=null;
       editLyric(item,item.element);
@@ -257,6 +262,10 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   observer?.observe(host,{childList:true,subtree:true});
   remap();
   return {get count(){return targets.length;},highlight(next){selected=next;highlight();},
+    highlightMeasureRange(start,end){
+      activeRange=Number.isSafeInteger(start)&&Number.isSafeInteger(end)?{start,end}:null;
+      highlightRange();
+    },
     rectFor(next){
       const item=targets.find(item=>same(item,next));
       return item?.element?.getBoundingClientRect?.()||null;
