@@ -6,7 +6,7 @@ import {createEditorHistory} from '../src/editor-history.js';
 import {transposeMeasurePassage} from '../src/studio-v4-passage-transpose.js';
 import {addIndependentVoice} from '../src/studio-v4-add-voice.js';
 import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
-import {transferVoicePhrase,inspectTransferableVoicePhrase} from '../src/studio-v4-voice-phrase.js';
+import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMeasures} from '../src/studio-v4-voice-phrase.js';
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
@@ -653,4 +653,60 @@ test('voice phrase transfer refuses protected, incomplete, and occupied target l
   notes[4].replaceChild(n('pitch',{},[leaf('step','G'),leaf('octave',4)]),first(notes[4],'rest'));
   assert.throws(()=>transferVoicePhrase(source,params),/빈 쉼표/);
   assert.equal(first(notes[0],'pitch').textContent,'C4');
+});
+
+
+function multibarPhraseFixture(){
+  const source=phraseFixture(),bar=rows(source)[0][1],old=first(bar,'note'),
+    dir=first(bar,'direction');
+  bar.removeChild(old);
+  for(const [i,step] of ['G','A'].entries()){
+    const note=n('note',{},[
+      n('pitch',{},[leaf('step',step),leaf('octave',4)]),
+      leaf('duration',96),leaf('voice','1'),leaf('type','half'),
+      ...(i===0?[n('lyric',{number:'1'},[leaf('text','달빛')])]:[])
+    ]);
+    bar.insertBefore(note,dir);
+  }
+  bar.insertBefore(n('backup',{},[leaf('duration',192)]),dir);
+  bar.insertBefore(n('note',{},[
+    n('rest'),leaf('duration',192),leaf('voice','2'),leaf('type','whole')
+  ]),dir);
+  return source;
+}
+test('atomic two-bar voice migration preserves rhythms and Korean lyrics in both measures',()=>{
+  const source=multibarPhraseFixture();
+  const result=transferVoiceAcrossMeasures(source,{
+    partId:'P1',startMeasureIndex:0,endMeasureIndex:1,
+    sourceVoice:'1',targetVoice:'2',staff:'1'});
+  assert.equal(result.change.measures,2);
+  assert.equal(result.change.movedNotes,6);
+  assert.equal(result.change.movedLyrics,2);
+  for(const [i,expect] of [[0,['C','D','E','F']],[1,['G','A']]]){
+    const notes=rows(result.doc)[0][i].children.filter(n=>n.localName==='note');
+    const sourceNotes=notes.filter(n=>first(n,'voice').textContent==='1');
+    const moved=notes.filter(n=>first(n,'voice').textContent==='2');
+    assert.equal(sourceNotes.length,expect.length);
+    assert.ok(sourceNotes.every(n=>!!first(n,'rest')));
+    assert.deepEqual(moved.map(n=>first(first(n,'pitch'),'step').textContent),expect);
+    assert.equal(rows(result.doc)[0][i].children.filter(n=>n.localName==='backup').length,1);
+  }
+  const movedFirst=rows(result.doc)[0][0].children.filter(n=>n.localName==='note'&&
+    first(n,'voice').textContent==='2');
+  const movedSecond=rows(result.doc)[0][1].children.filter(n=>n.localName==='note'&&
+    first(n,'voice').textContent==='2');
+  assert.equal(first(movedFirst[1],'lyric').textContent,'별빛');
+  assert.equal(first(movedSecond[0],'lyric').textContent,'달빛');
+  assert.equal(first(first(rows(source)[0][0],'note'),'pitch').textContent,'C4');
+  assert.equal(first(first(rows(source)[1][0],'note'),'rest').localName,'rest');
+});
+test('cross-bar voice transfer is refused atomically if a later bar has no target rest',()=>{
+  const source=multibarPhraseFixture(),bar=rows(source)[0][1];
+  const rest=bar.children.filter(n=>n.localName==='note').at(-1);
+  rest.replaceChild(n('pitch',{},[leaf('step','B'),leaf('octave',4)]),first(rest,'rest'));
+  assert.throws(()=>transferVoiceAcrossMeasures(source,{
+    partId:'P1',startMeasureIndex:0,endMeasureIndex:1,
+    sourceVoice:'1',targetVoice:'2',staff:'1'}),/빈 쉼표/);
+  assert.equal(first(first(rows(source)[0][0],'note'),'pitch').textContent,'C4');
+  assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'G4');
 });
