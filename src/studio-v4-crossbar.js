@@ -203,3 +203,57 @@ export function toggleSlurAcrossBarline(source,{partId,measureIndex,eventIndex,
   return {doc:candidate,change:{action:matched?'crossbar-slur-remove':'crossbar-slur-add',
     partId,measureIndex,eventIndex,endMeasureIndex:nextMeasureIndex,endEventIndex}};
 }
+
+
+/**
+ * Shift a simple final note to the first empty beat in the following measure.
+ * This is an actual onset move, not an added tie: the source becomes an equal
+ * rest and the original pitched event (including its lyric) moves to the
+ * destination. An existing note or unsupported markup cannot be overwritten.
+ */
+export function moveVoiceIntoNextMeasure(source,{partId,measureIndex,eventIndex}={}){
+  const a=locate(source,partId,measureIndex,eventIndex),e=a.event;
+  const next=measureIndex+1,partMeasures=all(a.part,'measure'),measure=partMeasures[next];
+  if(!measure)fail('다음 마디가 없습니다.');
+  const b=inspectAdvancedMeasure(source,partId,next);
+  if(b.reason||!b.divisions||b.divisions!==a.audit.divisions)
+    fail('서로 다른 박자 분할 또는 복잡한 다음 마디는 이동할 수 없습니다.');
+  if(!e||e.rest||e.chord||e.tuplet||e.start+e.duration!==a.audit.max)
+    fail('마디 끝에서 정확히 끝나는 일반 음표만 다음 마디로 이동할 수 있습니다.');
+  plainNote(a.note);
+  const target=b.events.find(v=>lane(v)===lane(e)&&!v.chord);
+  if(!target||!target.rest||target.start!==0)
+    fail('다음 마디의 첫 박자가 같은 성부·보표의 쉼표여야 합니다.');
+  const targetRest=all(measure,'note')[target.eventIndex];
+  plainNote(targetRest,{rest:true});
+  if(target.duration<e.duration)fail('다음 마디 첫 쉼표가 이동 음표보다 짧습니다.');
+  // Changes to the key signature alter pitch meaning if the written note is
+  // moved across the barline. Reject such a transition rather than guess.
+  if(all(measure,'attributes').some(attrs=>one(attrs,'key')))
+    fail('다음 마디에 새 조표가 있어 음정을 보존할 수 없습니다.');
+  const restType=String(e.type||'');
+  if(!TYPES.some(([type])=>type===restType)||
+    lengthOf(restType,a.audit.divisions)!==e.duration)
+    fail('원래 음표 길이를 동일한 쉼표로 복원할 수 없습니다.');
+  const leftover=restChunks(target.duration-e.duration,b.divisions);
+  const candidate=source.cloneNode(true),ca=locate(candidate,partId,measureIndex,eventIndex),
+    cb=locate(candidate,partId,next,target.eventIndex);
+  const oldSource=ca.note,oldRest=cb.note;
+  ca.measure.replaceChild(makeRest(ca.measure,oldSource,
+    {type:restType,duration:e.duration}),oldSource);
+  const afterRest=oldRest.nextSibling;
+  cb.measure.replaceChild(oldSource,oldRest);
+  for(const chunk of leftover)cb.measure.insertBefore(makeRest(cb.measure,oldRest,chunk),afterRest);
+  assertPreserved(source,candidate,partId,measureIndex,lane(e));
+  assertPreserved(source,candidate,partId,next,lane(e));
+  const startAudit=inspectAdvancedMeasure(candidate,partId,measureIndex);
+  const endAudit=inspectAdvancedMeasure(candidate,partId,next);
+  const abandoned=startAudit.events[eventIndex],moved=endAudit.events[target.eventIndex];
+  if(!abandoned?.rest||abandoned.start!==e.start||abandoned.duration!==e.duration||
+    !moved||moved.rest||moved.start!==0||moved.duration!==e.duration||
+    moved.voice!==e.voice||moved.staff!==e.staff||
+    moved.step!==e.step||moved.alter!==e.alter||moved.octave!==e.octave)
+    fail('마디 이동 후 음정·성부 또는 길이 보존 검사에 실패했습니다.');
+  return {doc:candidate,change:{action:'crossbar-onset-move',partId,measureIndex,eventIndex,
+    nextMeasureIndex:next,nextEventIndex:target.eventIndex}};
+}
