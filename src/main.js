@@ -258,7 +258,7 @@ function attachScoreInteractions(osmd){
   state.graphicBridge = bindGraphicalEditor({
     osmd, doc:state.doc, visibleParts:[...state.visible],
     select:position=>v3.select(position),
-    onMeasurePointer:(measureIndex,extend)=>v4?.onMeasurePointer?.(measureIndex,extend),
+    onMeasurePointer:(measureIndex,extend,context)=>v4?.onMeasurePointer?.(measureIndex,extend,context),
     movePitch:(position,steps)=>v3.movePitch(position,steps),
     isLyricMode:()=>v4?.lyricMode?.()===true,
     editLyric:(position,element)=>v4?.openLyricFromScore?.(position,element),
