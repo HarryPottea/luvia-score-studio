@@ -1575,6 +1575,35 @@ try {
   assert.equal((autoLayoutXml.match(/<text>반짝이는<\/text>/g)||[]).length,48);
   console.log('BROWSER_STAGE=V4_DENSITY_AWARE_AUTOMATIC_MUSICXML_LAYOUT');
 
+  // Directly transpose a two-measure Korean-lyric passage in the real editor.
+  await page.fill('#jwoo-range-from','2');
+  await page.fill('#jwoo-range-to','3');
+  await page.click('#jwoo-range-apply');
+  await page.fill('#jwoo-transpose-semitones','2');
+  await page.selectOption('#jwoo-transpose-spelling','sharp');
+  await page.locator('#jwoo-measure-toolbar [data-act="transpose"]').click();
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 구간 +2반음 이조 완료'),
+    null,{timeout:30000});
+  const shiftedPassageFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const shiftedPassage=await fs.readFile(await (await shiftedPassageFile).path(),'utf8');
+  const passageBars=[...shiftedPassage.matchAll(/<measure number="(\d+)"[^>]*>([\s\S]*?)<\/measure>/g)];
+  assert.equal(passageBars.length,12);
+  for(const [,number,content] of passageBars){
+    const expected=Number(number)>=2&&Number(number)<=3?'D':'C';
+    assert.equal((content.match(new RegExp('<step>'+expected+'</step>','g'))||[]).length,4);
+  }
+  assert.equal((shiftedPassage.match(/<text>반짝이는<\/text>/g)||[]).length,48);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const undoPassageFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const undoPassage=await fs.readFile(await (await undoPassageFile).path(),'utf8');
+  assert.equal((undoPassage.match(/<step>D<\/step>/g)||[]).length,0);
+  console.log('BROWSER_STAGE=V4_KOREAN_LYRIC_PASSAGE_TRANSPOSE_WITH_UNDO');
+
+
   await page.click('#v4-part-pdf-zip');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('한글·특수문자'),
     null,{timeout:30000});
