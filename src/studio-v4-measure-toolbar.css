@@ -8,7 +8,7 @@
 .jwoo-bar-strip{display:flex;align-items:center;gap:5px;overflow-x:auto;
   scrollbar-width:thin;padding:4px 0 9px;overscroll-behavior-x:contain}
 .jwoo-bar-chip{flex:none;min-width:35px;height:32px;border:1px solid #63795a;
-  border-radius:4px;background:#354432;color:#f0f7e9;font:600 12px inherit;
+  border-radius:4px;background:#354432;color:#f0f7e9;font:inherit;font-size:12px;font-weight:600;
   cursor:pointer}
 .jwoo-bar-chip.is-selected{background:#d9ff7a;color:#1e271a;border-color:#d9ff7a}
 .jwoo-bar-chip:focus-visible,.jwoo-bar-actions button:focus-visible,
@@ -36,3 +36,15 @@
   .jwoo-range-controls input{font-size:16px}
 }
 @media print{.jwoo-measure-toolbar{display:none!important}}
+
+.jwoo-measure-toolbar{position:relative}
+.jwoo-measure-context[hidden]{display:none!important}
+.jwoo-measure-context{position:absolute;z-index:50;width:208px;padding:5px;
+  border:1px solid #a6bc90;border-radius:5px;box-shadow:0 8px 28px rgba(0,0,0,.4);
+  background:#273526;display:grid;gap:3px}
+.jwoo-measure-context button{width:100%;text-align:left;border:0;border-radius:3px;
+  padding:10px 11px;background:transparent;color:#eff9e8;font:inherit;
+  font-size:12px;cursor:pointer}
+.jwoo-measure-context button:hover:not(:disabled),.jwoo-measure-context button:focus-visible{
+  background:#496640;outline:1px solid #b5dd8b}
+.jwoo-measure-context button:disabled{opacity:.38;cursor:not-allowed}
