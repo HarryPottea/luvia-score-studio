@@ -147,3 +147,33 @@ test('protect duplicated or orphan chord notes',()=>{
   bar.insertBefore(n('note',[n('chord'),pitch('A'),t('duration',192),t('type','whole')]),opening[0]);
   assert.throws(()=>rebarWrittenScore(source,{meter:'3/4'}),/앞선 일반 음표/);
 });
+
+
+test('chromatic F-sharp chord tone preserves explicit sharp on onset, suppresses on tied continuation',()=>{
+  const source=create(),bar=bars(source)[0],tone=all(bar,'note')[1];
+  const writtenPitch=first(tone,'pitch');
+  writtenPitch.insertBefore(t('alter',1),first(writtenPitch,'octave'));
+  tone.appendChild(t('accidental','sharp'));
+  const result=rebarWrittenScore(source,{meter:'3/4'});
+  assert.equal(result.change.chromaticPitchesPreserved,true);
+  const opening=all(bars(result.doc)[0],'note')[1],
+    continuation=all(bars(result.doc)[1],'note')[1];
+  assert.equal(val(first(opening,'pitch'),'alter'),'1');
+  assert.equal(val(first(continuation,'pitch'),'alter'),'1');
+  assert.equal(val(opening,'accidental'),'sharp');
+  assert.equal(first(continuation,'accidental'),undefined);
+  assert.equal(first(opening,'tie').getAttribute('type'),'start');
+  assert.equal(first(continuation,'tie').getAttribute('type'),'stop');
+  assert.equal(val(tone,'accidental'),'sharp');
+});
+test('unsupported accidental decorations are blocked without rewriting original chord',()=>{
+  const source=create(),bar=bars(source)[0],tone=all(bar,'note')[1];
+  const written=first(tone,'pitch');
+  written.insertBefore(t('alter',1),first(written,'octave'));
+  const accidental=t('accidental','sharp');
+  accidental.setAttribute('parentheses','yes');
+  tone.appendChild(accidental);
+  assert.throws(()=>rebarWrittenScore(source,{meter:'3/4'}),/장식적 임시표|변화표/);
+  assert.equal(val(first(tone,'pitch'),'alter'),'1');
+  assert.equal(accidental.getAttribute('parentheses'),'yes');
+});
