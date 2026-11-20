@@ -2194,12 +2194,12 @@ try {
     null,{timeout:30000});
   const articulationDownload=page.waitForEvent('download');
   await page.click('#download-xml');
-  const articulationXml=await fs.readFile(await (await articulationDownload).path(),'utf8');
-  assert.equal((articulationXml.match(/<accent\s*\/>/g)||[]).length,6);
-  assert.equal((articulationXml.match(/<voice>2<\/voice>/g)||[]).length,2);
-  assert.equal((articulationXml.match(/<backup>/g)||[]).length,2);
-  assert.match(articulationXml,/<text>별빛<\/text>/);
-  assert.match(articulationXml,/<text>달빛<\/text>/);
+  const batchArticulationXml=await fs.readFile(await (await articulationDownload).path(),'utf8');
+  assert.equal((batchArticulationXml.match(/<accent\s*\/>/g)||[]).length,6);
+  assert.equal((batchArticulationXml.match(/<voice>2<\/voice>/g)||[]).length,2);
+  assert.equal((batchArticulationXml.match(/<backup>/g)||[]).length,2);
+  assert.match(batchArticulationXml,/<text>별빛<\/text>/);
+  assert.match(batchArticulationXml,/<text>달빛<\/text>/);
   await page.click('#v3-undo');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
     null,{timeout:30000});
