@@ -1082,6 +1082,13 @@ try {
   assert.equal(await page.locator('#v4-inline-input').inputValue(),'빛');
   await page.click('#v4-inline-close');
   console.log('BROWSER_STAGE=V4_DOUBLE_CLICK_SCORE_LYRIC_EDIT_WITH_MODE_OFF');
+  await page.locator('#v3-events .v3-event').nth(2).click();
+  await page.click('#v4-inline-selected');
+  await page.locator('#v4-inline-lyric-editor:visible').waitFor();
+  assert.match(await page.locator('#v4-inline-location').textContent(),/3번째 음표/);
+  assert.equal(await page.locator('#v4-inline-input').inputValue(),'');
+  await page.click('#v4-inline-close');
+  console.log('BROWSER_STAGE=V4_SELECTED_NOTE_INLINE_LYRIC_FALLBACK');
 
 
   // Sticky score follows the long inspector instead of scrolling away.
