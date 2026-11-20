@@ -1511,7 +1511,15 @@ try {
   await page.locator('#v4-play-range').click();
   await page.waitForFunction(()=>document.querySelector('#v4-play-status')?.textContent?.includes('선택 마디'),
     null,{timeout:15000});
+  await page.waitForFunction(()=>document.querySelector('#v4-playing-measure')?.textContent?.includes('2마디 재생 중'),
+    null,{timeout:15000});
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip.is-playing').count(),1);
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip.is-playing').textContent(),'2');
+  assert.equal(await page.locator('#score-container .jwoo-playback-active').count()>0,true);
   await page.locator('#v4-stop').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip.is-playing').length===0,
+    null,{timeout:15000});
+  assert.equal(await page.locator('#score-container .jwoo-playback-active').count(),0);
   console.log('BROWSER_STAGE=V4_SELECTED_MEASURE_AUDITION');
   const rangeSave=page.waitForEvent('download');
   await page.locator('#download-xml').click();
