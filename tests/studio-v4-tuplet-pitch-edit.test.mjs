@@ -124,3 +124,32 @@ test('tied or overlapping tuplet structure cannot silently change group pitches'
     pitches:'D4 E4 F4'}),/붙임줄/);
   assert.equal(first(note,'pitch').textContent,'C4');
 });
+
+
+test('edit a 3:2 mixed note-rest-note tuplet without consuming its rest beat',()=>{
+  const source=makeGroup(),bar0=bar(source),notes=all(bar0,'note');
+  const middle=notes[1],pitch=first(middle,'pitch');
+  middle.insertBefore(e('rest'),pitch);middle.removeChild(pitch);
+  assert.deepEqual(parseTupletPitchSequence('E4 R G4'),[
+    {step:'E',alter:0,octave:4},null,{step:'G',alter:0,octave:4}]);
+  const result=editTupletPitches(source,{partId:'P1',measureIndex:0,
+    eventIndex:1,pitches:'E4 R G4'});
+  const group=all(bar(result.doc),'note').slice(0,3);
+  assert.deepEqual(pitches(bar(result.doc)).slice(0,3),['E4','REST','G4']);
+  assert.deepEqual(group.map(n=>first(n,'duration').textContent),['8','8','8']);
+  assert.equal(first(group[1],'rest').localName,'rest');
+  assert.equal(first(group[1],'pitch'),undefined);
+  assert.equal(result.change.editedNotes,2);
+  assert.equal(first(first(group[0],'lyric'),'text').textContent,'반짝이는');
+  assert.deepEqual(pitches(bar(source)).slice(0,3),['C4','REST','C4']);
+});
+test('mixed tuplet cannot rewrite an existing rest to a pitch or a pitch to rest',()=>{
+  const source=makeGroup(),notes=all(bar(source),'note');
+  const old=first(notes[1],'pitch');
+  notes[1].insertBefore(e('rest'),old);notes[1].removeChild(old);
+  const options={partId:'P1',measureIndex:0,eventIndex:1};
+  assert.throws(()=>editTupletPitches(source,{...options,pitches:'E4 F4 G4'}),/쉼표 위치/);
+  assert.throws(()=>editTupletPitches(source,{...options,pitches:'R R G4'}),/새로 만들 수 없습니다/);
+  assert.equal(first(notes[1],'rest').localName,'rest');
+  assert.equal(first(notes[0],'pitch').textContent,'C4');
+});
