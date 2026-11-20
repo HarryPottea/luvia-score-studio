@@ -5,6 +5,7 @@ import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
 import {createEditorHistory} from '../src/editor-history.js';
 import {transposeMeasurePassage} from '../src/studio-v4-passage-transpose.js';
 import {addIndependentVoice} from '../src/studio-v4-add-voice.js';
+import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
 const xmlOwner={
@@ -406,4 +407,82 @@ test('reject partial measure voice addition while leaving original intact',()=>{
   assert.throws(()=>addIndependentVoice(source,{partId:'P1'}),/완전하지 않아/);
   assert.equal(rows(source)[0][0].children.filter(n=>n.localName==='backup').length,0);
   assert.equal(rows(source)[0][1].children.filter(n=>n.localName==='note').length,1);
+});
+
+
+test('retune complete tied phrase across two bars preserving lyrics, slurs, timing and other part',()=>{
+  const score=connectedBars();
+  const originalFirst=first(rows(score)[0][1],'note');
+  originalFirst.appendChild(n('lyric',{number:'1'},[leaf('text','반짝이는')]));
+  const result=editConnectedPitch(score,{partId:'P1',measureIndex:1,eventIndex:0,
+    step:'F',alter:1,octave:5});
+  const a=first(rows(result.doc)[0][1],'note'),b=first(rows(result.doc)[0][2],'note');
+  assert.equal(first(a,'pitch').textContent,'F15');
+  assert.equal(first(b,'pitch').textContent,'F15');
+  assert.equal(first(a,'duration').textContent,'192');
+  assert.equal(first(b,'duration').textContent,'192');
+  assert.equal(first(a,'lyric').textContent,'반짝이는');
+  assert.equal(first(first(a,'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(first(first(b,'notations'),'tied').getAttribute('type'),'stop');
+  assert.equal(first(a,'tie').getAttribute('type'),'start');
+  assert.equal(first(first(rows(result.doc)[1][1],'note'),'pitch').textContent,'C4');
+  assert.equal(first(originalFirst,'pitch').textContent,'C4');
+  assert.equal(result.change.connectedNotes,2);
+  assert.equal(result.change.measures,2);
+});
+test('retune a continuation chain with start/stop at the middle note',()=>{
+  const source=fixture();
+  const bars=rows(source)[0];
+  for(const i of [1,2,3])pitched(first(bars[i],'note'),'D',4);
+  addLink(first(bars[1],'note'),'tie','start');
+  addLink(first(bars[2],'note'),'tie','stop');
+  addLink(first(bars[2],'note'),'tie','start');
+  addLink(first(bars[3],'note'),'tie','stop');
+  const result=editConnectedPitch(source,{partId:'P1',measureIndex:2,eventIndex:0,
+    step:'E',alter:-1,octave:4});
+  for(const i of [1,2,3]){
+    assert.equal(first(first(rows(result.doc)[0][i],'note'),'pitch').textContent,'E-14');
+  }
+  assert.equal(first(first(rows(result.doc)[0][4],'note'),'rest').localName,'rest');
+  assert.equal(result.change.connectedNotes,3);
+});
+test('pitch edits do not alter unrelated unconnected notes or tuplets',()=>{
+  const source=fixture(),bar=rows(source)[0][1];
+  const firstNote=pitched(first(bar,'note'),'C',4);
+  const second=n('note',{},[n('pitch',{},[leaf('step','E'),leaf('octave',4)]),
+    leaf('duration',96),leaf('type','half')]);
+  first(firstNote,'duration').textContent='96';first(firstNote,'type').textContent='half';
+  bar.appendChild(second);
+  const result=editConnectedPitch(source,{partId:'P1',measureIndex:1,eventIndex:1,
+    step:'G',alter:0,octave:4});
+  assert.equal(first(first(rows(result.doc)[0][1].children.filter(x=>x.localName==='note')[0],'pitch').textContent,'C4');
+  assert.equal(first(first(rows(result.doc)[0][1].children.filter(x=>x.localName==='note')[1],'pitch').textContent,'G4');
+  assert.equal(first(second,'pitch').textContent,'E4');
+});
+test('reject orphan or mismatched ties and duplicated chord tone without mutation',()=>{
+  const source=connectedBars();
+  const before=first(first(rows(source)[0][1],'note'),'pitch').textContent;
+  const tied=first(first(rows(source)[0][2],'note'),'notations');
+  first(tied,'tied').setAttribute('type','start');
+  assert.throws(()=>editConnectedPitch(source,{partId:'P1',measureIndex:1,eventIndex:0,
+    step:'D'}),/서로 다르거나/);
+  assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,before);
+  const a=fixture(),bar=rows(a)[0][1];
+  pitched(first(bar,'note'),'C',4);
+  first(bar,'note').appendChild(n('notations',{},[n('slur',{number:'1',type:'start'})]));
+  const anchor=first(bar,'note');
+  const chord=n('note',{},[n('chord'),n('pitch',{},[leaf('step','E'),leaf('octave',4)]),
+    leaf('duration',192),leaf('type','whole')]);
+  bar.appendChild(chord);
+  assert.throws(()=>editConnectedPitch(a,{partId:'P1',measureIndex:1,eventIndex:0,
+    step:'E',octave:4}),/중복/);
+  assert.equal(first(first(anchor,'pitch'),'step').textContent,'C');
+});
+test('unsupported accidental ornamentation is blocked while preserving original',()=>{
+  const source=fixture(),bar=rows(source)[0][1];
+  const note=pitched(first(bar,'note'),'C',4);
+  note.appendChild(n('accidental',{parentheses:'yes'},[],'natural'));
+  assert.throws(()=>editConnectedPitch(source,{partId:'P1',measureIndex:1,eventIndex:0,
+    step:'D'}),/특수 임시표/);
+  assert.equal(first(note,'pitch').textContent,'C4');
 });
