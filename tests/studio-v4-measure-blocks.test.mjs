@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from '../src/studio-v4-measure-blocks.js';
 import {createEditorHistory} from '../src/editor-history.js';
+import {transposeMeasurePassage} from '../src/studio-v4-passage-transpose.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
 const xmlOwner={
@@ -243,4 +244,62 @@ test('score-wide unmatched connection marks remain safely blocked',()=>{
   addLink(pitched(first(rows(source)[0][1],'note')),'tie','stop');
   assert.throws(()=>captureMeasureRange(source,{start:3,end:3}),/앞부분과 맞지/);
   assert.equal(rows(source)[0].length,6);
+});
+
+
+test('transpose a two-bar vocal+piano passage preserving source, lyrics and timing',()=>{
+  const score=fixture();
+  for(const row of rows(score)){
+    pitched(first(row[1],'note'),'C',4);
+    pitched(first(row[2],'note'),'D',4);
+  }
+  const sung=first(rows(score)[0][1],'note');
+  sung.appendChild(n('lyric',{number:'1'},[leaf('text','반짝이')]));
+  const beforeDuration=first(sung,'duration').textContent;
+  const result=transposeMeasurePassage(score,{start:1,end:2,semitones:2,spelling:'sharp'});
+  for(const row of rows(result.doc)){
+    assert.equal(first(first(row[1],'note'),'pitch').textContent,'D4');
+    assert.equal(first(first(row[2],'note'),'pitch').textContent,'E4');
+    assert.equal(first(row[1].children.find(x=>x.localName==='note'),'duration').textContent,beforeDuration);
+  }
+  assert.equal(first(first(rows(result.doc)[0][1],'note'),'lyric').textContent,'반짝이');
+  assert.equal(first(first(rows(score)[0][1],'note'),'pitch').textContent,'C4');
+  assert.equal(result.change.notes,4);
+});
+test('transpose a single instrument without modifying another part',()=>{
+  const score=fixture();
+  pitched(first(rows(score)[0][1],'note'),'C',4);
+  pitched(first(rows(score)[1][1],'note'),'C',4);
+  const result=transposeMeasurePassage(score,{partId:'P1',start:1,end:1,semitones:-1,spelling:'flat'});
+  assert.equal(first(first(rows(result.doc)[0][1],'note'),'pitch').textContent,'B3');
+  assert.equal(first(first(rows(result.doc)[1][1],'note'),'pitch').textContent,'C4');
+  assert.equal(result.change.notes,1);
+});
+test('preserve a fully selected crossbar tie and slur with adjusted matching pitches',()=>{
+  const score=connectedBars();
+  const result=transposeMeasurePassage(score,{start:1,end:2,semitones:2});
+  const firstNote=first(rows(result.doc)[0][1],'note'),secondNote=first(rows(result.doc)[0][2],'note');
+  assert.equal(first(firstNote,'pitch').textContent,'D4');
+  assert.equal(first(first(firstNote,'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(first(first(secondNote,'notations'),'tied').getAttribute('type'),'stop');
+  assert.equal(first(firstNote,'duration').textContent,'192');
+});
+test('reject partial tied phrases, harmony symbols, and unsupported inputs without mutation',()=>{
+  const score=connectedBars();
+  assert.throws(()=>transposeMeasurePassage(score,{start:1,end:1,semitones:2}),/선택 구간 밖/);
+  const a=fixture();
+  pitched(first(rows(a)[0][1],'note'),'C',4);
+  rows(a)[0][1].appendChild(n('harmony',{},[leaf('kind','major')]));
+  assert.throws(()=>transposeMeasurePassage(a,{start:1,end:1}),/코드 기호/);
+  assert.equal(first(first(rows(a)[0][1],'note'),'pitch').textContent,'C4');
+  assert.throws(()=>transposeMeasurePassage(a,{start:1,end:1,semitones:0}),/반음 이동/);
+});
+test('reject transposing instruments and out-of-range octaves without mutation',()=>{
+  const score=fixture();
+  pitched(first(rows(score)[0][1],'note'),'B',9);
+  assert.throws(()=>transposeMeasurePassage(score,{start:1,end:1,semitones:12}),/기존 음정|음역/);
+  const b=fixture();
+  pitched(first(rows(b)[0][1],'note'),'C',4);
+  first(rows(b)[0][0],'attributes').appendChild(n('transpose',{},[leaf('chromatic',-2)]));
+  assert.throws(()=>transposeMeasurePassage(b,{start:1,end:1}),/이조 악기/);
 });
