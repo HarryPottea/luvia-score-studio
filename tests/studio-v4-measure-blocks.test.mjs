@@ -455,8 +455,9 @@ test('pitch edits do not alter unrelated unconnected notes or tuplets',()=>{
   bar.appendChild(second);
   const result=editConnectedPitch(source,{partId:'P1',measureIndex:1,eventIndex:1,
     step:'G',alter:0,octave:4});
-  assert.equal(first(first(rows(result.doc)[0][1].children.filter(x=>x.localName==='note')[0],'pitch').textContent,'C4');
-  assert.equal(first(first(rows(result.doc)[0][1].children.filter(x=>x.localName==='note')[1],'pitch').textContent,'G4');
+  const editedNotes=rows(result.doc)[0][1].children.filter(x=>x.localName==='note');
+  assert.equal(first(editedNotes[0],'pitch').textContent,'C4');
+  assert.equal(first(editedNotes[1],'pitch').textContent,'G4');
   assert.equal(first(second,'pitch').textContent,'E4');
 });
 test('reject orphan or mismatched ties and duplicated chord tone without mutation',()=>{
