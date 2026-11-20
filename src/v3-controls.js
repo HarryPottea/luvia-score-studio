@@ -105,10 +105,11 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     // were sequential. In multi-voice bars show the accurate backup/forward
     // timing from the advanced score inspector instead of misleading onsets.
     let advanced=null;
-    if(measure?.reason&&state.doc){
+    if(measure&&state.doc){
       try{
         const candidate=inspectAdvancedMeasure(state.doc,selection.partId,selection.measureIndex);
-        if(!candidate.reason)advanced=candidate;
+        if(!candidate.reason&&candidate.events.length===measure.events.length&&
+          (measure.reason||candidate.voices.length>1))advanced=candidate;
       }catch{}
     }
     const scoreEvent=advanced?.events[selection.eventIndex]||event;
