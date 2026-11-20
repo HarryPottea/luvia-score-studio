@@ -536,3 +536,35 @@ test('transfer refuses missing matching rest, mismatched beat, same voice and de
     measureIndex:0,eventIndex:0,targetVoice:'2'}),/일반 음표|보호된/);
   assert.equal(first(first(bar,'note'),'pitch').textContent,'D4');
 });
+
+
+test('move quarter note into an entire second-voice rest and retain dotted-half remainder',()=>{
+  const source=fixture(1,2),bar=rows(source)[0][0],note=first(bar,'note');
+  note.replaceChild(n('pitch',{},[leaf('step','G'),leaf('octave',4)]),first(note,'rest'));
+  first(note,'duration').textContent='48';first(note,'type').textContent='quarter';
+  note.appendChild(n('lyric',{number:'1'},[leaf('text','노래')]));
+  bar.insertBefore(n('note',{},[n('rest'),leaf('duration',144),leaf('type','half'),n('dot')]),
+    first(bar,'direction'));
+  const before=addIndependentVoice(source,{partId:'P1',voice:'2'}).doc;
+  const result=moveNoteToRestingVoice(before,{partId:'P1',measureIndex:0,eventIndex:0,
+    targetVoice:'2'});
+  const events=rows(result.doc)[0][0].children.filter(x=>x.localName==='note');
+  assert.equal(events.length,4);
+  assert.equal(first(events[0],'rest').localName,'rest');
+  assert.equal(first(events[0],'duration').textContent,'48');
+  assert.equal(first(events[1],'rest').localName,'rest');
+  assert.equal(first(events[1],'duration').textContent,'144');
+  assert.equal(first(events[2],'pitch').textContent,'G4');
+  assert.equal(first(events[2],'duration').textContent,'48');
+  assert.equal(first(events[2],'type').textContent,'quarter');
+  assert.equal(first(events[2],'voice').textContent,'2');
+  assert.equal(first(events[2],'lyric').textContent,'노래');
+  assert.equal(first(events[3],'rest').localName,'rest');
+  assert.equal(first(events[3],'duration').textContent,'144');
+  assert.equal(first(events[3],'type').textContent,'half');
+  assert.equal(first(events[3],'dot').localName,'dot');
+  assert.equal(first(events[3],'voice').textContent,'2');
+  assert.equal(result.change.splitRestCount,1);
+  assert.equal(first(first(rows(before)[0][0],'note'),'pitch').textContent,'G4');
+  assert.equal(first(first(rows(result.doc)[1][0],'note'),'rest').localName,'rest');
+});
