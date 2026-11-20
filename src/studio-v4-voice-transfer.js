@@ -72,34 +72,33 @@ function restNode(measure,original,unit){
   if(one(original,'staff'))n.appendChild(one(original,'staff').cloneNode(true));
   return n;
 }
-function swapPitchAndRest(note,rest,remainder=[]){
-  const pitch=one(note,'pitch'),blank=one(rest,'rest');
-  // Only musical content moves. Voice/staff/timing/type/dots of both lanes
-  // remain unchanged. Cloned nodes preserve lyrics and accidentals byte-wise.
+function swapPitchAndRest(note,rest,{leading=[],trailing=[]}={}){
+  const pitch=one(note,'pitch'),blank=one(rest,'rest'),holder=rest.parentNode;
   const payload=[pitch,...all(note,'accidental'),...all(note,'lyric'),...all(note,'stem')];
   for(const item of payload.slice(1))note.removeChild(item);
+  // Insert prefix rests before the original destination rest. The rest node
+  // itself becomes the transferred sounded note and retains the target voice.
+  for(const unit of leading)holder.insertBefore(restNode(holder,rest,unit),rest);
   rest.replaceChild(pitch.cloneNode(true),blank);
-  const order=['accidental','stem','lyric'];
-  for(const tag of order)for(const item of payload.slice(1).filter(n=>n.localName===tag)){
-    const before=tag==='accidental'?one(rest,'stem')||one(rest,'staff')||null:
-      tag==='stem'?one(rest,'staff')||null:null;
-    rest.insertBefore(item.cloneNode(true),before);
-  }
-  note.replaceChild(create(note,'rest'),pitch);
-  if(remainder.length){
-    // The original target was a longer rest. Split into a sounded note and
-    // trailing rests, never changing the measure's total time span.
-    one(rest,'duration').textContent=val(note,'duration');
-    one(rest,'type').textContent=val(note,'type');
-    for(const dot of all(rest,'dot'))rest.removeChild(dot);
-    for(const dot of all(note,'dot'))
-      rest.insertBefore(dot.cloneNode(true),one(rest,'staff')||null);
-    let cursor=rest;
-    for(const unit of remainder){
-      const newRest=restNode(rest.parentNode,rest,unit);
-      rest.parentNode.insertBefore(newRest,cursor.nextSibling);
-      cursor=newRest;
+  for(const tag of ['accidental','stem','lyric'])
+    for(const item of payload.slice(1).filter(n=>n.localName===tag)){
+      const before=tag==='accidental'?one(rest,'stem')||one(rest,'staff')||null:
+        tag==='stem'?one(rest,'staff')||null:null;
+      rest.insertBefore(item.cloneNode(true),before);
     }
+  note.replaceChild(create(note,'rest'),pitch);
+  // Always spell the destination note using the original source note length;
+  // the remaining duration is represented by newly inserted rests.
+  one(rest,'duration').textContent=val(note,'duration');
+  one(rest,'type').textContent=val(note,'type');
+  for(const dot of all(rest,'dot'))rest.removeChild(dot);
+  for(const dot of all(note,'dot'))
+    rest.insertBefore(dot.cloneNode(true),one(rest,'staff')||null);
+  let cursor=rest;
+  for(const unit of trailing){
+    const n=restNode(holder,rest,unit);
+    holder.insertBefore(n,cursor.nextSibling||null);
+    cursor=n;
   }
 }
 export function moveNoteToRestingVoice(source,{
@@ -122,9 +121,10 @@ export function moveNoteToRestingVoice(source,{
      chosen.protectedMarkup||chosen.voice===targetVoice)
     fail('이동할 일반 음표와 다른 대상 성부를 선택해 주세요.');
   const available=audit.events.filter(e=>e.voice===targetVoice&&e.staff===chosen.staff&&
-    e.start===chosen.start&&e.duration>=chosen.duration&&e.rest&&!e.chord&&!e.tuplet);
+    e.start<=chosen.start&&e.start+e.duration>=chosen.start+chosen.duration&&
+    e.rest&&!e.chord&&!e.tuplet);
   if(available.length!==1)
-    fail('같은 시점·보표에 길이가 충분한 대상 성부의 빈 쉼표가 필요합니다.');
+    fail('선택 음표의 전체 박자를 포함하는 대상 성부의 빈 쉼표가 필요합니다.');
   const target=available[0];
   const sourceNote=notes[eventIndex],targetRest=notes[target.eventIndex];
   guard(sourceNote,false);guard(targetRest,true);
@@ -132,42 +132,50 @@ export function moveNoteToRestingVoice(source,{
   writtenLength(targetRest,audit.divisions);
   if((val(sourceNote,'staff')||'1')!==(val(targetRest,'staff')||'1'))
     fail('서로 다른 보표로 음표를 이동하지 않습니다.');
-  const remaining=pieces(target.duration-chosen.duration,audit.divisions);
+  const leading=pieces(chosen.start-target.start,audit.divisions);
+  const trailing=pieces(target.start+target.duration-chosen.start-chosen.duration,
+    audit.divisions);
+  const added=leading.length+trailing.length;
   const doc=source.cloneNode(true),copyPart=all(doc.documentElement,'part')
     .find(p=>p.getAttribute('id')===partId),copyBars=all(copyPart,'measure');
   const copyNotes=all(copyBars[measureIndex],'note');
-  swapPitchAndRest(copyNotes[eventIndex],copyNotes[target.eventIndex],remaining);
+  swapPitchAndRest(copyNotes[eventIndex],copyNotes[target.eventIndex],{leading,trailing});
   const after=inspectAdvancedMeasure(doc,partId,measureIndex);
   if(after.reason||after.max!==audit.max||
-     after.events.length!==audit.events.length+remaining.length)
+     after.events.length!==audit.events.length+added)
     fail('음표 이동 후 성부·박자 구조 검증에 실패했습니다.');
-  const mapIndex=i=>i+(i>target.eventIndex?remaining.length:0);
+  const mapIndex=i=>i+(i>target.eventIndex?added:0);
+  const noteIndex=target.eventIndex+leading.length;
+  // Every original event outside the replacement rest keeps its onset, length,
+  // voice, staff, chord status and exact MusicXML subtree.
   for(const [i,old] of audit.events.entries()){
+    if(i===target.eventIndex)continue;
     const fresh=after.events[mapIndex(i)];
-    if(fresh.start!==old.start||
-       (i!==target.eventIndex&&fresh.duration!==old.duration)||
-       (i===target.eventIndex&&fresh.duration!==chosen.duration)||
+    if(!fresh||fresh.start!==old.start||fresh.duration!==old.duration||
        fresh.voice!==old.voice||fresh.staff!==old.staff||fresh.chord!==old.chord)
       fail('음표 이동으로 원래 성부의 박자가 변경됐습니다.');
-    if(i!==eventIndex&&i!==target.eventIndex&&
-       cloneXML(notes[i])!==cloneXML(all(copyBars[measureIndex],'note')[mapIndex(i)]))
+    if(i!==eventIndex&&cloneXML(notes[i])!==
+       cloneXML(all(copyBars[measureIndex],'note')[mapIndex(i)]))
       fail('이동 대상 밖의 음악 데이터가 변경됐습니다.');
   }
-  let start=target.start+chosen.duration;
-  for(const [i,unit] of remaining.entries()){
-    const added=after.events[target.eventIndex+i+1];
-    if(!added?.rest||added.voice!==target.voice||added.staff!==target.staff||
-       added.start!==start||added.duration!==unit.duration)
-      fail('대상 성부에 남은 쉼표의 시간값이 잘못됐습니다.');
-    start+=unit.duration;
+  const group=[...leading,{duration:chosen.duration},...trailing];
+  let time=target.start;
+  for(const [i,unit] of group.entries()){
+    const current=after.events[target.eventIndex+i];
+    const expectedNote=i===leading.length;
+    if(!current||current.start!==time||current.duration!==unit.duration||
+       current.voice!==target.voice||current.staff!==target.staff||
+       current.chord||current.rest===expectedNote)
+      fail('이동한 음표와 분할 쉼표의 박자·성부가 잘못됐습니다.');
+    time+=unit.duration;
   }
-  const movedSource=after.events[mapIndex(eventIndex)],movedTarget=after.events[target.eventIndex];
+  const movedSource=after.events[mapIndex(eventIndex)],movedTarget=after.events[noteIndex];
   if(!movedSource.rest||movedTarget.rest||
      movedTarget.step!==chosen.step||movedTarget.alter!==chosen.alter||
-     movedTarget.octave!==chosen.octave||start!==target.start+target.duration)
+     movedTarget.octave!==chosen.octave||time!==target.start+target.duration)
     fail('음정이나 쉼표 이동 결과가 올바르지 않습니다.');
   return {doc,change:{action:'move-note-between-voices',partId,measureIndex,
     sourceVoice:chosen.voice,targetVoice,movedLyrics:all(sourceNote,'lyric').length,
-    splitRestCount:remaining.length,
-    nextMeasureIndex:measureIndex,nextEventIndex:target.eventIndex}};
+    splitRestCount:added,
+    nextMeasureIndex:measureIndex,nextEventIndex:noteIndex}};
 }
