@@ -1870,8 +1870,8 @@ try {
   console.log('BROWSER_STAGE=V4_SYNTHETIC_KOREAN_TTF_EMBEDDED_VECTOR_PDF');
 
 
-  // Move a note to the corresponding empty voice, preserving exact 4/4
-  // grid and Korean lyric while retaining the source lane as a full rest.
+  // Real work: move a quarter note into another voice's full-bar rest.
+  // Preserve 4/4 with the trailing dotted-half rest and Korean lyric.
   const voiceSwap='<?xml version="1.0" encoding="utf-8"?>'+
     '<score-partwise version="4.0"><part-list>'+
     '<score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
@@ -1880,14 +1880,15 @@ try {
     '<time><beats>4</beats><beat-type>4</beat-type></time>'+
     '<clef><sign>G</sign><line>2</line></clef></attributes>'+
     '<note><pitch><step>C</step><octave>4</octave></pitch>'+
-    '<duration>192</duration><voice>1</voice><type>whole</type>'+
+    '<duration>48</duration><voice>1</voice><type>quarter</type>'+
     '<lyric number="1"><text>별빛</text></lyric></note>'+
+    '<note><rest/><duration>144</duration><voice>1</voice><type>half</type><dot/></note>'+
     '<backup><duration>192</duration></backup>'+
     '<note><rest/><duration>192</duration><voice>2</voice><type>whole</type></note>'+
     '</measure></part></score-partwise>';
   await page.locator('#file-input').setInputFiles({name:'two-voice.musicxml',
     mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(voiceSwap)});
-  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===2,
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===3,
     null,{timeout:30000});
   await page.locator('#v3-events .v3-event').first().click();
   await page.selectOption('#v4-transfer-voice','2');
@@ -1897,9 +1898,10 @@ try {
   const transferXmlEvent=page.waitForEvent('download');
   await page.click('#download-xml');
   const transferXML=await fs.readFile(await (await transferXmlEvent).path(),'utf8');
-  assert.match(transferXML,/<note><rest\s*\/><duration>192<\/duration><voice>1<\/voice>/);
-  assert.match(transferXML,/<note><pitch><step>C<\/step><octave>4<\/octave><\/pitch><duration>192<\/duration><voice>2<\/voice>/);
+  assert.match(transferXML,/<note><rest\s*\/><duration>48<\/duration><voice>1<\/voice>/);
+  assert.match(transferXML,/<note><pitch><step>C<\/step><octave>4<\/octave><\/pitch><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type>/);
   assert.match(transferXML,/<text>별빛<\/text>/);
+  assert.match(transferXML,/<note><rest\s*\/><duration>144<\/duration><voice>2<\/voice><type>half<\/type><dot\s*\/>/);
   assert.equal((transferXML.match(/<backup>/g)||[]).length,1);
   await page.click('#v3-undo');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
