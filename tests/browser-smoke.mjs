@@ -2205,6 +2205,38 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_MULTI_MEASURE_ARTICULATION_BATCH_AND_UNDO');
 
+  // Enharmonic-only edit: C#4 -> Db4 in the selected melodic voice, retaining
+  // Korean lyrics and the other voice with no sounding-pitch transposition.
+  const enharmonicSource=twoBarPhrase.replace(
+    '<step>C</step><octave>4</octave>',
+    '<step>C</step><alter>1</alter><octave>4</octave>');
+  await page.locator('#file-input').setInputFiles({
+    name:'enharmonic-vocal-score.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(enharmonicSource)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===2,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','1');
+  await page.fill('#jwoo-range-to','1');
+  await page.click('#jwoo-range-apply');
+  await page.selectOption('#jwoo-transpose-voice','1');
+  await page.selectOption('#jwoo-transpose-spelling','flat');
+  await page.click('#jwoo-measure-toolbar [data-act="respell"]');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('이명동음 표기 정리 완료'),
+    null,{timeout:30000});
+  const respellDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const enharmonicXML=await fs.readFile(await (await respellDownload).path(),'utf8');
+  assert.match(enharmonicXML,/<step>D<\/step><alter>-1<\/alter><octave>4<\/octave>/);
+  assert.doesNotMatch(enharmonicXML,/<step>C<\/step><alter>1<\/alter><octave>4<\/octave>/);
+  assert.equal((enharmonicXML.match(/<voice>2<\/voice>/g)||[]).length,2);
+  assert.match(enharmonicXML,/<text>별빛<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_ENHARMONIC_RESPPELLING_SAME_SOUNDING_PITCH');
+
+
 
 
 
