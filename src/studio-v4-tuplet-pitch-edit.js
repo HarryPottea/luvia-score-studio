@@ -13,8 +13,9 @@ const fail=m=>{throw new Error(m);};
 const integer=(n,min,max)=>Number.isSafeInteger(n)&&n>=min&&n<=max;
 const RATIOS=new Set(['3:2','5:4','6:4','7:4']);
 const parsePitch=token=>{
+  if(typeof token==='string'&&token.toUpperCase()==='R')return null;
   const m=/^([A-Ga-g])((?:##|bb|#|b|♯|♭)?)([1-8])$/.exec(token);
-  if(!m)fail('잇단음 음정은 C4, F#4, Bb4처럼 입력해 주세요.');
+  if(!m)fail('잇단음 음정은 C4, F#4, Bb4처럼, 쉼표는 R로 입력해 주세요.');
   const shift={'':0,'#':1,'##':2,'b':-1,'bb':-2,'♯':1,'♭':-1}[m[2]];
   return {step:m[1].toUpperCase(),alter:shift,octave:Number(m[3])};
 };
@@ -71,9 +72,10 @@ export function inspectEditableTuplet(source,{partId,measureIndex,eventIndex}={}
         fail('잇단음 종료 기호가 누락되거나 연결이 끊겼습니다.');
       const e=audit.events[i],ratio=ratioOf(note);
       const lane=e.voice+'@'+e.staff;
-      if(e.rest||e.chord||first(note,'tie')||children(first(note,'notations'),'tied').length||
-         first(note,'grace')||first(note,'cue')||!first(note,'pitch'))
-        fail('잇단음의 쉼표·화음·붙임줄·꾸밈음은 개별 그룹 편집에서 보호합니다.');
+      if(e.chord||first(note,'tie')||children(first(note,'notations'),'tied').length||
+         first(note,'grace')||first(note,'cue')||
+         (e.rest?!first(note,'rest'):!first(note,'pitch')))
+        fail('잇단음의 화음·붙임줄·꾸밈음이나 불명확한 쉼표 구조는 보호합니다.');
       if(open.lane!==null&&open.lane!==lane)
         fail('잇단음에 서로 다른 성부가 섞여 있습니다.');
       if(open.ratio!==null&&(open.ratio.actual!==ratio.actual||
@@ -111,7 +113,13 @@ export function editTupletPitches(source,params={}){
     const bars=children(children(output.documentElement,'part')
       .find(p=>p.getAttribute('id')===group.partId),'measure');
     const note=children(bars[group.measureIndex],'note')[index];
-    const pitch=first(note,'pitch'),next=pitches[i];
+    const pitch=first(note,'pitch'),rest=first(note,'rest'),next=pitches[i];
+    if(rest){
+      if(next!==null)fail('잇단음의 쉼표 위치에는 R을 입력해야 합니다.');
+      continue;
+    }
+    if(!pitch||next===null)
+      fail('잇단음의 일반 음표 위치에 쉼표를 새로 만들 수 없습니다.');
     const oldStep=value(pitch,'step'),oldAlter=Number(value(pitch,'alter')||0),
       oldOctave=Number(value(pitch,'octave'));
     if(oldStep===next.step&&oldAlter===next.alter&&oldOctave===next.octave)continue;
