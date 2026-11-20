@@ -253,6 +253,18 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     event.preventDefault();event.stopPropagation();
     editLyric(item,item.element);
   }
+  function rootContext(event){
+    if(disposed||isLyricMode())return;
+    const matched=targets.filter(item=>item.element===event.target||
+      item.element.contains?.(event.target));
+    if(matched.length!==1)return;
+    const item=matched[0];
+    event.preventDefault();event.stopPropagation();
+    drag=null;selected=item;
+    onMeasurePointer(item.measureIndex,false,{x:event.clientX,y:event.clientY});
+    select(item);highlight();
+  }
+  host?.addEventListener('contextmenu',rootContext,true);
   host?.addEventListener('pointerdown',rootDown,true);
   host?.addEventListener('dblclick',rootDouble,true);
   document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancel);
@@ -274,6 +286,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       if(disposed)return;disposed=true;
       observer?.disconnect();clearHandlers();
       for(const item of targets)markSelected(item,false);
+      host?.removeEventListener('contextmenu',rootContext,true);
       host?.removeEventListener('pointerdown',rootDown,true);
       host?.removeEventListener('dblclick',rootDouble,true);
       document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);
