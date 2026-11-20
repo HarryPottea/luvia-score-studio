@@ -1665,6 +1665,36 @@ try {
   assert.match(await page.locator('#message').textContent(),/하이브리드/);
   console.log('BROWSER_STAGE=V4_KOREAN_HYBRID_VECTOR_STAFF_PNG_TEXT_PDF_ZIP');
 
+  const extraScorePart='<part id="P2">'+Array.from({length:12},(_,i)=>
+    '<measure number="'+(i+1)+'">'+(i===0?
+    '<attributes><divisions>48</divisions><time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>F</sign><line>4</line></clef></attributes>':'')+
+    '<note><rest/><duration>192</duration><type>whole</type></note></measure>').join('')+'</part>';
+  const combinedParts=autoLayoutScore.replace(
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>',
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part>'+
+    '<score-part id="P2"><part-name>Piano</part-name></score-part></part-list>')
+    .replace('</score-partwise>',extraScorePart+'</score-partwise>');
+  await page.locator('#file-input').setInputFiles({name:'independent-vocal-piano.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(combinedParts)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.click('#v4-part-layout');
+  await page.waitForFunction(()=>document.querySelector('#v4-part-layout-status')?.textContent?.includes('악기 2파트'),
+    null,{timeout:30000});
+  const independentDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const independentXml=await fs.readFile(await (await independentDownload).path(),'utf8');
+  const p1=independentXml.match(/<part id="P1">([\s\S]*?)<\/part>/)?.[1]||'';
+  const p2=independentXml.match(/<part id="P2">([\s\S]*?)<\/part>/)?.[1]||'';
+  const breakCount=part=>(part.match(/new-system="yes"|new-page="yes"/g)||[]).length;
+  assert.equal((p1.match(/<measure number="/g)||[]).length,12);
+  assert.equal((p2.match(/<measure number="/g)||[]).length,12);
+  assert.ok(breakCount(p1)>breakCount(p2));
+  assert.equal((p1.match(/<text>반짝이는<\/text>/g)||[]).length,48);
+  console.log('BROWSER_STAGE=V4_INDEPENDENT_VOCAL_AND_PIANO_PART_LAYOUT');
+
+
 
 
   await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
