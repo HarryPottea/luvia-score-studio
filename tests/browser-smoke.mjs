@@ -1567,6 +1567,12 @@ try {
   assert.equal((autoLayoutXml.match(/<text>반짝이는<\/text>/g)||[]).length,48);
   console.log('BROWSER_STAGE=V4_DENSITY_AWARE_AUTOMATIC_MUSICXML_LAYOUT');
 
+  await page.click('#v4-part-pdf-zip');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('한글·특수문자'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_UNEMBEDDED_KOREAN_FONT_VECTOR_PDF_BLOCKED_SAFELY');
+
+
   await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).focus();
   await page.keyboard.press('ControlOrMeta+c');
   await page.waitForFunction(()=>document.querySelector('#jwoo-block-status')?.textContent?.includes('복사했습니다'),null,{timeout:10000});
