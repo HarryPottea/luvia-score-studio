@@ -48,3 +48,15 @@
 .jwoo-measure-context button:hover:not(:disabled),.jwoo-measure-context button:focus-visible{
   background:#496640;outline:1px solid #b5dd8b}
 .jwoo-measure-context button:disabled{opacity:.38;cursor:not-allowed}
+
+/* The current audio position is intentionally distinct from edit selection. */
+.jwoo-bar-chip.is-playing{
+  box-shadow:0 0 0 3px #ffba57 inset;
+  border-color:#ffba57;
+}
+#score-container .jwoo-playback-active .jwoo-hit-area{
+  fill:#ffba57;fill-opacity:.32;stroke:#d07912;stroke-width:2.5;
+}
+@media (prefers-reduced-motion:reduce){
+  .jwoo-bar-chip.is-playing{transition:none}
+}
