@@ -1786,6 +1786,56 @@ try {
     document.querySelectorAll('#export-part option').length===1,null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_ADD_PIANO_PART_AND_UNDO_WITH_SELECTOR_SYNC');
 
+
+  // Direct advanced pitch edit of a written+sounding tie across barlines,
+  // including Korean lyrics, slur markup, unrelated same-pitch reattacks and undo.
+  const tiedPitchScore='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list>'+
+    '<score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><key><fifths>0</fifths></key>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>48</duration>'+
+    '<tie type="start"/><type>quarter</type>'+
+    '<notations><tied type="start"/><slur number="1" type="start"/></notations>'+
+    '<lyric number="1"><syllabic>single</syllabic><text>반짝</text></lyric></note></measure>'+
+    '<measure number="2"><note><pitch><step>C</step><octave>4</octave></pitch>'+
+    '<duration>48</duration><tie type="stop"/><type>quarter</type>'+
+    '<notations><tied type="stop"/><slur number="1" type="stop"/></notations></note>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note></measure>'+
+    '<measure number="3"><note><pitch><step>C</step><octave>4</octave></pitch>'+
+    '<duration>192</duration><type>whole</type></note></measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'tied-vocal.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(tiedPitchScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===3,
+    null,{timeout:30000});
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-pro-step','D');
+  await page.selectOption('#v4-pro-octave','4');
+  await page.selectOption('#v4-pro-alter','0');
+  await page.click('#v4-connected-pitch');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('붙임줄 연결 음표 전체 음정 변경 완료'),
+    null,{timeout:30000});
+  const tiedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const tiedXml=await fs.readFile(await (await tiedDownload).path(),'utf8');
+  const tiedBars=[...tiedXml.matchAll(/<measure number="(\d+)"[^>]*>([\s\S]*?)<\/measure>/g)];
+  assert.equal(tiedBars.length,3);
+  assert.match(tiedBars[0][2],/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(tiedBars[1][2],/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(tiedBars[2][2],/<step>C<\/step><octave>4<\/octave>/);
+  assert.match(tiedBars[0][2],/<text>반짝<\/text>/);
+  assert.match(tiedBars[0][2],/<tied type="start"/);
+  assert.match(tiedBars[1][2],/<tied type="stop"/);
+  assert.match(tiedBars[0][2],/<slur number="1" type="start"/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_CROSSBAR_TIE_CHAIN_PITCH_CHANGE_AND_UNDO');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
