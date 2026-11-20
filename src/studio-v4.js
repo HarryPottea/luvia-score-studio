@@ -8,6 +8,7 @@ import {createPartSvgZip} from './studio-v4-part-svg.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
+import {authorTupletGroup} from './studio-v4-tuplet-groups.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
@@ -83,6 +84,12 @@ const panel=[
   '<p class="v4-tiny">편집 화면에서 영문 N: 선택 쉼표에 음표 입력 · R: 음표를 쉼표로 변경 · [ / ]: 앞/뒤 쉼표로 한 격자 이동. 텍스트 입력 중에는 작동하지 않습니다.</p>',
   '<button id="v4-pro-triplet" type="button">4·8·16분음표 두 개 → 셋잇단음 세 개</button>',
   '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
+  '<div class="v4-common-tuplets"><p class="v4-subhead">잇단음 그룹 · 3:2 / 5:4 / 6:4 / 7:4</p>',
+  '<div class="v4-inline"><div><label for="v4-tuplet-ratio">잇단음 비율</label><select id="v4-tuplet-ratio"><option value="3:2">3:2 · 셋잇단음</option><option value="5:4" selected>5:4 · 다섯잇단음</option><option value="6:4">6:4 · 여섯잇단음</option><option value="7:4">7:4 · 일곱잇단음</option></select></div>',
+  '<div><label for="v4-tuplet-unit">기본 음표 길이</label><select id="v4-tuplet-unit"><option value="quarter">4분음표</option><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select></div></div>',
+  '<button id="v4-tuplet-author" type="button">선택 위치부터 잇단음 그룹 만들기</button>',
+  '<p class="v4-tiny">3:2는 원래 음표 2개, 5:4·6:4·7:4는 4개가 필요합니다. 동일 성부의 동일 길이 일반 음표가 연속되어야 하며, 생성되는 추가 음은 위 음이름·변화표·옥타브를 사용합니다.</p>',
+  '<p class="v4-tiny">분할값이 부족하면 해당 파트의 MusicXML divisions를 정확히 확장합니다. 복잡한 빔·붙임줄·화음·보호된 표시가 있으면 변경하지 않습니다.</p></div>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
   '<input id="v4-pro-end" type="number" min="2" max="9999" step="1" value="2" />',
   '<label for="v4-slur-next-measure">이음줄 끝 마디</label><select id="v4-slur-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option><option value="2">2마디 뒤</option><option value="3">3마디 뒤</option><option value="4">4마디 뒤</option><option value="8">8마디 뒤</option></select>',
@@ -543,6 +550,11 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     '다음 마디로 음표 붙임줄 연장'));
   $('v4-crossbar-move').addEventListener('click',()=>void commit(doc=>
     moveVoiceIntoNextMeasure(doc,selected()),'선택 음표를 다음 마디로 이동'));
+  $('v4-tuplet-author').addEventListener('click',()=>void commit(doc=>authorTupletGroup(doc,{
+    ...selected(),ratio:$('v4-tuplet-ratio').value,type:$('v4-tuplet-unit').value,
+    step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
+    octave:Number($('v4-pro-octave').value),
+  }),'잇단음 그룹 생성'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
