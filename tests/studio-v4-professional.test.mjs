@@ -610,3 +610,23 @@ test('crossbar: move cannot silently overwrite a note, bridge a longer rest or l
   assert.throws(()=>moveVoiceIntoNextMeasure(tooShort,params(6)),/짧습니다/);
   assert.equal(serialize(source),before);
 });
+
+
+test('crossbar: multi-measure slur connects endpoints while preserving the intervening bar',()=>{
+  const original=crossbarFixture();
+  const extra=secondMeasure(original).cloneNode(true);extra.setAttribute('number','3');
+  part(original).appendChild(extra);
+  const untouched=serialize(original);
+  const middle=serialize(new Doc(secondMeasure(original).cloneNode(true)));
+  const options={...params(6),endMeasureOffset:2,endEventIndex:2};
+  const connected=toggleSlurAcrossBarline(original,options).doc;
+  assert.equal(serialize(original),untouched);
+  assert.equal(serialize(new Doc(secondMeasure(connected).cloneNode(true))),middle);
+  const opening=first(first(notes(connected)[6],'notations'),'slur');
+  const closing=first(first(children(children(part(connected),'measure')[2],'note')[2],'notations'),'slur');
+  assert.equal(opening.getAttribute('type'),'start');
+  assert.equal(closing.getAttribute('type'),'stop');
+  const restored=toggleSlurAcrossBarline(connected,options).doc;
+  assert.equal(serialize(restored),untouched);
+  assert.throws(()=>toggleSlurAcrossBarline(original,{...options,endMeasureOffset:9}),/거리/);
+});
