@@ -160,12 +160,24 @@ export function authorTupletGroup(source,{partId,measureIndex,eventIndex,
     if(kind==='start')item.setAttribute('bracket','yes');
     n.appendChild(item);
   }
-  // Avoid taking an existing open tuplet number in this instrument.
-  const already=kids(dest,'measure').flatMap(m=>kids(m,'note'))
-    .flatMap(n=>kids(one(n,'notations'),'tuplet'));
-  const numbers=new Set(already.map(n=>Number(n.getAttribute('number')||'1')));
-  const free=[1,2,3,4,5,6].find(n=>!numbers.has(n));
-  if(!free)reject('악보의 기존 셋잇단음 연결 번호가 모두 사용 중입니다.');
+  // Tuplet numbers are reusable after the matching stop. Only reserve
+  // numbers that are open at this exact insertion point: otherwise a score
+  // with more than six ordinary tuplets would become needlessly uneditable.
+  const active=new Set();
+  for(const [mIndex,m] of kids(dest,'measure').entries()){
+    if(mIndex>measureIndex)break;
+    for(const [nIndex,n] of kids(m,'note').entries()){
+      if(mIndex===measureIndex&&nIndex>=eventIndex)break;
+      for(const marker of kids(one(n,'notations'),'tuplet')){
+        const num=Number(marker.getAttribute('number')||'1');
+        if(!isInt(num,1,6))continue;
+        if(marker.getAttribute('type')==='stop')active.delete(num);
+        if(marker.getAttribute('type')==='start')active.add(num);
+      }
+    }
+  }
+  const free=[1,2,3,4,5,6].find(n=>!active.has(n));
+  if(!free)reject('선택 위치에서 열린 잇단음 번호가 모두 사용 중입니다.');
   notation(candidates[0],'start');notation(last,'stop');
   [...one(candidates[0],'notations').children].at(-1).setAttribute('number',String(free));
   [...one(last,'notations').children].at(-1).setAttribute('number',String(free));
