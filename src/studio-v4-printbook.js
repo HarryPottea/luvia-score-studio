@@ -7,6 +7,7 @@ import {applyLayoutPreset} from './layout-profile.js';
 import {applyFixedA4Profile,fixedA4Profile} from './a4-engraving.js';
 import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 import {adaptLyricRendering} from './studio-v4-lyric-spacing-audit.js';
+import {inspectSvgPageBounds} from './studio-v4-page-bounds.js';
 
 const FORMATS={A4_P:{w:'210mm',h:'297mm'},A4_L:{w:'297mm',h:'210mm'}};
 const MAX_PARTS=12,MAX_PAGES=80,MAX_PART_PAGES=24;
@@ -31,7 +32,7 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
   onProgress=()=>{}}={}){
   if(!FORMATS[pageFormat]||!Array.isArray(parts)||parts.length<1||parts.length>MAX_PARTS)
     throw new Error('벡터 파트보는 A4 규격에서 1~12개 파트까지 출력합니다.');
-  const output=[],lyricAudits=[];
+  const output=[],lyricAudits=[],boundsAudits=[];
   for(const [index,p] of parts.entries()){
     if(!p||typeof p.id!=='string'||!p.id)throw new Error('인쇄 파트를 선택해 주세요.');
     const partDoc=partOnlyDocument(doc,p.id);
@@ -63,6 +64,8 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
         throw new Error('파트별 페이지가 없거나 너무 많아 벡터 출력이 중단됐습니다.');
       if(output.length+rendered.length>MAX_PAGES)
         throw new Error('벡터 파트보는 전체 80페이지까지만 한 번에 인쇄할 수 있습니다.');
+      const pageBounds=inspectSvgPageBounds(rendered);
+      boundsAudits.push({...pageBounds,partId:p.id});
       for(const svg of rendered){
         inspectPrintableSvg(svg);
         output.push({partName:String(p.name||p.id),partId:p.id,svg:svg.cloneNode(true),lyricAudit});
@@ -76,7 +79,11 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
       (last?.attempts?' · 간격 자동 보정 '+last.attempts+'회':'')+
       (last?.remaining?' · 가사 겹침 의심 '+last.remaining+'건':'')+
       (!last?.coverageSufficient?' · 가사 위치 검사 미완료 ('+
-        last?.lyricElements+'/'+last?.expectedLyrics+')':'') );
+        last?.lyricElements+'/'+last?.expectedLyrics+')':'')+
+      (boundsAudits.at(-1)?.overflowPages?' · 페이지 외부 기보 의심 '+
+        boundsAudits.at(-1).overflowPages+'면':'')+
+      (boundsAudits.at(-1)?.unknownPages?' · 경계 측정 불가 '+
+        boundsAudits.at(-1).unknownPages+'면':'') );
   }
   output.lyricAudit={parts:lyricAudits.length,
     initial:lyricAudits.reduce((n,a)=>n+a.initial,0),
@@ -86,6 +93,13 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
     expectedLyrics:lyricAudits.reduce((n,a)=>n+a.expectedLyrics,0),
     measuredLyrics:lyricAudits.reduce((n,a)=>n+a.lyricElements,0),
     collisionFreeCertified:false};
+  output.pageBoundsAudit={
+    measuredPages:boundsAudits.reduce((n,a)=>n+a.measuredPages,0),
+    unknownPages:boundsAudits.reduce((n,a)=>n+a.unknownPages,0),
+    overflowPages:boundsAudits.reduce((n,a)=>n+a.overflowPages,0),
+    complete:boundsAudits.every(a=>a.complete),
+    overflowFreeCertified:false
+  };
   return output;
 }
 export function populateVectorPrintWindow(win,{pages,title='J-WOO Score Studio',pageFormat='A4_P'}={}){
