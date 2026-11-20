@@ -154,8 +154,12 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
       if(Number.isSafeInteger(result.change?.nextEventIndex)&&
         result.change.nextEventIndex>=0&&
         result.change.partId===selection.partId&&
-        result.change.measureIndex===selection.measureIndex)
+        result.change.measureIndex===selection.measureIndex){
+        if(Number.isSafeInteger(result.change.nextMeasureIndex)&&
+          result.change.nextMeasureIndex>=0)
+          selection.measureIndex=result.change.nextMeasureIndex;
         selection.eventIndex=result.change.nextEventIndex;
+      }
       invalidateRhythmUndo();refreshRhythmReport();refreshV2();
       setMessage(label+' 완료. 악보와 원본 비교를 확인한 뒤 저장하세요.');
     }catch(error){
