@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planDensityLayout,applyDensityLayout,planIndependentPartLayout,applyIndependentPartLayout} from '../src/studio-v4-auto-layout.js';
+import {assertScopedScoreMutation} from '../src/studio-v4-structural-guard.js';
 
 class Element{
   constructor(localName,children=[],props={},value=''){
@@ -126,4 +127,39 @@ test('independent part layout refuses conflicting manual breaks without replacem
   bar.insertBefore(el('print',[],{'new-page':'yes'}),bar.firstChild);
   assert.throws(()=>planIndependentPartLayout(source),/기존 수동/);
   assert.equal(applyIndependentPartLayout(source,{replaceExisting:true}).change.parts,2);
+});
+
+
+test('pitch-only structural guard rejects modified lyrics and protected parts',()=>{
+  const source=score({parts:2,count:4,notes:2,lyrics:true});
+  const target=source.cloneNode(true),bar=bars(target.documentElement.children[0])[1];
+  const note=first(bar,'note');
+  first(first(note,'pitch'),'step').textContent='D';
+  assert.equal(assertScopedScoreMutation(source,target,{
+    partIds:['P0'],start:1,end:1,kind:'pitches'
+  }).guardPassed,true);
+  const unsafe=target.cloneNode(true);
+  const lyric=first(first(bars(unsafe.documentElement.children[0])[1],'note'),'lyric');
+  first(lyric,'text').textContent='다른 가사';
+  assert.throws(()=>assertScopedScoreMutation(source,unsafe,{
+    partIds:['P0'],start:1,end:1,kind:'pitches'
+  }),/보존 대상/);
+  const cross=target.cloneNode(true);
+  first(first(first(bars(cross.documentElement.children[1])[1],'note'),'pitch'),'step').textContent='E';
+  assert.throws(()=>assertScopedScoreMutation(source,cross,{
+    partIds:['P0'],start:1,end:1,kind:'pitches'
+  }),/보존 대상/);
+});
+test('layout-only structural guard prohibits changes to rhythm or metadata',()=>{
+  const source=score({parts:2,count:8,notes:4,lyrics:true});
+  const candidate=applyIndependentPartLayout(source).doc;
+  assert.equal(assertScopedScoreMutation(source,candidate,{
+    partIds:['P0','P1'],start:0,end:7,kind:'layout'
+  }).guardPassed,true);
+  const corrupted=candidate.cloneNode(true);
+  const firstNote=first(bars(corrupted.documentElement.children[0])[2],'note');
+  first(firstNote,'duration').textContent='12';
+  assert.throws(()=>assertScopedScoreMutation(source,corrupted,{
+    partIds:['P0','P1'],start:0,end:7,kind:'layout'
+  }),/보존 대상/);
 });
