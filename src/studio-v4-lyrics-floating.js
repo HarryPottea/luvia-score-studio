@@ -196,7 +196,10 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
     }catch(error){showStatus('저장 실패: '+error.message,true);}
     finally{
       busy=false;
-      if(openAt)updatePreview();
+      if(openAt){
+        updatePreview();
+        try{$('v4-inline-delete').disabled=!readCurrent().exists;}catch{}
+      }
     }
   }
   button.addEventListener('click',()=>{
@@ -230,7 +233,10 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
     isMode:()=>mode&&enabled(),
     openFromScore:(position,element)=>open(position,element?.getBoundingClientRect?.()),
     close,
-    onLoaded:()=>{close();updateButton();},
+    onLoaded:()=>{close();mode=false;updateButton();},
+    onSelectionChange:position=>{
+      if(!busy&&!editor.hidden&&openAt&&!same(openAt,position))close();
+    },
     onRendered:()=>{
       updateButton();
       if(!busy&&!editor.hidden&&state.doc!==openedDoc)close();
