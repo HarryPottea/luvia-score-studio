@@ -264,7 +264,7 @@ function attachScoreInteractions(osmd){
     isLyricMode:()=>v4?.lyricMode?.()===true,
     editLyric:(position,element)=>v4?.openLyricFromScore?.(position,element),
     announce:count=>{ const el=document.getElementById('v3-graphic-hint');
-      if (el) el.textContent = count ? `악보 화면에서 음표 ${count}개를 직접 선택할 수 있습니다. 음표를 위아래로 움직이거나 ↑↓ 키를 사용하세요.` : '악보에서 안전하게 연결된 음표가 없습니다. 보호된 붙임줄·중복 성부·숨겨진 음표는 편집하지 않습니다.';
+      if (el) el.textContent = count ? `악보 화면에서 음표·쉼표 ${count}개를 직접 선택할 수 있습니다. 음표는 드래그·↑↓ 키로 음정을 변경하고, 쉼표는 선택해 음표 입력 도구를 사용하세요.` : '악보에서 안전하게 연결된 음표·쉼표가 없습니다. 보호된 연결 기보·중복 성부·숨겨진 표기는 편집하지 않습니다.';
     },
   });
   state.graphicBridge.highlight(v3.getSelection());
