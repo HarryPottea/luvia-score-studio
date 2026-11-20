@@ -1894,6 +1894,36 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_TIED_NOTE_ARTICULATION_WITH_KOREAN_LYRIC_UNDO');
 
+  // Grace notes add no duration. The existing cross-bar tie, voice grid and
+  // Korean lyric must survive the insert/delete cycle in the actual editor.
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-pro-step','F');
+  await page.selectOption('#v4-pro-alter','1');
+  await page.selectOption('#v4-pro-octave','5');
+  await page.check('#v4-grace-slash');
+  await page.click('#v4-grace-insert');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('꾸밈음 추가 완료'),
+    null,{timeout:30000});
+  const graceDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const graceXml=await fs.readFile(await (await graceDownload).path(),'utf8');
+  assert.match(graceXml,/<grace slash="yes"\s*\/>/);
+  assert.match(graceXml,/<pitch><step>F<\/step><alter>1<\/alter><octave>5<\/octave><\/pitch>/);
+  assert.match(graceXml,/<text>반짝<\/text>/);
+  assert.match(graceXml,/<tie type="start"/);
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.click('#v4-grace-remove');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('꾸밈음 삭제 완료'),
+    null,{timeout:30000});
+  const cleanedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const cleanedXml=await fs.readFile(await (await cleanedDownload).path(),'utf8');
+  assert.doesNotMatch(cleanedXml,/<grace\b/);
+  assert.match(cleanedXml,/<text>반짝<\/text>/);
+  console.log('BROWSER_STAGE=V4_ZERO_TIME_GRACE_INSERT_DELETE_CROSSBAR_TIE_PRESERVED');
+
+
 
 
   // A tiny originally synthesized TTF with Han/Geul glyphs validates actual
