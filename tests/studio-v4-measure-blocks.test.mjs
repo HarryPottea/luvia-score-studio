@@ -891,8 +891,8 @@ test('single-voice transposition refuses chord-symbol mismatch and out-of-range 
   assert.throws(()=>transposeWrittenVoice(source,{
     partId:'P1',voice:'1',start:1,end:1,semitones:2}),/코드 기호/);
   rows(source)[0][1].removeChild(harmony);
-  pitched(first(rows(source)[0][1],'note'),'C',0);
+  pitched(first(rows(source)[0][1],'note'),'B',8);
   assert.throws(()=>transposeWrittenVoice(source,{
-    partId:'P1',voice:'1',start:1,end:1,semitones:-1}),/음역/);
-  assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'C0');
+    partId:'P1',voice:'1',start:1,end:1,semitones:12}),/음역/);
+  assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'B8');
 });
