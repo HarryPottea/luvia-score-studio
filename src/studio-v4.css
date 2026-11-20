@@ -189,3 +189,9 @@
 @media print{.jwoo-lyric-popover,.jwoo-lyric-mode-button{display:none!important}}
 
 .jwoo-lyric-popover textarea{resize:vertical;min-height:60px;max-height:132px;line-height:1.5}
+
+.jwoo-lyric-selected{margin:6px 0 12px;padding:9px 12px;min-height:36px;
+  border:1px solid #c4e781;border-radius:4px;background:#d9ff7a;color:#1a2811;
+  font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.jwoo-lyric-selected:disabled{opacity:.42;cursor:not-allowed}
+.jwoo-lyric-selected:focus-visible{outline:2px solid #d9ff7a;outline-offset:3px}
