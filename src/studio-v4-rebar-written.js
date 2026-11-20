@@ -93,9 +93,13 @@ function setClock(note,chunk){
 function appendTie(note,kind){
   const sound=make(note,'tie');sound.setAttribute('type',kind);
   note.insertBefore(sound,first(note,'voice')||first(note,'type'));
-  const notation=make(note,'notations'),tied=make(notation,'tied');
+  let notation=first(note,'notations');
+  if(!notation){
+    notation=make(note,'notations');
+    note.insertBefore(notation,first(note,'lyric')||null);
+  }
+  const tied=make(notation,'tied');
   tied.setAttribute('type',kind);notation.appendChild(tied);
-  note.insertBefore(notation,first(note,'lyric')||null);
 }
 function makeContinuation(original,piece,isFirst){
   const note=original.cloneNode(true);
@@ -143,8 +147,7 @@ function generatePart(part,sourceReport,targetTicks,beats,beatType){
   }
   // The final bar is padded with explicit rests, never by extending a pitch.
   let remaining=measures.length*targetTicks-cursor;
-  for(const p of pieces(remaining||sourceReport.divisions/8,sourceReport.divisions)){
-    if(!remaining)break;
+  for(const p of remaining?pieces(remaining,sourceReport.divisions):[]){
     if(p.duration>remaining)reject('마지막 마디의 쉼표를 표현할 수 없습니다.');
     const n=make(part,'note');
     n.appendChild(make(n,'rest'));n.appendChild(make(n,'duration',p.duration));
