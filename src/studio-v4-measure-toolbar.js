@@ -2,6 +2,7 @@
 import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from './studio-v4-measure-blocks.js';
 import {transposeMeasurePassage} from './studio-v4-passage-transpose.js';
+import {transposeWrittenVoice} from './studio-v4-voice-transpose.js';
 import './studio-v4-measure-toolbar.css';
 
 const direct=(n,tag)=>n?[...n.children].filter(c=>c.localName===tag):[];
@@ -30,13 +31,15 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     '<div class="jwoo-transpose-controls">',
     '<label>반음 이동 <input type="number" id="jwoo-transpose-semitones" min="-12" max="12" value="2" step="1" /></label>',
     '<label>임시표 <select id="jwoo-transpose-spelling"><option value="sharp">샤프 우선</option><option value="flat">플랫 우선</option></select></label>',
-    '<label class="jwoo-transpose-chords"><input id="jwoo-transpose-chords" type="checkbox" checked /> 코드 기호도 함께 이조</label>',
+    '<label>이조 대상 <select id="jwoo-transpose-scope" aria-label="반음 이동할 파트·성부 범위"><option value="all">전체 파트·성부</option><option value="part">현재 선택 악기 전체 성부</option><option value="voice">현재 선택 악기의 한 성부</option></select></label>',
+    '<label>대상 성부 <select id="jwoo-transpose-voice" aria-label="선택 악기에서 이조할 성부"><option value="1">1성부</option><option value="2">2성부</option><option value="3">3성부</option><option value="4">4성부</option></select></label>',
+    '<label class="jwoo-transpose-chords"><input id="jwoo-transpose-chords" type="checkbox" checked /> 코드 기호도 함께 이조 (전체/파트 선택)</label>',
     '<button type="button" data-act="transpose">선택 구간 음정 일괄 이조</button>',
     '</div>',
     '<p class="jwoo-bar-hint">마디 번호를 누르거나 악보 음표를 클릭해 선택하세요. Shift+클릭은 여러 마디 선택,',
     ' 모바일에서는 시작·끝 번호로 범위를 지정합니다. 모든 파트에 동일하게 적용되며 실행 취소할 수 있습니다.',
     ' 선택 바 안에서는 Ctrl/⌘+C 복사 · Ctrl/⌘+V 붙여넣기 · Ctrl/⌘+D 복제 · Delete 삭제를 사용할 수 있습니다.',
-    ' 연결 기호나 조표·박자표 변경이 위험하면 편집을 차단합니다.</p>',
+    ' 연결 기호나 조표·박자표 변경이 위험하면 편집을 차단합니다. 한 성부를 선택하면 다른 성부 음표·박자·가사를 보존하며, 코드 기호가 있는 마디와 연결 범위 밖으로 이어지는 붙임줄은 차단합니다.</p>',
   ].join('');
   document.querySelector('.preview-toolbar').insertAdjacentElement('afterend',host);
   const context=document.createElement('div');
@@ -171,9 +174,22 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
         if(!Number.isSafeInteger(semitones)||semitones===0||
            semitones<-12||semitones>12||!['sharp','flat'].includes(spelling))
           throw new Error('이조 반음은 -12~+12의 0이 아닌 정수여야 합니다.');
+        const scopeMode=$('jwoo-transpose-scope').value,
+          activePart=$('v3-part')?.value,
+          voice=$('jwoo-transpose-voice').value;
+        if(scopeMode!=='all'&&(!activePart||
+          !direct(state.doc.documentElement,'part').some(p=>p.getAttribute('id')===activePart)))
+          throw new Error('먼저 작곡 편집기에서 악기 파트를 선택해 주세요.');
         const before=state.doc;
-        await commit(doc=>transposeMeasurePassage(doc,{...region,semitones,spelling,transposeChordSymbols}),
-          '선택 구간 '+(semitones>0?'+':'')+semitones+'반음 이조');
+        if(scopeMode==='voice'){
+          await commit(doc=>transposeWrittenVoice(doc,{...region,partId:activePart,
+            voice,semitones,spelling}),
+            '선택 악기 '+voice+'성부 '+(semitones>0?'+':'')+semitones+'반음 이조');
+        }else{
+          await commit(doc=>transposeMeasurePassage(doc,{...region,semitones,spelling,
+            partId:scopeMode==='part'?activePart:null,transposeChordSymbols}),
+            '선택 구간 '+(semitones>0?'+':'')+semitones+'반음 이조');
+        }
         if(before!==state.doc){render();}
         return;
       }
