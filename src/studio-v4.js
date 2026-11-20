@@ -213,7 +213,10 @@ const panel=[
   '<button id="v4-part-svg-zip" type="button">모든 파트 SVG ZIP 저장 (벡터)</button>',
   '<button id="v4-part-pdf-zip" type="button">파트별 PDF ZIP 생성 (음표·오선 벡터)</button>',
   '<label class="v4-timeline-move-check"><input id="v4-pdf-unicode-raster" type="checkbox" /> 한글·특수문자 텍스트만 고해상도 이미지로 포함 (하이브리드 PDF)</label>',
-  '<p class="v4-tiny">모든 파트의 악보 기호·오선 벡터 경로를 PDF로 묶습니다. 기본은 글꼴 손상 방지를 위해 한글을 차단합니다. 위 옵션을 켜면 해당 글자만 PNG로 포함하며 음악 기호는 벡터로 남습니다. 글꼴까지 벡터가 필요하면 브라우저 벡터 인쇄를 이용하세요.</p>',
+  '<label for="v4-pdf-local-font">선택한 로컬 TTF를 PDF에 내장해 한글 벡터 글자로 출력 (선택 사항)</label>',
+  '<input id="v4-pdf-local-font" type="file" accept=".ttf,font/ttf" />',
+  '<p class="v4-tiny">직접 사용할 권리가 있는 TTF 글꼴만 선택하세요. 최대 8MiB이며 브라우저에서만 읽고 서버로 보내거나 보관하지 않습니다. 글꼴의 한글 포함·내장 가능 여부와 PDF 내장 객체를 검사합니다. 글꼴을 선택하면 하이브리드 이미지보다 벡터 글자를 우선합니다.</p>',
+  '<p class="v4-tiny">음표·오선을 벡터 PDF로 묶습니다. 한글은 선택한 로컬 TTF의 글자·내장 검사가 통과하면 벡터로 출력하며, TTF가 없으면 이미지 옵션으로 하이브리드 출력하거나 브라우저 벡터 인쇄를 사용하세요. 폰트·시각적 품질은 PDF 뷰어에서 확인해야 합니다.</p>',
   '<p class="v4-tiny">각 악기 파트의 모든 SVG 페이지를 각각 이름 붙여 압축합니다. 이미지로 변환하지 않지만 PDF 파일은 아닙니다.</p>',
   '<button id="v4-vector-zip" type="button">현재 미리보기 SVG ZIP 저장</button>',
   '<p class="v4-tiny">벡터 PDF는 미리보기 상단 ‘인쇄 · PDF 저장’을 이용하세요. 08 / 파트별 PDF ZIP은 이미지 기반 출력입니다.</p>',
@@ -1109,12 +1112,14 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
         onProgress:detail=>setMessage('파트별 벡터 PDF 렌더링: '+detail)});
       const result=await createVectorPartPdfZip({pages,filename:state.filename,pageFormat,
         allowUnicodeText:$('v4-pdf-unicode-raster').checked,
+        fontFile:$('v4-pdf-local-font').files?.[0]||null,
         onProgress:(count,total)=>setMessage('벡터 PDF 페이지 변환: '+count+' / '+total)});
       const url=URL.createObjectURL(result.blob),a=document.createElement('a');
       a.href=url;a.download=result.filename;a.click();
       setTimeout(()=>URL.revokeObjectURL(url),10000);
       setMessage('파트별 '+(result.hybridTextCount?'하이브리드':'벡터')+' PDF '+result.parts+
-        '개 파트 · '+result.pages+'페이지 ZIP 저장 · 한글 글자 이미지 '+result.hybridTextCount+
+        '개 파트 · '+result.pages+'페이지 ZIP 저장 · 한글 이미지 '+result.hybridTextCount+
+        '개 · TTF 벡터 글자 '+(result.embeddedVectorTextCount||0)+
         '개 · 가사 간격 자동 보정 '+(pages.lyricAudit?.attempts||0)+'회 ·'+
         (pages.lyricAudit?.remaining?' 남은 겹침 의심 '+pages.lyricAudit.remaining+'건 ·':
           ' 측정상 겹침 0건 ·')+
