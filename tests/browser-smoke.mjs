@@ -1979,6 +1979,24 @@ try {
   assert.match(cleanedXml,/<text>반짝<\/text>/);
   console.log('BROWSER_STAGE=V4_ZERO_TIME_GRACE_INSERT_DELETE_CROSSBAR_TIE_PRESERVED');
 
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-ornament-kind','trill-mark');
+  await page.click('#v4-ornament-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('음악 장식 기호 추가 / 해제 완료'),null,{timeout:30000});
+  const trillEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const trillXml=await fs.readFile(await (await trillEvent).path(),'utf8');
+  assert.match(trillXml,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  assert.match(trillXml,/<tied type="start"/);
+  assert.match(trillXml,/<text>반짝<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('되돌리기 완료'),null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_TRILL_ORNAMENT_WITH_VOCAL_TIE_UNDO');
+
+
 
 
 
