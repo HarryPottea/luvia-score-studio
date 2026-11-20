@@ -764,8 +764,19 @@ try {
   const bookPdf=await bothPartsTab.pdf({printBackground:true,preferCSSPageSize:true});
   assert.equal(bookPdf.subarray(0,5).toString(),'%PDF-');
   assert.ok(bookPdf.length>1800);
+  assert.equal(await bothPartsTab.locator('#jwoo-print-part-select').count(),1);
+  await bothPartsTab.selectOption('#jwoo-print-part-select','P2');
+  const visiblePartIds=await bothPartsTab.locator('.sheet:visible').evaluateAll(
+    list=>[...new Set(list.map(x=>x.dataset.partId))]);
+  assert.deepEqual(visiblePartIds,['P2'],'Individual part print must not include other instruments');
+  const individualPdf=await bothPartsTab.pdf({printBackground:true,preferCSSPageSize:true});
+  assert.equal(individualPdf.subarray(0,5).toString(),'%PDF-');
+  assert.ok(individualPdf.length>1000,'Native print keeps an instrument-specific vector PDF');
+  await bothPartsTab.selectOption('#jwoo-print-part-select','all');
+  assert.deepEqual(await bothPartsTab.locator('.sheet:visible').evaluateAll(
+    list=>[...new Set(list.map(x=>x.dataset.partId))]),['P1','P2']);
   await bothPartsTab.close();
-  console.log('BROWSER_STAGE=V4_TWO_PART_VECTOR_PRINT_BOOK');
+  console.log('BROWSER_STAGE=V4_PART_SPECIFIC_NATIVE_VECTOR_PDF_PRINT');
   const partSvgZipDownload=page.waitForEvent('download',{timeout:45000});
   await page.click('#v4-part-svg-zip');
   const partSvgZip=await partSvgZipDownload;
