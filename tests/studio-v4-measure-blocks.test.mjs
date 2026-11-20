@@ -10,6 +10,7 @@ import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
 import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMeasures} from '../src/studio-v4-voice-phrase.js';
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 import {toggleAdvancedArticulation} from '../src/studio-v4-articulations.js';
+import {editArticulationForVoice} from '../src/studio-v4-articulation-batch.js';
 import {insertGraceNote,removeGraceNote} from '../src/studio-v4-grace-notes.js';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 
@@ -895,4 +896,61 @@ test('single-voice transposition refuses chord-symbol mismatch and out-of-range 
   assert.throws(()=>transposeWrittenVoice(source,{
     partId:'P1',voice:'1',start:1,end:1,semitones:12}),/음역/);
   assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'B8');
+});
+
+
+test('batch articulations add and remove on a voice while preserving a crossbar tie and Korean lyric',()=>{
+  const source=fixture(4,2);
+  const a=pitched(first(rows(source)[0][1],'note'),'C',4),
+    b=pitched(first(rows(source)[0][2],'note'),'C',4);
+  addLink(a,'tie','start');addLink(b,'tie','stop');
+  a.appendChild(n('lyric',{number:'1'},[leaf('text','계속')]));
+  const result=editArticulationForVoice(source,{
+    partId:'P1',voice:'1',start:1,end:2,kind:'tenuto',mode:'add'});
+  assert.equal(result.change.updatedNotes,2);
+  for(const index of [1,2]){
+    const note=first(rows(result.doc)[0][index],'note'),
+      notations=first(note,'notations');
+    assert.ok(first(first(notations,'articulations'),'tenuto'));
+    assert.ok(first(notations,'tied'));
+    assert.equal(first(note,'duration').textContent,'192');
+  }
+  assert.equal(first(first(rows(result.doc)[0][1],'note'),'lyric').textContent,'계속');
+  assert.equal(first(first(rows(result.doc)[1][1],'note'),'rest').localName,'rest');
+  assert.equal(first(first(first(rows(source)[0][1],'note'),'notations'),'articulations'),undefined);
+  const removed=editArticulationForVoice(result.doc,{
+    partId:'P1',voice:'1',start:1,end:2,kind:'tenuto',mode:'remove'});
+  for(const index of [1,2]){
+    const note=first(rows(removed.doc)[0][index],'note');
+    assert.equal(first(first(note,'notations'),'articulations'),undefined);
+    assert.equal(first(first(note,'notations'),'tied').getAttribute('type'),
+      index===1?'start':'stop');
+  }
+});
+test('batch articulation preserves other voice, and partially existing marks are idempotently added',()=>{
+  const source=fixture(4,1);
+  pitched(first(rows(source)[0][1],'note'),'D',4);
+  pitched(first(rows(source)[0][2],'note'),'E',4);
+  const withVoices=addIndependentVoice(source,{partId:'P1',voice:'2',staff:1}).doc;
+  const once=toggleAdvancedArticulation(withVoices,{
+    partId:'P1',measureIndex:1,eventIndex:0,kind:'accent'}).doc;
+  const edited=editArticulationForVoice(once,{
+    partId:'P1',voice:'1',start:1,end:2,kind:'accent',mode:'add'});
+  assert.equal(edited.change.updatedNotes,1);
+  const secondVoice=rows(edited.doc)[0][1].children.filter(x=>x.localName==='note')[1];
+  assert.equal(first(secondVoice,'voice').textContent,'2');
+  assert.equal(first(secondVoice,'notations'),undefined);
+  assert.throws(()=>editArticulationForVoice(edited.doc,{
+    partId:'P1',voice:'1',start:1,end:2,kind:'accent',mode:'add'}),/변경할/);
+});
+test('batch articulation rejects unsupported note as a whole without source mutation',()=>{
+  const source=fixture(4,1);
+  const a=pitched(first(rows(source)[0][1],'note'),'C',4);
+  const b=pitched(first(rows(source)[0][2],'note'),'D',4);
+  b.appendChild(n('notations',{},[]));
+  b.appendChild(n('notations',{},[]));
+  assert.throws(()=>editArticulationForVoice(source,{
+    partId:'P1',voice:'1',start:1,end:2,kind:'staccato',mode:'add'}),/복합 기보/);
+  assert.equal(first(a,'notations'),undefined);
+  assert.equal(first(b,'notations').children.length,0);
 });
