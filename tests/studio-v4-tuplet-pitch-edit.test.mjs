@@ -114,7 +114,7 @@ test('invalid number of pitches, malformed tokens, or missing end are blocked',(
   const tuplets=all(first(all(bar(s),'note')[2],'notations'),'tuplet');
   first(all(bar(s),'note')[2],'notations').removeChild(tuplets[0]);
   assert.throws(()=>editTupletPitches(s,{partId:'P1',measureIndex:0,eventIndex:1,
-    pitches:'E4 F4 G4'}),/종료되지|시작·끝/);
+    pitches:'E4 F4 G4'}),/종료되지|종료 기호|시작·끝/);
 });
 test('tied or overlapping tuplet structure cannot silently change group pitches',()=>{
   const s=makeGroup();
