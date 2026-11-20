@@ -15,7 +15,7 @@ const html=`
     ${Array.from({length:12},(_,i)=>'<option value="'+(i+1)+'">'+(i+1)+'절</option>').join('')}
   </select>
   <label for="v4-inline-input">음절 또는 문장 입력</label>
-  <input type="text" id="v4-inline-input" maxlength="100" autocomplete="off" placeholder="예: 우 / 우리 함께" />
+  <textarea id="v4-inline-input" rows="2" maxlength="20000" placeholder="예: 우 / 우리 함께 · 여러 줄 붙여넣기 가능"></textarea>
   <p id="v4-inline-preview" class="jwoo-lyric-preview" aria-live="polite">텍스트를 입력하세요.</p>
   <div class="jwoo-lyric-actions">
     <button type="button" id="v4-inline-next" class="primary">저장 · 다음 음표 ↵</button>
@@ -165,6 +165,8 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
         label='악보 위 스마트 문장 가사 배치';
       }else{
         if(!textValue.trim())throw new Error('한 음절을 입력하거나 삭제 버튼을 이용해 주세요.');
+        if([...textValue].length>100)
+          throw new Error('한 음표에 입력할 가사는 100자 이하여야 합니다. 긴 문장은 자동 배치를 사용해 주세요.');
         if(kind==='next')next=nextInlineLyricPosition(state.doc,current,{verse:currentVerse});
         transform=doc=>setNoteVerse(doc,{...current,verse:currentVerse,text:textValue,
           syllabic:info.syllabic,extend:info.extend,mode:'set'});
