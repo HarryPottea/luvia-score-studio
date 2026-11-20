@@ -30,6 +30,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     '<div class="jwoo-transpose-controls">',
     '<label>반음 이동 <input type="number" id="jwoo-transpose-semitones" min="-12" max="12" value="2" step="1" /></label>',
     '<label>임시표 <select id="jwoo-transpose-spelling"><option value="sharp">샤프 우선</option><option value="flat">플랫 우선</option></select></label>',
+    '<label class="jwoo-transpose-chords"><input id="jwoo-transpose-chords" type="checkbox" checked /> 코드 기호도 함께 이조</label>',
     '<button type="button" data-act="transpose">선택 구간 음정 일괄 이조</button>',
     '</div>',
     '<p class="jwoo-bar-hint">마디 번호를 누르거나 악보 음표를 클릭해 선택하세요. Shift+클릭은 여러 마디 선택,',
@@ -166,11 +167,12 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
       if(action==='transpose'){
         const semitones=Number($('jwoo-transpose-semitones').value);
         const spelling=$('jwoo-transpose-spelling').value;
+        const transposeChordSymbols=$('jwoo-transpose-chords').checked;
         if(!Number.isSafeInteger(semitones)||semitones===0||
            semitones<-12||semitones>12||!['sharp','flat'].includes(spelling))
           throw new Error('이조 반음은 -12~+12의 0이 아닌 정수여야 합니다.');
         const before=state.doc;
-        await commit(doc=>transposeMeasurePassage(doc,{...region,semitones,spelling}),
+        await commit(doc=>transposeMeasurePassage(doc,{...region,semitones,spelling,transposeChordSymbols}),
           '선택 구간 '+(semitones>0?'+':'')+semitones+'반음 이조');
         if(before!==state.doc){render();}
         return;
