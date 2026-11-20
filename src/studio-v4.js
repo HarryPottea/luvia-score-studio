@@ -139,7 +139,7 @@ const chordPanel=[
 
 export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   const $=id=>document.getElementById(id);
-  document.querySelector('.sample-action').insertAdjacentHTML('afterend',intro);
+  document.querySelector('.settings-action').insertAdjacentHTML('afterend',intro);
   $('editor-controls').insertAdjacentHTML('beforeend',panel);
   $('editor-controls').insertAdjacentHTML('beforeend',chordPanel);
   let saveTimer=null,pending=null,skipRendered=false,currentRenderedDoc=null,writing=false;
