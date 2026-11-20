@@ -886,7 +886,8 @@ test('tuplets: preserve MusicXML type–accidental–time-modification–staff o
   assert.equal(first(revised,'accidental').textContent,'sharp');
 });
 
-\n// STAGE 2 — atomic rhythm editing in independent voices, chords and tuplets.
+
+// STAGE 2 — atomic rhythm editing in independent voices, chords and tuplets.
 test('stage2: multi-voice rhythmic reallocation retains other piano voice and segment endpoint',()=>{
   const original=fixture(),saved=serialize(original),other=secondVoice(original);
   const result=redistributeVoiceRhythm(original,{...params(0),endEventIndex:1,
