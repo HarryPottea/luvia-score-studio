@@ -154,7 +154,7 @@ const panel=[
   '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">모든 파트의 마디 수가 같아야 합니다. 기존 수동 나눔은 기본적으로 보호됩니다.</p>',
   '<p class="v4-tiny">이 기능은 MusicXML 줄·페이지 나눔을 한꺼번에 작성합니다. 음표·가사 충돌을 자동 해소하는 조판 엔진은 아닙니다.</p></div>',
   '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
-  '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
+  '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 미리보기의 조판 간격 선택도 파트보에 적용됩니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
   '<button id="v4-part-svg-zip" type="button">모든 파트 SVG ZIP 저장 (벡터)</button>',
   '<p class="v4-tiny">각 악기 파트의 모든 SVG 페이지를 각각 이름 붙여 압축합니다. 이미지로 변환하지 않지만 PDF 파일은 아닙니다.</p>',
   '<button id="v4-vector-zip" type="button">현재 미리보기 SVG ZIP 저장</button>',
@@ -723,6 +723,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       const parts=partNodes.map(p=>({id:p.getAttribute('id'),name:names.get(p.getAttribute('id'))||p.getAttribute('id')}));
       const pageFormat=$('page-orientation').value;
       const pages=await renderPartSvgPages({doc:state.doc,parts,pageFormat,
+        layout:$('v2-layout')?.value||'auto',
         measureNumbers:$('measure-numbers').checked,
         onProgress:detail=>setMessage('벡터 파트보 생성: '+detail)});
       if(win.closed){setMessage('인쇄용 창이 닫혀 출력이 취소됐습니다.',true);return;}
@@ -745,7 +746,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       const parts=[...state.doc.documentElement.children].filter(n=>n.localName==='part')
         .map(p=>({id:p.getAttribute('id'),name:names.get(p.getAttribute('id'))||p.getAttribute('id')}));
       const pages=await renderPartSvgPages({doc:state.doc,parts,
-        pageFormat:$('page-orientation').value,measureNumbers:$('measure-numbers').checked,
+        pageFormat:$('page-orientation').value,layout:$('v2-layout')?.value||'auto',
+        measureNumbers:$('measure-numbers').checked,
         onProgress:detail=>setMessage('파트별 벡터 파일 준비: '+detail)});
       const result=await createPartSvgZip({pages,filename:state.filename});
       const url=URL.createObjectURL(result.blob),anchor=document.createElement('a');
