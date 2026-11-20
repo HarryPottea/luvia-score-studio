@@ -6,6 +6,7 @@ import JSZip from 'jszip';
 import {baseScoreName,safeFileName} from './part-export.js';
 import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 import {rasterizeUnicodeSvgText} from './studio-v4-unicode-svg.js';
+import {inspectGeneratedPdfObjects} from './studio-v4-pdf-object-audit.js';
 
 const MAX_PAGES=80,MAX_PARTS=12,MAX_FILE_BYTES=24*1024*1024;
 const FORMAT={A4_P:{w:595.2756,h:841.8898,orientation:'p'},
@@ -107,6 +108,8 @@ export async function createVectorPartPdfZip({
       });
       else pdf.addPage([format.w,format.h],format.orientation);
       const clone=stripEditing(svg);
+      const pathCount=clone.querySelectorAll('path,rect,line,polyline,polygon,circle,ellipse').length;
+      if(!pathCount)fail('벡터 음악 기호가 없는 페이지는 파트별 PDF로 내보내지 않습니다.');
       if(nonAsciiText(clone)!==null&&allowUnicodeText){
         const converted=await rasterizeUnicodeSvgText(clone);
         hybridTextCount+=converted.rasterizedTextCount;
@@ -118,6 +121,9 @@ export async function createVectorPartPdfZip({
     }
     const buffer=pdf.output('arraybuffer');
     assertPdf(buffer);
+    inspectGeneratedPdfObjects(buffer,{
+      expectedPages:part.pages.length,w:format.w,h:format.h,imagesAllowed:allowUnicodeText
+    });
     bytes+=buffer.byteLength;
     if(bytes>MAX_FILE_BYTES)fail('파트 PDF 총용량이 24MiB를 초과했습니다.');
     const ordinal=String(index+1).padStart(2,'0');
