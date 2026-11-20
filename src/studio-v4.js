@@ -163,7 +163,7 @@ const panel=[
   '<label for="v4-tuplet-pitches">기존 잇단음 그룹 음정 일괄 수정</label>',
   '<div class="v4-inline"><input id="v4-tuplet-pitches" type="text" maxlength="180" placeholder="C4 D4 Eb4 F#4 G4" aria-describedby="v4-tuplet-pitches-status" />',
   '<button id="v4-tuplet-pitches-apply" type="button">선택 잇단음 음정 수정</button></div>',
-  '<p id="v4-tuplet-pitches-status" class="v4-tiny" role="status" aria-live="polite">잇단음 중 한 음표를 선택하고 그룹 안의 3~7개 음정을 띄어쓰기로 입력하세요. 리듬·가사·다른 성부는 유지합니다.</p>',
+  '<p id="v4-tuplet-pitches-status" class="v4-tiny" role="status" aria-live="polite">잇단음 중 한 음표를 선택하고 그룹의 3~7개 위치를 음정으로 입력하세요. 기존 쉼표 위치는 R로 입력합니다. 리듬·쉼표·가사·다른 성부는 유지합니다.</p>',
   '<p class="v4-tiny">3:2는 원래 음표 2개, 5:4·6:4·7:4는 4개가 필요합니다. 동일 성부의 동일 길이 일반 음표가 연속되어야 하며, 생성되는 추가 음은 위 음이름·변화표·옥타브를 사용합니다.</p>',
   '<p class="v4-tiny">분할값이 부족하면 해당 파트의 MusicXML divisions를 정확히 확장합니다. 복잡한 빔·붙임줄·화음·보호된 표시가 있으면 변경하지 않습니다.</p></div>',
   '<div class="v4-chord-transpose"><p class="v4-subhead">화음 전체 반음 이동</p>',
