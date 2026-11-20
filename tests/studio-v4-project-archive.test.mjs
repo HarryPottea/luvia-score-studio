@@ -59,3 +59,12 @@ test('missing snapshot data is blocked even if manifest references it',async()=>
   const trimmed=await z.generateAsync({type:'blob'});
   await assert.rejects(readPortableScoreProject(fileFromBlob(trimmed)),/누락/);
 });
+
+
+test('reject archive whose claimed expanded payload exceeds bound before decompression',async()=>{
+  const archive=await createPortableScoreProject({xml:xml('A'),filename:'a.musicxml'});
+  const z=await JSZip.loadAsync(await archive.blob.arrayBuffer());
+  z.file('score.musicxml','X'.repeat(9*1024*1024));
+  const compressed=await z.generateAsync({type:'blob',compression:'DEFLATE'});
+  await assert.rejects(readPortableScoreProject(fileFromBlob(compressed)),/압축 해제 크기/);
+});
