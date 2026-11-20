@@ -406,7 +406,7 @@ test('crossbar: cross-measure slurs are reversible and leave voice timing unchan
 test('crossbar: slurs cannot silently cross voices or missing measures',()=>{
   const source=crossbarFixture();
   assert.throws(()=>toggleSlurAcrossBarline(source,{...params(6),endEventIndex:0}),/같은 성부/);
-  assert.throws(()=>toggleSlurAcrossBarline(source,{...params(6),endEventIndex:99}),/위치/);
+  assert.throws(()=>toggleSlurAcrossBarline(source,{...params(6),endEventIndex:99}),/음표가 없습니다/);
   const single=fixture();
   assert.throws(()=>extendVoiceAcrossBarline(single,{...params(6)}),/다음 마디/);
 });
