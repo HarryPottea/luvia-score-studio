@@ -86,7 +86,7 @@ export function insertOrderedNotation(notations,item){
 export function assertNotationMutation(source,candidate,{partId,targets}={}){
   if(source?.documentElement?.localName!=='score-partwise'||
      candidate?.documentElement?.localName!=='score-partwise'||
-     !partId||!Array.isArray(targets)||targets.length<1||targets.length>16)
+     !partId||!Array.isArray(targets)||targets.length<1||targets.length>4000)
     fail('기보 편집의 변경 범위가 유효하지 않습니다.');
   const original=source.cloneNode(true),modified=candidate.cloneNode(true);
   for(const target of targets){
