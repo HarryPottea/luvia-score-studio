@@ -136,8 +136,12 @@ export function authorTupletGroup(source,{partId,measureIndex,eventIndex,
     const tm=node(current,'time-modification');
     for(const [tag,value] of [['actual-notes',actual],['normal-notes',normal],['normal-type',type]])
       tm.appendChild(node(tm,tag,value));
-    const afterType=one(current,'type').nextSibling;
-    current.insertBefore(tm,afterType);
+    // MusicXML note order places accidental before time-modification;
+    // inserting directly after type would move the tuple before the sharp
+    // and produce an invalid element sequence in professional importers.
+    const firstAfterTime=['stem','staff','beam','notations','lyric']
+      .map(tag=>one(current,tag)).find(Boolean)||null;
+    current.insertBefore(tm,firstAfterTime);
     const stem=one(current,'stem');if(stem)current.removeChild(stem);
   }
   let after=candidates.at(-1),last=after;
