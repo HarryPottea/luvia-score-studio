@@ -319,3 +319,37 @@
    same safe scroll offset as inspector inputs under the mobile sticky preview. */
 #v4-new{scroll-margin-top:24px}
 @media(max-width:670px){#v4-new{scroll-margin-top:325px}}
+
+/* Settings now have an explicit disclosure rather than opening an unrelated
+   sample document. Blank previews are a neutral state, not a fake score. */
+.settings-action{margin:14px 0 0;display:flex;flex-direction:column;gap:7px}
+.settings-action button{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:11px 13px;background:#273225;color:#f1f9e9;
+  border:1px solid #849e77;border-radius:4px;font-size:12px;font-weight:800;
+  transition:background-color .16s ease,border-color .16s ease
+}
+.settings-action button span{font-size:16px;font-weight:500;line-height:1}
+.settings-action button:hover:not(:disabled){background:#3b5231;border-color:var(--lime)}
+.settings-action button:disabled{color:#a6b5a2;background:#232a22;border-color:#53644e;cursor:not-allowed}
+.settings-action button:focus-visible{outline:2px solid var(--lime);outline-offset:3px}
+.settings-action .control-hint{margin:0;line-height:1.55;color:#b4c0af}
+.empty-score-state{
+  min-height:500px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;gap:16px;
+  border:1px dashed rgba(184,201,172,.34);border-radius:6px;
+  padding:45px 30px;color:#f0f5e8;background:rgba(35,45,34,.36)
+}
+.empty-state-eyebrow{font-size:10px;letter-spacing:.15em;font-weight:800;color:#b9d1a8}
+.empty-state-mark{font-size:76px;line-height:1.2;color:var(--lime)}
+.empty-score-state strong{font-size:21px;letter-spacing:-.04em;font-weight:800}
+.empty-score-state p{max-width:350px;color:#c4d0bf;line-height:1.65;font-size:12px;margin:0;word-break:keep-all}
+@media(max-width:670px){
+  .settings-action button{min-height:44px;font-size:13px}
+  .empty-score-state{min-height:230px;padding:22px 16px;gap:8px}
+  .empty-state-mark{font-size:46px}
+  .empty-score-state strong{font-size:16px}
+  .empty-score-state p{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){.settings-action button{transition:none!important}}
+@media print{.settings-action,.empty-score-state{display:none!important}}
