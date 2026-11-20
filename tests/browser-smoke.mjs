@@ -1529,6 +1529,31 @@ try {
   console.log('BROWSER_STAGE=V4_MANUAL_CHECKPOINT_RESTORE');
 
 
+
+  const autoLayoutScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1">'+Array.from({length:12},(_,i)=>
+      '<measure number="'+(i+1)+'">'+(i===0?
+      '<attributes><divisions>48</divisions><time><beats>4</beats>'+
+      '<beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>':'')+
+      Array.from({length:4},()=>'<note><pitch><step>C</step><octave>4</octave></pitch>'+
+        '<duration>48</duration><type>quarter</type><lyric number="1"><text>반짝이는</text></lyric></note>').join('')+
+      '</measure>').join('')+'</part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'auto-layout-12bars.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(autoLayoutScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.click('#v4-auto-layout');
+  await page.waitForFunction(()=>document.querySelector('#v4-auto-layout-status')?.textContent?.includes('자동 배치 적용'),
+    null,{timeout:30000});
+  const autoLayoutFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const autoLayoutXml=await fs.readFile(await (await autoLayoutFile).path(),'utf8');
+  assert.equal((autoLayoutXml.match(/<measure number="/g)||[]).length,12);
+  assert.ok(/new-system="yes"|new-page="yes"/.test(autoLayoutXml));
+  assert.equal((autoLayoutXml.match(/<text>반짝이는<\/text>/g)||[]).length,48);
+  console.log('BROWSER_STAGE=V4_DENSITY_AWARE_AUTOMATIC_MUSICXML_LAYOUT');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
