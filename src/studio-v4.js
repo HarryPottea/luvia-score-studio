@@ -15,7 +15,7 @@ import {planBatchLyrics,applyBatchLyrics} from './studio-v4-lyrics-batch.js';
 import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
-import {extendVoiceAcrossBarline,toggleSlurAcrossBarline} from './studio-v4-crossbar.js';
+import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
 import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
 import {changeSingleEmptyMeasureMeter} from './studio-v4-meter-single.js';
 import './studio-v4.css';
@@ -64,6 +64,8 @@ const panel=[
   '<div class="v4-crossbar"><p class="v4-subhead">마디 경계 · 이어지는 음표</p>',
   '<div class="v4-inline"><div><label for="v4-crossbar-type">다음 마디에서 이어질 음표 길이</label><select id="v4-crossbar-type"><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select></div>',
   '<button id="v4-crossbar-extend" type="button">마디 넘어 붙임줄로 연장</button></div>',
+  '<button id="v4-crossbar-move" type="button">선택 음표를 다음 마디 첫 박자로 이동</button>',
+  '<p class="v4-tiny">위의 연장과 달리 실제 음표를 다음 마디로 옮깁니다. 원래 위치는 같은 길이의 쉼표로 바꾸며, 다음 마디에 충분한 쉼표가 있는 경우만 이동합니다.</p>',
   '<p class="v4-tiny">현재 마디 끝 음표와 다음 마디 첫 쉼표를 연결합니다. 기존 음정·가사·성부는 보존하고, 다른 성부는 변경하지 않습니다.</p></div>',
   '<label for="v4-grid-step">시작 위치 이동 간격</label><select id="v4-grid-step"><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select>',
   '<div class="v4-inline"><button id="v4-nudge-earlier" type="button">← 선택 음표를 앞 쉼표로 이동</button><button id="v4-nudge-later" type="button">선택 음표를 뒤 쉼표로 이동 →</button></div>',
@@ -539,6 +541,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-crossbar-extend').addEventListener('click',()=>void commit(doc=>
     extendVoiceAcrossBarline(doc,{...selected(),continuationType:$('v4-crossbar-type').value}),
     '다음 마디로 음표 붙임줄 연장'));
+  $('v4-crossbar-move').addEventListener('click',()=>void commit(doc=>
+    moveVoiceIntoNextMeasure(doc,selected()),'선택 음표를 다음 마디로 이동'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
