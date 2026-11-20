@@ -861,7 +861,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }
   });
   void refreshDrafts();
-  return {beforeOpen,onRendered,onLoaded,onMeasurePointer:(index,extend=false)=>measureToolbar?.pick(index,extend),onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();syncMeasureDelete();inlineLyrics.onSelectionChange(selected());},
+  return {beforeOpen,onRendered,onLoaded,onMeasurePointer:(index,extend=false,context)=>context?measureToolbar?.openContext(index,context):measureToolbar?.pick(index,extend),onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();syncMeasureDelete();inlineLyrics.onSelectionChange(selected());},
     lyricMode:()=>inlineLyrics.isMode(),
     openLyricFromScore:(position,element)=>inlineLyrics.openFromScore(position,element),
     stop:()=>player.stop()};
