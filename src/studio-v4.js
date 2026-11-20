@@ -8,6 +8,9 @@ import {createPartSvgZip} from './studio-v4-part-svg.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
+import {authorTupletGroup} from './studio-v4-tuplet-groups.js';
+import {rebarWrittenScore} from './studio-v4-rebar-written.js';
+import {transposeChordChromatically} from './studio-v4-chord-transpose.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
@@ -83,6 +86,17 @@ const panel=[
   '<p class="v4-tiny">편집 화면에서 영문 N: 선택 쉼표에 음표 입력 · R: 음표를 쉼표로 변경 · [ / ]: 앞/뒤 쉼표로 한 격자 이동. 텍스트 입력 중에는 작동하지 않습니다.</p>',
   '<button id="v4-pro-triplet" type="button">4·8·16분음표 두 개 → 셋잇단음 세 개</button>',
   '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
+  '<div class="v4-common-tuplets"><p class="v4-subhead">잇단음 그룹 · 3:2 / 5:4 / 6:4 / 7:4</p>',
+  '<div class="v4-inline"><div><label for="v4-tuplet-ratio">잇단음 비율</label><select id="v4-tuplet-ratio"><option value="3:2">3:2 · 셋잇단음</option><option value="5:4" selected>5:4 · 다섯잇단음</option><option value="6:4">6:4 · 여섯잇단음</option><option value="7:4">7:4 · 일곱잇단음</option></select></div>',
+  '<div><label for="v4-tuplet-unit">기본 음표 길이</label><select id="v4-tuplet-unit"><option value="quarter">4분음표</option><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select></div></div>',
+  '<button id="v4-tuplet-author" type="button">선택 위치부터 잇단음 그룹 만들기</button>',
+  '<p class="v4-tiny">3:2는 원래 음표 2개, 5:4·6:4·7:4는 4개가 필요합니다. 동일 성부의 동일 길이 일반 음표가 연속되어야 하며, 생성되는 추가 음은 위 음이름·변화표·옥타브를 사용합니다.</p>',
+  '<p class="v4-tiny">분할값이 부족하면 해당 파트의 MusicXML divisions를 정확히 확장합니다. 복잡한 빔·붙임줄·화음·보호된 표시가 있으면 변경하지 않습니다.</p></div>',
+  '<div class="v4-chord-transpose"><p class="v4-subhead">화음 전체 반음 이동</p>',
+  '<div class="v4-inline"><div><label for="v4-chord-semitones">반음 이동 (음수는 아래로)</label><input id="v4-chord-semitones" type="number" min="-12" max="12" step="1" value="2" /></div>',
+  '<div><label for="v4-chord-spelling">변화표 선택</label><select id="v4-chord-spelling"><option value="sharp" selected>샤프 기준</option><option value="flat">플랫 기준</option></select></div></div>',
+  '<button id="v4-chord-transpose" type="button">선택 화음 전체 이동</button>',
+  '<p class="v4-tiny">화음의 아무 음이나 선택한 후 사용하세요. 모든 구성 음을 같은 반음 수만큼 이동하며, 성부와 음표 길이는 변경하지 않습니다. 기존 붙임줄·특수 기보는 보호합니다.</p></div>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
   '<input id="v4-pro-end" type="number" min="2" max="9999" step="1" value="2" />',
   '<label for="v4-slur-next-measure">이음줄 끝 마디</label><select id="v4-slur-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option><option value="2">2마디 뒤</option><option value="3">3마디 뒤</option><option value="4">4마디 뒤</option><option value="8">8마디 뒤</option></select>',
@@ -124,6 +138,11 @@ const panel=[
   '<div class="v4-inline"><button id="v4-meter-empty" type="button">선택 마디 이후 빈 구간 박자 변경</button>',
   '<button id="v4-meter-single" type="button">선택한 빈 마디만 박자 변경</button></div>',
   '<p class="v4-tiny">선택한 빈 마디만 변경하면 다음 마디에는 기존 박자표를 자동 복구합니다. 다른 음표가 작성된 마디를 자동으로 재분할하지는 않습니다.</p>',
+  '<div class="v4-written-rebar"><p class="v4-subhead">작성된 악보 전체 리바링 · 최대 4개 성부</p>',
+  '<div class="v4-inline"><div><label for="v4-rebar-meter">새 박자표</label><select id="v4-rebar-meter"><option value="2/4">2/4</option><option value="3/4" selected>3/4</option><option value="4/4">4/4</option><option value="3/8">3/8</option><option value="6/8">6/8</option></select></div>',
+  '<button id="v4-rebar-written" type="button">작성된 음표를 새 박자로 재분할</button></div>',
+  '<p class="v4-tiny">모든 파트가 최대 4개의 독립 성부·보표로 구분되고 각 성부의 마디 시간이 정확할 때 전체 악보를 재분할합니다. 기존 음표 길이와 순서를 보존하며, 마디를 넘는 긴 음표는 붙임줄로 연결합니다. 마지막 마디의 부족한 박자는 쉼표로 채웁니다.</p>',
+  '<p class="v4-tiny">기존 화음·잇단음·중간 조표·악상 및 특수 표기는 변경하지 않고 차단합니다. 실행 전 원본 MusicXML을 별도로 저장하세요.</p></div>',
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
@@ -135,7 +154,7 @@ const panel=[
   '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">모든 파트의 마디 수가 같아야 합니다. 기존 수동 나눔은 기본적으로 보호됩니다.</p>',
   '<p class="v4-tiny">이 기능은 MusicXML 줄·페이지 나눔을 한꺼번에 작성합니다. 음표·가사 충돌을 자동 해소하는 조판 엔진은 아닙니다.</p></div>',
   '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
-  '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
+  '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 미리보기의 조판 간격 선택도 파트보에 적용됩니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
   '<button id="v4-part-svg-zip" type="button">모든 파트 SVG ZIP 저장 (벡터)</button>',
   '<p class="v4-tiny">각 악기 파트의 모든 SVG 페이지를 각각 이름 붙여 압축합니다. 이미지로 변환하지 않지만 PDF 파일은 아닙니다.</p>',
   '<button id="v4-vector-zip" type="button">현재 미리보기 SVG ZIP 저장</button>',
@@ -543,6 +562,15 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     '다음 마디로 음표 붙임줄 연장'));
   $('v4-crossbar-move').addEventListener('click',()=>void commit(doc=>
     moveVoiceIntoNextMeasure(doc,selected()),'선택 음표를 다음 마디로 이동'));
+  $('v4-chord-transpose').addEventListener('click',()=>void commit(doc=>
+    transposeChordChromatically(doc,{...selected(),
+      semitones:Number($('v4-chord-semitones').value),spelling:$('v4-chord-spelling').value,
+    }),'화음 전체 반음 이동'));
+  $('v4-tuplet-author').addEventListener('click',()=>void commit(doc=>authorTupletGroup(doc,{
+    ...selected(),ratio:$('v4-tuplet-ratio').value,type:$('v4-tuplet-unit').value,
+    step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
+    octave:Number($('v4-pro-octave').value),
+  }),'잇단음 그룹 생성'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
@@ -640,6 +668,12 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     const [beats,beatType]=$('v4-meter').value.split('/').map(Number);
     return changeSingleEmptyMeasureMeter(doc,{measureIndex:selected().measureIndex,beats,beatType});
   },'선택 빈 마디 박자표 변경'));
+  $('v4-rebar-written').addEventListener('click',()=>{
+    if(!state.doc)return;
+    const requested=$('v4-rebar-meter').value;
+    if(!window.confirm('전체 작성 악보의 마디 구성을 변경합니다. 원본 MusicXML을 저장하셨습니까?'))return;
+    void commit(doc=>rebarWrittenScore(doc,{meter:requested}),'작성된 악보 전체 리바링');
+  });
 
   $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>setScoreLayoutBreak(doc,{
     measureIndex:selected().measureIndex,kind:$('v4-layout').value,
@@ -689,6 +723,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       const parts=partNodes.map(p=>({id:p.getAttribute('id'),name:names.get(p.getAttribute('id'))||p.getAttribute('id')}));
       const pageFormat=$('page-orientation').value;
       const pages=await renderPartSvgPages({doc:state.doc,parts,pageFormat,
+        layout:$('v2-layout')?.value||'auto',
         measureNumbers:$('measure-numbers').checked,
         onProgress:detail=>setMessage('벡터 파트보 생성: '+detail)});
       if(win.closed){setMessage('인쇄용 창이 닫혀 출력이 취소됐습니다.',true);return;}
@@ -711,7 +746,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       const parts=[...state.doc.documentElement.children].filter(n=>n.localName==='part')
         .map(p=>({id:p.getAttribute('id'),name:names.get(p.getAttribute('id'))||p.getAttribute('id')}));
       const pages=await renderPartSvgPages({doc:state.doc,parts,
-        pageFormat:$('page-orientation').value,measureNumbers:$('measure-numbers').checked,
+        pageFormat:$('page-orientation').value,layout:$('v2-layout')?.value||'auto',
+        measureNumbers:$('measure-numbers').checked,
         onProgress:detail=>setMessage('파트별 벡터 파일 준비: '+detail)});
       const result=await createPartSvgZip({pages,filename:state.filename});
       const url=URL.createObjectURL(result.blob),anchor=document.createElement('a');

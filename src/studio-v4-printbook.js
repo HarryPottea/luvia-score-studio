@@ -95,6 +95,8 @@ export function populateVectorPrintWindow(win,{pages,title='J-WOO Score Studio',
     'body{margin:0}.controls{position:sticky;top:0;background:#1a241a;color:white;padding:13px 18px;'+
     'display:flex;gap:12px;align-items:center;justify-content:space-between;z-index:30}'+
     '.controls button{border:0;background:#d8fa8a;color:#131b10;padding:10px 15px;font-weight:700;cursor:pointer}'+
+    '.controls select{background:#fff;color:#182015;border:1px solid #a0a69e;'+
+    'border-radius:2px;padding:9px 12px;max-width:260px;font:inherit}'+
     '.sheet{width:'+w+';height:'+h+';margin:16px auto;overflow:hidden;background:white;'+
     'box-shadow:0 2px 16px #0002;break-after:page;page-break-after:always}'+
     '.sheet svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%}'+
@@ -113,9 +115,19 @@ export function populateVectorPrintWindow(win,{pages,title='J-WOO Score Studio',
   hint.textContent=pages.length+'페이지 · '+w+' × '+h+
     ' · 인쇄 메뉴에서 PDF로 저장하세요. 글꼴과 페이지 넘김은 반드시 검수하세요.';
   titleEl.append(bold,hint);
+  const selector=d.createElement('select');selector.id='jwoo-print-part-select';
+  selector.setAttribute('aria-label','PDF로 저장할 파트 선택');
+  const appendChoice=(value,title)=>{
+    const option=d.createElement('option');option.value=value;option.textContent=title;
+    selector.append(option);
+  };
+  appendChoice('all','모든 악기 파트');
+  const partNames=new Map();
+  for(const p of pages)if(!partNames.has(p.partId))partNames.set(p.partId,p.partName);
+  for(const [id,name] of partNames)appendChoice(id,'파트 · '+name);
   const button=d.createElement('button');button.type='button';button.textContent='인쇄 / PDF 저장';
   button.addEventListener('click',()=>win.print());
-  bar.append(titleEl,button);d.body.append(bar);
+  bar.append(titleEl,selector,button);d.body.append(bar);
   for(const page of pages){
     inspectPrintableSvg(page.svg);
     const section=d.createElement('section');section.className='sheet';
@@ -126,6 +138,20 @@ export function populateVectorPrintWindow(win,{pages,title='J-WOO Score Studio',
     svg.removeAttribute('height');
     section.append(svg);d.body.append(section);
   }
-  return {pages:pages.length,format:pageFormat,mode:'NATIVE_VECTOR_PRINT',
-    pdfVerified:false,visualQualityVerified:false};
+  selector.addEventListener('change',()=>{
+    const chosen=selector.value;
+    let visible=0;
+    for(const sheet of d.querySelectorAll('.sheet')){
+      const show=chosen==='all'||sheet.dataset.partId===chosen;
+      // Inline display is honored by the browser's print compositor as well.
+      sheet.style.display=show?'':'none';
+      if(show)visible++;
+    }
+    hint.textContent=visible+'페이지 · '+w+' × '+h+
+      ' · '+(chosen==='all'?'모든 악기 파트':partNames.get(chosen))+
+      ' · 인쇄 메뉴에서 벡터 PDF로 저장하세요.';
+  });
+  return {pages:pages.length,parts:partNames.size,format:pageFormat,
+    mode:'NATIVE_VECTOR_PRINT',selectableParts:true,pdfVerified:false,
+    visualQualityVerified:false};
 }

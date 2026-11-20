@@ -764,8 +764,19 @@ try {
   const bookPdf=await bothPartsTab.pdf({printBackground:true,preferCSSPageSize:true});
   assert.equal(bookPdf.subarray(0,5).toString(),'%PDF-');
   assert.ok(bookPdf.length>1800);
+  assert.equal(await bothPartsTab.locator('#jwoo-print-part-select').count(),1);
+  await bothPartsTab.selectOption('#jwoo-print-part-select','P2');
+  const visiblePartIds=await bothPartsTab.locator('.sheet:visible').evaluateAll(
+    list=>[...new Set(list.map(x=>x.dataset.partId))]);
+  assert.deepEqual(visiblePartIds,['P2'],'Individual part print must not include other instruments');
+  const individualPdf=await bothPartsTab.pdf({printBackground:true,preferCSSPageSize:true});
+  assert.equal(individualPdf.subarray(0,5).toString(),'%PDF-');
+  assert.ok(individualPdf.length>1000,'Native print keeps an instrument-specific vector PDF');
+  await bothPartsTab.selectOption('#jwoo-print-part-select','all');
+  assert.deepEqual(await bothPartsTab.locator('.sheet:visible').evaluateAll(
+    list=>[...new Set(list.map(x=>x.dataset.partId))]),['P1','P2']);
   await bothPartsTab.close();
-  console.log('BROWSER_STAGE=V4_TWO_PART_VECTOR_PRINT_BOOK');
+  console.log('BROWSER_STAGE=V4_PART_SPECIFIC_NATIVE_VECTOR_PDF_PRINT');
   const partSvgZipDownload=page.waitForEvent('download',{timeout:45000});
   await page.click('#v4-part-svg-zip');
   const partSvgZip=await partSvgZipDownload;
@@ -1250,6 +1261,120 @@ try {
   await page.screenshot({path:output+'/ui-refinement-mobile.png'});
   await page.setViewportSize({width:1440,height:1000});
   console.log('BROWSER_STAGE=POLISHED_MOBILE_NAVIGATION_AND_ENGLISH_CREDIT');
+
+
+  // Functional 4.0 completion slice: the real browser must retain note timing
+  // when re-barring written music, and produce exact non-3:2 MusicXML tuplets.
+  await page.getByRole('button',{name:'모두 펼치기'}).click();
+  const writtenScore='<?xml version="1.0" encoding="UTF-8"?>'+
+    '<score-partwise version="4.0"><work><work-title>Written rebar</work-title></work>'+
+    '<movement-title>Written rebar</movement-title>'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>96</duration><type>half</type></note>'+
+    '<note><pitch><step>E</step><octave>4</octave></pitch><duration>96</duration><type>half</type></note>'+
+    '</measure><measure number="2">'+
+    '<note><pitch><step>G</step><octave>4</octave></pitch><duration>96</duration><type>half</type></note>'+
+    '<note><pitch><step>B</step><octave>4</octave></pitch><duration>96</duration><type>half</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'written-rebar.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(writtenScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.selectOption('#v4-rebar-meter','3/4');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-rebar-written');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('작성된 악보 전체 리바링 완료'),null,{timeout:30000});
+  const rebarFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const rebarText=await fs.readFile(await (await rebarFile).path(),'utf8');
+  assert.equal((rebarText.match(/<measure number="/g)||[]).length,3);
+  assert.equal((rebarText.match(/<tie type="start"\s*\/>/g)||[]).length,1);
+  assert.equal((rebarText.match(/<tie type="stop"\s*\/>/g)||[]).length,1);
+  assert.match(rebarText,/<beats>3<\/beats><beat-type>4<\/beat-type>/);
+  assert.match(await page.locator('#score-info').textContent(),/3개 마디/);
+  console.log('BROWSER_STAGE=V4_WRITTEN_NOTES_REBARRED_INTO_3_4');
+
+  const fiveToFour='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    ['C','D','E','F'].map(step=>'<note><pitch><step>'+step+'</step><octave>4</octave>'+
+    '</pitch><duration>12</duration><type>16th</type></note>').join('')+
+    '<note><rest/><duration>96</duration><type>half</type></note>'+
+    '<note><rest/><duration>48</duration><type>quarter</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'five-in-four.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(fiveToFour)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-tuplet-ratio','5:4');
+  await page.selectOption('#v4-tuplet-unit','16th');
+  await page.selectOption('#v4-pro-step','G');
+  await page.selectOption('#v4-pro-octave','4');
+  await page.click('#v4-tuplet-author');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('잇단음 그룹 생성 완료'),null,{timeout:30000});
+  const groupFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const grouped=await fs.readFile(await (await groupFile).path(),'utf8');
+  assert.match(grouped,/<divisions>240<\/divisions>/);
+  assert.equal((grouped.match(/<actual-notes>5<\/actual-notes>/g)||[]).length,5);
+  assert.equal((grouped.match(/<normal-notes>4<\/normal-notes>/g)||[]).length,5);
+  assert.match(grouped,/<tuplet[^>]*type="start"/);
+  assert.match(grouped,/<tuplet[^>]*type="stop"/);
+  assert.match(grouped,/<step>G<\/step><octave>4<\/octave>/);
+  console.log('BROWSER_STAGE=V4_EXACT_PENTUPLET_WITH_SCALED_DIVISIONS_AND_XML');
+  await page.click('#v4-audit-run');
+  await page.waitForFunction(()=>document.querySelector('#v4-audit-result')?.textContent?.includes('기본 음악 구조 검사 통과'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-audit-result').textContent(),/오류 0건/);
+  console.log('BROWSER_STAGE=V4_NEW_TUPLET_MUSIC_XML_STRUCTURAL_AUDIT_CLEAN');
+  const fullChord='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>48</duration><type>quarter</type></note>'+
+    '<note><chord/><pitch><step>E</step><octave>4</octave></pitch><duration>48</duration><type>quarter</type></note>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'transpose-full-chord.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(fullChord)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.fill('#v4-chord-semitones','2');
+  await page.selectOption('#v4-chord-spelling','sharp');
+  await page.click('#v4-chord-transpose');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('화음 전체 반음 이동 완료'),null,{timeout:30000});
+  const transposeDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const shifted=await fs.readFile(await (await transposeDownload).path(),'utf8');
+  assert.match(shifted,/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(shifted,/<step>F<\/step><alter>1<\/alter><octave>4<\/octave>/);
+  assert.match(shifted,/<accidental>sharp<\/accidental>/);
+  assert.match(shifted,/<rest\s*\/><duration>144<\/duration>/);
+  console.log('BROWSER_STAGE=V4_WHOLE_CHORD_SEMITONE_SHIFT_AND_MUSICXML');
+
+
+
+  // Two-staff polyphonic rebarring preserves every lane's measure clock.
+  await page.locator('#file-input').setInputFiles({name:'piano-voice-rebar.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(crossbarScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.selectOption('#v4-rebar-meter','3/4');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-rebar-written');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('작성된 악보 전체 리바링 완료'),null,{timeout:30000});
+  const polyRebarDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const polyRebarText=await fs.readFile(await (await polyRebarDownload).path(),'utf8');
+  assert.equal((polyRebarText.match(/<measure number="/g)||[]).length,3);
+  assert.equal((polyRebarText.match(/<backup><duration>144<\/duration><\/backup>/g)||[]).length,3);
+  assert.ok((polyRebarText.match(/<tie type="start"\s*\/>/g)||[]).length>=1);
+  assert.match(polyRebarText,/<staff>2<\/staff>/);
+  assert.match(polyRebarText,/<beats>3<\/beats><beat-type>4<\/beat-type>/);
+  assert.doesNotMatch(polyRebarText,/<backup><duration>192<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_MULTIVOICE_GRANDSTAFF_WRITTEN_REBAR');
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,

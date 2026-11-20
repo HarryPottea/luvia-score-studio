@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
+import {authorTupletGroup} from '../src/studio-v4-tuplet-groups.js';
+import {rebarWrittenScore} from '../src/studio-v4-rebar-written.js';
+import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
+import {transposeChordChromatically} from '../src/studio-v4-chord-transpose.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
 import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
@@ -629,4 +633,254 @@ test('crossbar: multi-measure slur connects endpoints while preserving the inter
   const restored=toggleSlurAcrossBarline(connected,options).doc;
   assert.equal(serialize(restored),untouched);
   assert.throws(()=>toggleSlurAcrossBarline(original,{...options,endMeasureOffset:9}),/거리/);
+});
+
+function groupedTupletFixture(type='16th'){
+  const source=fixture(),m=measure(source);
+  const old=children(m,'note'),duration=type==='16th'?12:type==='eighth'?24:48;
+  for(let i=0;i<4;i++){
+    const next=voiceNote(['C','E','G','B'][i],4,duration,type,'1','1');
+    m.replaceChild(next,old[i]);
+  }
+  const beforeBackup=first(m,'backup'),unused=192-4*duration;
+  if(unused>=96){m.insertBefore(voiceRest(96,'half','1','1'),beforeBackup);}
+  const remaining=unused-(unused>=96?96:0);
+  if(remaining>=48)m.insertBefore(voiceRest(48,'quarter','1','1'),beforeBackup);
+  if(remaining%48)throw Error('Unsupported test duration');
+  assert.equal(inspectAdvancedMeasure(source,'P1',0).reason,null);
+  return source;
+}
+for(const [ratio,type,expectedFactor,actual,normal] of [
+  ['3:2','16th',1,3,2],
+  ['5:4','16th',5,5,4],
+  ['6:4','16th',1,6,4],
+  ['7:4','16th',7,7,4],
+  ['5:4','eighth',5,5,4],
+]){
+  test('tuplets: '+ratio+' '+type+' uses exact ticks and preserves unrelated voices',()=>{
+    const source=groupedTupletFixture(type),saved=serialize(source);
+    const original=inspectAdvancedMeasure(source,'P1',0);
+    const result=authorTupletGroup(source,{...params(),ratio,type,step:'D',octave:5});
+    const after=inspectAdvancedMeasure(result.doc,'P1',0);
+    assert.equal(serialize(source),saved);
+    assert.equal(result.change.divisionsScale,expectedFactor);
+    assert.equal(after.divisions,original.divisions*expectedFactor);
+    assert.equal(after.reason,null);
+    const groups=after.events.slice(0,actual),slot=original.divisions*expectedFactor/({quarter:1,eighth:2,'16th':4,'32nd':8}[type])*normal/actual;
+    assert.equal(groups.length,actual);
+    assert.ok(groups.every(e=>e.tuplet&&e.duration===slot&&!e.rest));
+    assert.deepEqual(groups.slice(0,normal).map(e=>e.step),['C','E','G','B'].slice(0,normal));
+    assert.ok(groups.slice(normal).every(e=>e.step==='D'&&e.octave===5));
+    const remaining=after.events.filter(e=>e.voice==='2');
+    const originalOther=original.events.filter(e=>e.voice==='2');
+    assert.deepEqual(remaining.map(e=>[e.start,e.duration,e.rest,e.step]),
+      originalOther.map(e=>[e.start*expectedFactor,e.duration*expectedFactor,e.rest,e.step]));
+    assert.equal(first(first(notes(result.doc)[0],'notations'),'tuplet').getAttribute('type'),'start');
+    assert.equal(first(first(notes(result.doc)[actual-1],'notations'),'tuplet').getAttribute('type'),'stop');
+    assert.equal(first(first(notes(result.doc)[actual-1],'time-modification'),'actual-notes').textContent,String(actual));
+  });
+}
+test('tuplets: protect pre-existing lyrics, unsupported settings and MusicXML source',()=>{
+  const source=groupedTupletFixture(),saved=serialize(source);
+  assert.throws(()=>authorTupletGroup(source,{...params(),ratio:'9:8',type:'16th'}),/비율|길이/);
+  assert.throws(()=>authorTupletGroup(source,{...params(3),ratio:'5:4',type:'16th'}),/부족|연속|일반 음표/);
+  assert.equal(serialize(source),saved);
+  const decorated=groupedTupletFixture(),node=notes(decorated)[1];
+  node.appendChild(E('tie',[],{type:'start'}));
+  assert.throws(()=>authorTupletGroup(decorated,{...params(),ratio:'5:4',type:'16th'}),/기존 붙임줄|일반 음표/);
+  const lyric=groupedTupletFixture();
+  notes(lyric)[1].appendChild(E('lyric',[T('text','가')]));
+  const next=authorTupletGroup(lyric,{...params(),ratio:'5:4',type:'16th'}).doc;
+  assert.equal(first(first(notes(next)[1],'lyric'),'text').textContent,'가');
+  assert.equal(first(notes(next)[4],'lyric'),undefined);
+});
+
+function writtenScoreFixture(){
+  const attrs=E('attributes',[T('divisions',48),
+    E('time',[T('beats',4),T('beat-type',4)]),
+    E('clef',[T('sign','G'),T('line',2)])]);
+  return new Doc(E('score-partwise',[E('part',[
+    E('measure',[attrs,voiceNote('C',4,96,'half','1','1'),
+      voiceNote('E',4,96,'half','1','1')],{number:'1'}),
+    E('measure',[voiceNote('G',4,96,'half','1','1'),
+      voiceNote('B',4,96,'half','1','1')],{number:'2'}),
+  ],{id:'P1'})]));
+}
+test('rebarring: 4/4 written melody becomes three 3/4 measures with tied split and final rest',()=>{
+  const source=writtenScoreFixture(),before=serialize(source);
+  const result=rebarWrittenScore(source,{meter:'3/4'}),bars=children(part(result.doc),'measure');
+  assert.equal(serialize(source),before);
+  assert.equal(result.change.originalMeasures,2);
+  assert.equal(result.change.newMeasures,3);
+  assert.equal(result.change.paddedTicks,48);
+  assert.deepEqual(bars.map(m=>children(m,'note').map(n=>[
+    first(first(n,'pitch')||E('rest'),'step')?.textContent||'rest',
+    first(n,'duration').textContent
+  ])),[
+    [['C','96'],['E','48']],
+    [['E','48'],['G','96']],
+    [['B','96'],['rest','48']]
+  ]);
+  assert.equal(first(first(bars[0],'attributes'),'time').children[0].textContent,'3');
+  assert.equal(first(first(children(bars[0],'note')[1],'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(first(first(children(bars[1],'note')[0],'notations'),'tied').getAttribute('type'),'stop');
+  assert.equal(first(children(bars[1],'note')[0],'tie').getAttribute('type'),'stop');
+  assert.equal(first(children(bars[0],'note')[1],'tie').getAttribute('type'),'start');
+});
+test('rebarring: preserve lyric on original attack, restore music timing across two parts',()=>{
+  const source=writtenScoreFixture();
+  const lyric=E('lyric',[T('text','기억')]);
+  children(measure(source),'note')[1].appendChild(lyric);
+  const p2=part(source).cloneNode(true);p2.setAttribute('id','P2');
+  source.documentElement.appendChild(p2);
+  const before=serialize(source);
+  const result=rebarWrittenScore(source,{meter:'3/8'}),parts=children(result.doc.documentElement,'part');
+  assert.equal(serialize(source),before);
+  assert.equal(result.change.parts,2);
+  assert.equal(result.change.newMeasures,6);
+  for(const p of parts){
+    const bars=children(p,'measure');
+    assert.equal(bars.length,6);
+    for(const m of bars)assert.equal(children(m,'note')
+      .reduce((n,x)=>n+Number(first(x,'duration').textContent),0),72);
+    const marked=bars.flatMap(m=>children(m,'note')).filter(n=>
+      first(first(n,'lyric')||E('empty'),'text')?.textContent==='기억');
+    assert.equal(marked.length,1,'Lyric should stay on the first tied segment');
+  }
+});
+test('rebarring: reject inconsistent polyphony, meter anomalies, decorated music and unchanged source',()=>{
+  const original=writtenScoreFixture(),before=serialize(original);
+  assert.throws(()=>rebarWrittenScore(original,{meter:'9/8'}),/지원/);
+  assert.throws(()=>rebarWrittenScore(original,{meter:'4/4'}),/같은 박자/);
+  const invalidVoices=fixture();
+  first(children(measure(invalidVoices),'backup')[0],'duration').textContent='48';
+  assert.throws(()=>rebarWrittenScore(invalidVoices,{meter:'3/4'}),/backup|성부 시간/);
+  const annotated=writtenScoreFixture();
+  const lastMeasure=children(part(annotated),'measure')[1];
+  lastMeasure.insertBefore(E('direction',[E('direction-type',[T('words','rit.')])]),lastMeasure.children[0]);
+  assert.throws(()=>rebarWrittenScore(annotated,{meter:'3/4'}),/복합 마디|보호/);
+  const altered=writtenScoreFixture();
+  first(children(measure(altered),'note')[1],'pitch').appendChild(T('alter',1));
+  assert.throws(()=>rebarWrittenScore(altered,{meter:'3/4'}),/변화표/);
+  assert.equal(serialize(original),before);
+});
+
+function transposableChordFixture(){
+  const doc=fixture(),m=measure(doc),base=notes(doc)[0];
+  const chord=E('note',[E('chord'),E('pitch',[T('step','E'),T('octave',4)]),
+    T('duration',24),T('voice','1'),T('type','eighth'),T('staff','1')]);
+  m.insertBefore(chord,base.nextSibling);
+  assert.equal(values(doc).reason,null);
+  return doc;
+}
+test('chord: semitone transpose moves an entire polyphonic chord without other voice changes',()=>{
+  const original=transposableChordFixture(),saved=serialize(original),v2=secondVoice(original);
+  const changed=transposeChordChromatically(original,{...params(1),semitones:2,spelling:'sharp'});
+  assert.equal(serialize(original),saved);
+  assert.deepEqual(secondVoice(changed.doc),v2);
+  assert.deepEqual(values(changed.doc).events.slice(0,2).map(e=>[
+    e.start,e.duration,e.step,e.alter,e.octave,e.chord]),[
+    [0,24,'D',0,4,false],[0,24,'F',1,4,true]
+  ]);
+  assert.equal(first(notes(changed.doc)[1],'accidental').textContent,'sharp');
+  assert.equal(changed.change.firstEventIndex,0);
+});
+test('chord: flat spelling and explicit protections never retime written music',()=>{
+  const original=transposableChordFixture();
+  const changed=transposeChordChromatically(original,{...params(),semitones:-1,spelling:'flat'});
+  assert.deepEqual(values(changed.doc).events.slice(0,2).map(e=>[e.step,e.alter,e.octave]),[
+    ['B',0,3],['E',-1,4]
+  ]);
+  const plain=fixture();
+  assert.throws(()=>transposeChordChromatically(plain,{...params(),semitones:1}),/화음/);
+  const tied=transposableChordFixture();
+  notes(tied)[0].appendChild(E('tie',[],{type:'start'}));
+  const before=serialize(tied);
+  assert.throws(()=>transposeChordChromatically(tied,{...params(),semitones:1}),/붙임줄|장식/);
+  assert.equal(serialize(tied),before);
+});
+
+test('tuplets: reused closed group numbers permit many common tuplet groups per part',()=>{
+  const source=groupedTupletFixture(),m=measure(source);
+  for(let index=1;index<8;index++){
+    const copy=m.cloneNode(true);copy.setAttribute('number',String(index+1));
+    part(source).appendChild(copy);
+  }
+  const before=serialize(source);
+  let output=source;
+  for(let index=0;index<8;index++){
+    output=authorTupletGroup(output,{partId:'P1',measureIndex:index,eventIndex:0,
+      ratio:'5:4',type:'16th',step:'G',octave:4}).doc;
+  }
+  assert.equal(serialize(source),before);
+  assert.equal(children(part(output),'measure').length,8);
+  for(let index=0;index<8;index++){
+    const notes=children(children(part(output),'measure')[index],'note');
+    assert.equal(first(first(notes[0],'notations'),'tuplet').getAttribute('number'),'1');
+    assert.equal(first(first(notes[4],'notations'),'tuplet').getAttribute('number'),'1');
+    const info=inspectAdvancedMeasure(output,'P1',index);
+    assert.equal(info.reason,null);
+    assert.equal(info.events.filter(e=>e.tuplet).length,5);
+  }
+});
+
+test('rebarring: piano grand-staff independent voices remain exactly synchronized after rebar',()=>{
+  const source=fixture(),m=measure(source);
+  const second=m.cloneNode(true);second.setAttribute('number','2');
+  second.removeChild(first(second,'attributes'));
+  part(source).appendChild(second);
+  const original=serialize(source),beforeTimeline=buildPlaybackTimeline(source);
+  const edited=rebarWrittenScore(source,{meter:'3/4'});
+  const result=edited.doc,bars=children(part(result),'measure');
+  assert.equal(serialize(source),original);
+  assert.equal(edited.change.originalMeasures,2);
+  assert.equal(edited.change.newMeasures,3);
+  assert.equal(edited.change.maxVoices,2);
+  assert.equal(bars.length,3);
+  for(const b of bars){
+    const backups=children(b,'backup');
+    assert.equal(backups.length,1,'Each rebarred grand-staff measure must retain a voice backup');
+    assert.equal(first(backups[0],'duration').textContent,'144');
+    const groups=[[]],allChildren=b.children;
+    for(const n of allChildren){
+      if(n.localName==='backup')groups.push([]);
+      if(n.localName==='note')groups.at(-1).push(n);
+    }
+    assert.equal(groups.length,2);
+    for(const group of groups)
+      assert.equal(group.reduce((sum,n)=>sum+Number(first(n,'duration').textContent),0),144);
+    assert.ok(groups[0].every(n=>first(n,'voice').textContent==='1'&&first(n,'staff').textContent==='1'));
+    assert.ok(groups[1].every(n=>first(n,'voice').textContent==='2'&&first(n,'staff').textContent==='2'));
+  }
+  const afterTimeline=buildPlaybackTimeline(result);
+  const digest=x=>x.events.map(e=>[e.part,e.midi,e.start,e.duration])
+    .sort((a,b)=>a[2]-b[2]||a[1]-b[1]);
+  assert.deepEqual(digest(afterTimeline),digest(beforeTimeline),
+    'All played notes retain exact pitch, onset and sounding duration');
+});
+test('rebarring: piano two independent staves reject incomplete voice clocks',()=>{
+  const invalid=fixture();
+  const firstBackup=children(measure(invalid),'backup')[0];
+  first(firstBackup,'duration').textContent='191';
+  const original=serialize(invalid);
+  assert.throws(()=>rebarWrittenScore(invalid,{meter:'3/4'}),/backup|성부 시간/);
+  assert.equal(serialize(invalid),original);
+  const mismatch=fixture();
+  first(children(measure(mismatch),'note')[6],'staff').textContent='1';
+  assert.throws(()=>rebarWrittenScore(mismatch,{meter:'3/4'}),/성부|보표|복잡/);
+});
+
+test('tuplets: preserve MusicXML type–accidental–time-modification–staff ordering',()=>{
+  const source=groupedTupletFixture(),firstNote=notes(source)[0],pitch=first(firstNote,'pitch');
+  pitch.insertBefore(T('alter',1),first(pitch,'octave'));
+  firstNote.insertBefore(T('accidental','sharp'),first(firstNote,'staff'));
+  const before=serialize(source);
+  const result=authorTupletGroup(source,{...params(),ratio:'5:4',type:'16th',step:'G',octave:4});
+  assert.equal(serialize(source),before);
+  const revised=notes(result.doc)[0],tags=revised.children.map(x=>x.localName);
+  assert.ok(tags.indexOf('type')<tags.indexOf('accidental'));
+  assert.ok(tags.indexOf('accidental')<tags.indexOf('time-modification'));
+  assert.ok(tags.indexOf('time-modification')<tags.indexOf('staff'));
+  assert.equal(first(first(revised,'pitch'),'alter').textContent,'1');
+  assert.equal(first(revised,'accidental').textContent,'sharp');
 });
