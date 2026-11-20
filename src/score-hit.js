@@ -161,12 +161,16 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     ring.classList.add('jwoo-selection-ring');
     el.insertBefore(ring,el.firstChild);
   }
-  let activeRange=null;
+  let activeRange=null,playbackMeasure=null;
+  function highlightPlayback(){
+    for(const item of targets)item.element.classList.toggle('jwoo-playback-active',
+      playbackMeasure!==null&&item.measureIndex===playbackMeasure);
+  }
   function highlightRange(){
     for(const item of targets)item.element.classList.toggle('jwoo-measure-selected',
       !!activeRange&&item.measureIndex>=activeRange.start&&item.measureIndex<=activeRange.end);
   }
-  function highlight(){for(const item of targets)markSelected(item,!!same(selected,item));highlightRange();}
+  function highlight(){for(const item of targets)markSelected(item,!!same(selected,item));highlightRange();highlightPlayback();}
   function up(event) {
     if(disposed||!drag||drag.pointerId!==event.pointerId)return;
     const {item,unit,y}=drag;
@@ -278,6 +282,10 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       activeRange=Number.isSafeInteger(start)&&Number.isSafeInteger(end)?{start,end}:null;
       highlightRange();
     },
+    highlightPlaybackMeasure(measureIndex){
+      playbackMeasure=Number.isSafeInteger(measureIndex)&&measureIndex>=0?measureIndex:null;
+      highlightPlayback();
+    },
     rectFor(next){
       const item=targets.find(item=>same(item,next));
       return item?.element?.getBoundingClientRect?.()||null;
@@ -285,7 +293,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     dispose(){
       if(disposed)return;disposed=true;
       observer?.disconnect();clearHandlers();
-      for(const item of targets)markSelected(item,false);
+      for(const item of targets){markSelected(item,false);item.element.classList.remove('jwoo-playback-active');}
       host?.removeEventListener('contextmenu',rootContext,true);
       host?.removeEventListener('pointerdown',rootDown,true);
       host?.removeEventListener('dblclick',rootDouble,true);
