@@ -46,7 +46,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
   ].join('');
   host.appendChild(context);
   const $=id=>document.getElementById(id);
-  let anchor=0,start=0,end=0,clipboard=null,seenDoc=null,barCount=0,selectedCount=0;
+  let anchor=0,start=0,end=0,clipboard=null,seenDoc=null,barCount=0,selectedCount=0,playingIndex=null;
   const status=$('jwoo-block-status'),strip=$('jwoo-bar-strip');
   const actionButtons=[...host.querySelectorAll('[data-act]')];
   const currentInfo=()=>{
@@ -76,6 +76,9 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
       const i=Number(chip.dataset.measureIndex);
       chip.disabled=!canEdit;
       chip.classList.toggle('is-selected',i>=start&&i<=end);
+      chip.classList.toggle('is-playing',i===playingIndex);
+      if(i===playingIndex)chip.setAttribute('aria-current','location');
+      else chip.removeAttribute('aria-current');
       chip.setAttribute('aria-pressed',String(i>=start&&i<=end));
     }
     const max=String(Math.max(1,count));
@@ -96,6 +99,19 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     else if(state.showBaseline)notify('원본 보기를 끝내면 마디 편집을 사용할 수 있습니다.');
     else notify((start+1)+(start===end?'마디':'–'+(end+1)+'마디')+
       ' 선택 · 전체 '+count+'마디 · '+(clipboard?clipboard.count+'마디 복사본 보관 중':'복사본 없음'));
+  }
+  function followPlaybackMeasure(index){
+    const next=Number.isSafeInteger(index)&&index>=0?index:null;
+    if(next===playingIndex)return;
+    playingIndex=next;
+    for(const chip of strip.children){
+      const active=next!==null&&Number(chip.dataset.measureIndex)===next;
+      chip.classList.toggle('is-playing',active);
+      if(active)chip.setAttribute('aria-current','location');
+      else chip.removeAttribute('aria-current');
+      if(active&&typeof chip.scrollIntoView==='function')
+        chip.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
+    }
   }
   function closeContext(){context.hidden=true;}
   function openContext(index,point={}){
@@ -210,8 +226,8 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     if(event.key==='Escape')closeContext();
   });
   function reset(){
-    closeContext();clipboard=null;start=0;end=0;anchor=0;seenDoc=null;barCount=-1;render();
+    closeContext();playingIndex=null;clipboard=null;start=0;end=0;anchor=0;seenDoc=null;barCount=-1;render();
   }
   render();
-  return {render,reset,pick,openContext,getRange:scope};
+  return {render,reset,pick,openContext,getRange:scope,followPlaybackMeasure};
 }
