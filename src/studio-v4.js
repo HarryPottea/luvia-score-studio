@@ -9,6 +9,7 @@ import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
 import {authorTupletGroup} from './studio-v4-tuplet-groups.js';
+import {rebarWrittenScore} from './studio-v4-rebar-written.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
@@ -131,6 +132,11 @@ const panel=[
   '<div class="v4-inline"><button id="v4-meter-empty" type="button">선택 마디 이후 빈 구간 박자 변경</button>',
   '<button id="v4-meter-single" type="button">선택한 빈 마디만 박자 변경</button></div>',
   '<p class="v4-tiny">선택한 빈 마디만 변경하면 다음 마디에는 기존 박자표를 자동 복구합니다. 다른 음표가 작성된 마디를 자동으로 재분할하지는 않습니다.</p>',
+  '<div class="v4-written-rebar"><p class="v4-subhead">작성된 악보 전체 리바링 · 단일 성부</p>',
+  '<div class="v4-inline"><div><label for="v4-rebar-meter">새 박자표</label><select id="v4-rebar-meter"><option value="2/4">2/4</option><option value="3/4" selected>3/4</option><option value="4/4">4/4</option><option value="3/8">3/8</option><option value="6/8">6/8</option></select></div>',
+  '<button id="v4-rebar-written" type="button">작성된 음표를 새 박자로 재분할</button></div>',
+  '<p class="v4-tiny">모든 파트가 독립된 단일 성부일 때 전체 악보를 재분할합니다. 기존 음표 길이와 순서를 보존하며, 마디를 넘는 긴 음표는 붙임줄로 연결합니다. 마지막 마디의 부족한 박자는 쉼표로 채웁니다.</p>',
+  '<p class="v4-tiny">기존 다성부·화음·잇단음·중간 조표·악상 및 특수 표기는 변경하지 않고 차단합니다. 실행 전 원본 MusicXML을 별도로 저장하세요.</p></div>',
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
@@ -652,6 +658,12 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     const [beats,beatType]=$('v4-meter').value.split('/').map(Number);
     return changeSingleEmptyMeasureMeter(doc,{measureIndex:selected().measureIndex,beats,beatType});
   },'선택 빈 마디 박자표 변경'));
+  $('v4-rebar-written').addEventListener('click',()=>{
+    if(!state.doc)return;
+    const requested=$('v4-rebar-meter').value;
+    if(!window.confirm('전체 작성 악보의 마디 구성을 변경합니다. 원본 MusicXML을 저장하셨습니까?'))return;
+    void commit(doc=>rebarWrittenScore(doc,{meter:requested}),'작성된 악보 전체 리바링');
+  });
 
   $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>setScoreLayoutBreak(doc,{
     measureIndex:selected().measureIndex,kind:$('v4-layout').value,
