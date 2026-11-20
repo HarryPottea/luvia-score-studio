@@ -1979,6 +1979,42 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_FOUR_NOTE_PHRASE_TRANSFERS_BETWEEN_VOICES_ATOMICALLY');
 
+  const secondBar='<measure number="2">'+
+    ['G','A'].map((step,i)=>'<note><pitch><step>'+step+
+      '</step><octave>4</octave></pitch><duration>96</duration>'+
+      '<voice>1</voice><type>half</type>'+
+      (i===0?'<lyric number="1"><text>달빛</text></lyric>':'')+
+      '</note>').join('')+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>192</duration><voice>2</voice><type>whole</type></note>'+
+    '</measure>';
+  const twoBarPhrase=fourNotePhrase.replace('</measure></part></score-partwise>',
+    '</measure>'+secondBar+'</part></score-partwise>');
+  await page.locator('#file-input').setInputFiles({name:'two-bar-voice-phrase.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(twoBarPhrase)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===2,
+    null,{timeout:30000});
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-transfer-voice','2');
+  await page.fill('#v4-transfer-measures-end','2');
+  await page.click('#v4-transfer-measures');
+  await page.waitForFunction(()=>document.querySelector('#v4-transfer-measures-status')?.textContent?.includes('이동 완료'),
+    null,{timeout:30000});
+  const multiBarDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const multiBarXml=await fs.readFile(await (await multiBarDownload).path(),'utf8');
+  assert.equal((multiBarXml.match(/<voice>2<\/voice><type>(?:quarter|half)<\/type>/g)||[]).length,6);
+  assert.equal((multiBarXml.match(/<voice>1<\/voice><type>(?:quarter|half)<\/type>/g)||[]).length,6);
+  assert.equal((multiBarXml.match(/<backup>/g)||[]).length,2);
+  assert.match(multiBarXml,/<text>별빛<\/text>/);
+  assert.match(multiBarXml,/<text>달빛<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_TWO_MEASURE_VOICE_PHRASE_TRANSFER_WITH_UNDO');
+
+
 
 
   assert.deepEqual(errors,[]);
