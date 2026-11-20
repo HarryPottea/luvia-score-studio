@@ -703,6 +703,18 @@ try {
   assert.equal((revisedScoreXml.match(/<fifths>1<\/fifths>/g)||[]).length,2);
   assert.ok((revisedScoreXml.match(/<backup><duration>144<\/duration><\/backup>/g)||[]).length>=1);
   console.log('BROWSER_STAGE=V4_MID_SCORE_METER_KEY_EDITED');
+  await page.selectOption('#v4-meter','2/4');
+  await page.click('#v4-meter-single');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 빈 마디 박자표 변경 완료'),null,{timeout:30000});
+  const isolatedMeterDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const isolatedMeterXml=await fs.readFile(await (await isolatedMeterDownload).path(),'utf8');
+  assert.equal((isolatedMeterXml.match(/<beats>2<\/beats><beat-type>4<\/beat-type>/g)||[]).length,2);
+  assert.equal((isolatedMeterXml.match(/<beats>3<\/beats><beat-type>4<\/beat-type>/g)||[]).length,2);
+  assert.ok((isolatedMeterXml.match(/<backup><duration>96<\/duration><\/backup>/g)||[]).length>=1);
+  assert.ok((isolatedMeterXml.match(/<backup><duration>144<\/duration><\/backup>/g)||[]).length>=1);
+  console.log('BROWSER_STAGE=V4_ISOLATED_EMPTY_METER_AND_FOLLOWING_RESTORE');
+
 
   // Both the vocal and true grand-staff Piano parts must be present in one
   // vector print book, in their original part order.
