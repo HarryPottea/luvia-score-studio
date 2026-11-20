@@ -99,7 +99,7 @@ const panel=[
   '<div class="v4-inline"><label for="v4-transfer-voice">선택 음표 이동 대상 성부</label>',
   '<select id="v4-transfer-voice"><option value="1">1성부</option><option value="2" selected>2성부</option><option value="3">3성부</option><option value="4">4성부</option></select>',
   '<button id="v4-transfer-note" type="button">다른 성부의 빈 쉼표로 음표 이동</button></div>',
-  '<p id="v4-transfer-status" class="v4-tiny" role="status" aria-live="polite">같은 보표·시점·길이에 있는 일반 쉼표로 음표·가사를 옮깁니다. 서로 다른 성부의 총 박자는 변경하지 않습니다.</p>',
+  '<p id="v4-transfer-status" class="v4-tiny" role="status" aria-live="polite">선택 음표의 박자 구간을 포함하는 다른 성부의 쉼표로 음표·가사를 이동합니다. 앞·뒤의 남는 박자는 정확한 쉼표로 나누고 원래 성부 시간은 보존합니다.</p>',
   '<p class="v4-tiny">악보에서 음표를 선택하세요. 같은 성부의 박자 합계를 유지하며, 지원하지 않는 복합 표기는 보호합니다.</p>',
   '<p class="v4-tiny">다성부 악보에서는 09 / 음표 편집의 일부 입력이 제한되므로, 아래의 별도 음정·길이 설정을 사용하세요.</p>',
   '<div class="v4-inline"><div><label for="v4-pro-step">음이름</label><select id="v4-pro-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div><div><label for="v4-pro-octave">옥타브</label><select id="v4-pro-octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div></div>',
