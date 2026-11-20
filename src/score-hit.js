@@ -91,7 +91,12 @@ function restGlyph(gn,host) {
   const group=gn?.getSVGGElement?.();
   if(!group?.isConnected||!host.contains(group))return null;
   const stave=group.closest?.('.vf-stavenote')||group;
-  if(!host.contains(stave)||stave.querySelectorAll?.('.vf-notehead')?.length)return null;
+  if(!host.contains(stave))return null;
+  // VexFlow 5 renders ordinary rests inside a .vf-notehead group too.
+  // This is a rest only because the OSMD sourceNote confirmed isRest().
+  const glyphs=stave.querySelectorAll?.('.vf-notehead')||[];
+  if(glyphs.length===1)return glyphs[0];
+  if(glyphs.length>1)return null;
   const restMarks=stave.querySelectorAll?.('.vf-rest')||[];
   if(restMarks.length===1)return restMarks[0];
   // OSMD and VexFlow expose ordinary rests as a single stavenote group.
