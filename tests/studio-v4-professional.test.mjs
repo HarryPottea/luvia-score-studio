@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {authorTupletGroup} from '../src/studio-v4-tuplet-groups.js';
 import {rebarWrittenScore} from '../src/studio-v4-rebar-written.js';
+import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
 import {transposeChordChromatically} from '../src/studio-v4-chord-transpose.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
@@ -747,11 +748,13 @@ test('rebarring: preserve lyric on original attack, restore music timing across 
     assert.equal(marked.length,1,'Lyric should stay on the first tied segment');
   }
 });
-test('rebarring: reject polyphony, meter anomalies, decorated music and unchanged source',()=>{
+test('rebarring: reject inconsistent polyphony, meter anomalies, decorated music and unchanged source',()=>{
   const original=writtenScoreFixture(),before=serialize(original);
   assert.throws(()=>rebarWrittenScore(original,{meter:'9/8'}),/지원/);
   assert.throws(()=>rebarWrittenScore(original,{meter:'4/4'}),/같은 박자/);
-  assert.throws(()=>rebarWrittenScore(fixture(),{meter:'3/4'}),/복합|성부/);
+  const invalidVoices=fixture();
+  first(children(measure(invalidVoices),'backup')[0],'duration').textContent='48';
+  assert.throws(()=>rebarWrittenScore(invalidVoices,{meter:'3/4'}),/backup|성부 시간/);
   const annotated=writtenScoreFixture();
   const lastMeasure=children(part(annotated),'measure')[1];
   lastMeasure.insertBefore(E('direction',[E('direction-type',[T('words','rit.')])]),lastMeasure.children[0]);
@@ -819,4 +822,50 @@ test('tuplets: reused closed group numbers permit many common tuplet groups per 
     assert.equal(info.reason,null);
     assert.equal(info.events.filter(e=>e.tuplet).length,5);
   }
+});
+
+test('rebarring: piano grand-staff independent voices remain exactly synchronized after rebar',()=>{
+  const source=fixture(),m=measure(source);
+  const second=m.cloneNode(true);second.setAttribute('number','2');
+  second.removeChild(first(second,'attributes'));
+  part(source).appendChild(second);
+  const original=serialize(source),beforeTimeline=buildPlaybackTimeline(source);
+  const edited=rebarWrittenScore(source,{meter:'3/4'});
+  const result=edited.doc,bars=children(part(result),'measure');
+  assert.equal(serialize(source),original);
+  assert.equal(edited.change.originalMeasures,2);
+  assert.equal(edited.change.newMeasures,3);
+  assert.equal(edited.change.maxVoices,2);
+  assert.equal(bars.length,3);
+  for(const b of bars){
+    const backups=children(b,'backup');
+    assert.equal(backups.length,1,'Each rebarred grand-staff measure must retain a voice backup');
+    assert.equal(first(backups[0],'duration').textContent,'144');
+    const groups=[[]],allChildren=b.children;
+    for(const n of allChildren){
+      if(n.localName==='backup')groups.push([]);
+      if(n.localName==='note')groups.at(-1).push(n);
+    }
+    assert.equal(groups.length,2);
+    for(const group of groups)
+      assert.equal(group.reduce((sum,n)=>sum+Number(first(n,'duration').textContent),0),144);
+    assert.ok(groups[0].every(n=>first(n,'voice').textContent==='1'&&first(n,'staff').textContent==='1'));
+    assert.ok(groups[1].every(n=>first(n,'voice').textContent==='2'&&first(n,'staff').textContent==='2'));
+  }
+  const afterTimeline=buildPlaybackTimeline(result);
+  const digest=x=>x.events.map(e=>[e.part,e.midi,e.start,e.duration])
+    .sort((a,b)=>a[2]-b[2]||a[1]-b[1]);
+  assert.deepEqual(digest(afterTimeline),digest(beforeTimeline),
+    'All played notes retain exact pitch, onset and sounding duration');
+});
+test('rebarring: piano two independent staves reject incomplete voice clocks',()=>{
+  const invalid=fixture();
+  const firstBackup=children(measure(invalid),'backup')[0];
+  first(firstBackup,'duration').textContent='191';
+  const original=serialize(invalid);
+  assert.throws(()=>rebarWrittenScore(invalid,{meter:'3/4'}),/backup|성부 시간/);
+  assert.equal(serialize(invalid),original);
+  const mismatch=fixture();
+  children(measure(mismatch),'note')[6].appendChild(T('staff','2'));
+  assert.throws(()=>rebarWrittenScore(mismatch,{meter:'3/4'}),/성부|보표|복잡/);
 });
