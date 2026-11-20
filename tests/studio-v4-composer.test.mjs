@@ -33,6 +33,12 @@ class E {
     const index=this.children.indexOf(child);if(index<0)throw Error('Detached child');
     this.children.splice(index,1);child.parentNode=null;return child;
   }
+  replaceChild(next,previous){
+    const at=this.children.indexOf(previous);if(at<0)throw Error('Detached child');
+    if(next.parentNode)next.parentNode.removeChild(next);
+    this.children[at]=next;next.parentNode=this;next.assignDocument(this.ownerDocument);
+    previous.parentNode=null;return previous;
+  }
   cloneNode(deep){return new E(this.localName,this.map,deep?this.children.map(x=>x.cloneNode(true)):[],this.raw);}
 }
 class Document {
