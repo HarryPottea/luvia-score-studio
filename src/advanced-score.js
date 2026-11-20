@@ -68,12 +68,18 @@ function inspectPartMeasure(part,index) {
     }
     if(kind!=='note')continue;
     const isChord=!!direct(node,'chord');
-    const duration=integer(value(node,'duration'));
+    const isGrace=!!direct(node,'grace');
+    const duration=isGrace?0:integer(value(node,'duration'));
     const voice=value(node,'voice')||'1',staff=value(node,'staff')||'1';
     const rest=!!direct(node,'rest'), pitch=direct(node,'pitch');
     const tuplet=!!direct(node,'time-modification');
     const startsAt=isChord?previousOnset:cursor;
-    if(!duration||duration<=0||startsAt===null||startsAt<0||startsAt+duration>max)reason='음표 또는 화음의 시간 길이가 올바르지 않습니다.';
+    if((!isGrace&&(!duration||duration<=0))||startsAt===null||
+       startsAt<0||startsAt+duration>max)
+      reason='음표 또는 화음의 시간 길이가 올바르지 않습니다.';
+    if(isGrace&&(isChord||direct(node,'duration')||all(node,'grace').length!==1||
+       !direct(node,'pitch')||direct(node,'rest')||!direct(node,'type')))
+      reason='꾸밈음은 음정이 있고 박자를 소비하지 않는 독립 음표여야 합니다.';
     if(isChord&&(voice!==previousVoice||staff!==previousStaff))reason='화음에 서로 다른 성부나 보표가 섞여 있습니다.';
     if(tuplet&&allowedTuplet(node))reason=allowedTuplet(node);
     if(!rest&&!pitch)reason='음표 음정 정보가 누락되었습니다.';
@@ -92,11 +98,13 @@ function inspectPartMeasure(part,index) {
       protectedMarkup};
     events.push(event);
     if(!isChord) {
-      if(!lanes.has(lane))lanes.set(lane,[]);
-      lanes.get(lane).push({start:startsAt,end:startsAt+(duration||0)});
-      cursor+=(duration||0);
-      previousOnset=startsAt;
-      previousVoice=voice;previousStaff=staff;
+      if(!isGrace){
+        if(!lanes.has(lane))lanes.set(lane,[]);
+        lanes.get(lane).push({start:startsAt,end:startsAt+(duration||0)});
+        cursor+=(duration||0);
+        previousOnset=startsAt;
+        previousVoice=voice;previousStaff=staff;
+      }else previousOnset=null;
     }
     else {
       const found=events.slice(0,-1).reverse().find(e=>!e.chord&&e.start===startsAt&&e.voice===voice&&e.staff===staff);
