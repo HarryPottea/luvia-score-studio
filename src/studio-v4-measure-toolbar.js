@@ -30,6 +30,19 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     ' 연결 기호나 조표·박자표 변경이 위험하면 편집을 차단합니다.</p>',
   ].join('');
   document.querySelector('.preview-toolbar').insertAdjacentElement('afterend',host);
+  const context=document.createElement('div');
+  context.className='jwoo-measure-context';
+  context.hidden=true;
+  context.setAttribute('role','group');
+  context.setAttribute('aria-label','선택 마디 빠른 작업');
+  context.innerHTML=[
+    '<button type="button" data-context-act="copy">선택 마디 복사</button>',
+    '<button type="button" data-context-act="paste">선택 위치 앞에 붙여넣기</button>',
+    '<button type="button" data-context-act="duplicate">선택 마디 뒤에 복제</button>',
+    '<button type="button" data-context-act="insert">앞에 빈 마디 추가</button>',
+    '<button type="button" data-context-act="delete">선택 마디 삭제</button>',
+  ].join('');
+  host.appendChild(context);
   const $=id=>document.getElementById(id);
   let anchor=0,start=0,end=0,clipboard=null,seenDoc=null,barCount=0,selectedCount=0;
   const status=$('jwoo-block-status'),strip=$('jwoo-bar-strip');
@@ -55,6 +68,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
       }
     }
     start=Math.max(0,Math.min(start,Math.max(0,count-1)));
+    anchor=Math.max(0,Math.min(anchor,Math.max(0,count-1)));
     end=Math.max(start,Math.min(end,Math.max(0,count-1)));
     for(const chip of strip.children){
       const i=Number(chip.dataset.measureIndex);
@@ -81,9 +95,26 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     else notify((start+1)+(start===end?'마디':'–'+(end+1)+'마디')+
       ' 선택 · 전체 '+count+'마디 · '+(clipboard?clipboard.count+'마디 복사본 보관 중':'복사본 없음'));
   }
+  function closeContext(){context.hidden=true;}
+  function openContext(index,point={}){
+    pick(index,false);
+    if(state.showBaseline||!currentInfo())return;
+    const box=host.getBoundingClientRect();
+    const width=208;
+    const x=Number.isFinite(point.x)?point.x-box.left:0;
+    const y=Number.isFinite(point.y)?point.y-box.top:55;
+    context.style.left=Math.max(0,Math.min(x,host.clientWidth-width))+'px';
+    context.style.top=Math.max(0,y)+'px';
+    for(const button of context.querySelectorAll('[data-context-act]')){
+      button.disabled=host.querySelector('[data-act="'+button.dataset.contextAct+'"]').disabled;
+    }
+    context.hidden=false;
+    context.querySelector('button:not(:disabled)')?.focus({preventScroll:true});
+  }
   function pick(index,extend=false){
     const count=currentInfo();
     if(!count||state.showBaseline||!Number.isSafeInteger(index)||index<0||index>=count)return;
+    closeContext();
     if(!extend){anchor=index;start=index;end=index;}
     else{start=Math.min(anchor,index);end=Math.max(anchor,index);}
     render();
@@ -141,9 +172,26 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     }catch(error){notify('마디 작업 불가: '+(error.message||'지원하지 않는 악보입니다.'),true);}
   }
   actionButtons.forEach(button=>button.addEventListener('click',()=>void execute(button.dataset.act)));
+  context.addEventListener('click',event=>{
+    const button=event.target.closest?.('[data-context-act]');
+    if(!button||button.disabled)return;
+    closeContext();void execute(button.dataset.contextAct);
+  });
+  strip.addEventListener('contextmenu',event=>{
+    const chip=event.target.closest?.('.jwoo-bar-chip');
+    if(!chip||chip.disabled)return;
+    event.preventDefault();
+    openContext(Number(chip.dataset.measureIndex),{x:event.clientX,y:event.clientY});
+  });
+  document.addEventListener('pointerdown',event=>{
+    if(!context.hidden&&!context.contains(event.target))closeContext();
+  },true);
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape')closeContext();
+  });
   function reset(){
-    clipboard=null;start=0;end=0;anchor=0;seenDoc=null;barCount=-1;render();
+    closeContext();clipboard=null;start=0;end=0;anchor=0;seenDoc=null;barCount=-1;render();
   }
   render();
-  return {render,reset,pick};
+  return {render,reset,pick,openContext};
 }
