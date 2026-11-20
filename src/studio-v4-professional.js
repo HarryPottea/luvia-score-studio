@@ -375,3 +375,82 @@ export function nudgeVoiceNoteOnGrid(source,{partId,measureIndex,eventIndex,
   return {doc,change:{action:'voice-grid-nudge',partId,measureIndex,eventIndex,
     direction,grid,shift}};
 }
+
+
+/**
+ * Reposition an ordinary note anywhere in its contiguous, same-voice/staff
+ * rest island. Unlike a one-grid nudge this supports multiple consecutive
+ * rests and precise beat selection without changing voice backups or other
+ * instruments. The selected note is moved, not copied.
+ *
+ * targetBeat is 1-based quarter-note position: beat 1 -> tick 0, beat 2.5
+ * -> divisions * 1.5. Grid denotes an exact binary subdivision of a quarter.
+ * Unsupported decorative, chord, tuplets or intervening event nodes fail
+ * closed on an immutable source.
+ */
+export function relocateVoiceNote(source,{partId,measureIndex,eventIndex,
+  targetBeat,grid='16th'}={}){
+  if(!['eighth','16th','32nd'].includes(grid))fail('이동 격자를 선택해 주세요.');
+  const {doc,loc}=start(source,{partId,measureIndex,eventIndex});
+  const {note,measure,audit,event}=loc;
+  if(!event||event.rest||event.chord||event.tuplet||!audit.divisions)
+    fail('일반 성부의 단일 음표를 선택해 주세요.');
+  guardNote(note);
+  const quantum=durationFor(grid,audit.divisions);
+  const beat=Number(targetBeat);
+  if(!Number.isFinite(beat)||beat<1)
+    fail('이동할 시작 박자를 1 이상의 숫자로 입력해 주세요.');
+  const targetTick=(beat-1)*audit.divisions;
+  if(!int(targetTick,0,audit.max-1)||targetTick%quantum!==0)
+    fail('선택한 격자와 일치하는 정확한 시작 박자를 입력해 주세요.');
+  if(targetTick===event.start)fail('이미 해당 박자에 놓여 있습니다.');
+
+  const children=[...measure.children],notePosition=children.indexOf(note);
+  let first=notePosition,last=notePosition;
+  const eligibleRest=n=>n?.localName==='note'&&!!direct(n,'rest')&&
+    sameLaneNote(note,n);
+  while(first>0&&eligibleRest(children[first-1])){
+    guardNote(children[first-1],{rest:true});first--;
+  }
+  while(last+1<children.length&&eligibleRest(children[last+1])){
+    guardNote(children[last+1],{rest:true});last++;
+  }
+  const before=children.slice(first,notePosition);
+  const after=children.slice(notePosition+1,last+1);
+  const restTotal=items=>items.reduce((sum,item)=>{
+    const n=Number(value(item,'duration'));
+    if(!int(n,1,262144))fail('인접한 쉼표의 길이가 올바르지 않습니다.');
+    return sum+n;
+  },0);
+  const startTick=event.start-restTotal(before);
+  const endTick=event.start+event.duration+restTotal(after);
+  if(startTick<0||endTick>audit.max)fail('선택 성부가 마디 범위를 벗어났습니다.');
+  if(targetTick<startTick||targetTick+event.duration>endTick)
+    fail('선택 위치까지 같은 성부의 연속된 빈 쉼표가 필요합니다. 다른 음표는 넘을 수 없습니다.');
+  const preceding=decomposeRest(targetTick-startTick,audit.divisions);
+  const following=decomposeRest(endTick-targetTick-event.duration,audit.divisions);
+  // The original node may contain safe lyrics: move them with the pitch,
+  // but do not mutate those contents. Any foreign markup failed guardNote.
+  const anchor=children[last].nextSibling;
+  for(const item of children.slice(first,last+1))measure.removeChild(item);
+  const insert=(node)=>measure.insertBefore(node,anchor);
+  for(const part of preceding)insert(makeRest(measure,note,part.duration,part.type));
+  insert(note);
+  for(const part of following)insert(makeRest(measure,note,part.duration,part.type));
+
+  const checked=validateChange(doc,{...loc,measure:loc.sourceMeasure,part:loc.sourcePart},
+    partId,measureIndex,new Set([identity(event)]));
+  const nextIndex=all(measure,'note').indexOf(note);
+  const moved=checked.events[nextIndex];
+  if(!moved||moved.start!==targetTick||moved.duration!==event.duration||
+    moved.step!==event.step||moved.alter!==event.alter||moved.octave!==event.octave||
+    moved.voice!==event.voice||moved.staff!==event.staff)
+    fail('선택 음표의 박자 위치 또는 음정 보존 검사에 실패했습니다.');
+  const expectedLane=checked.events.filter(e=>identity(e)===identity(event)&&!e.chord)
+    .reduce((sum,e)=>sum+e.duration,0);
+  const originalLane=audit.events.filter(e=>identity(e)===identity(event)&&!e.chord)
+    .reduce((sum,e)=>sum+e.duration,0);
+  if(originalLane!==expectedLane)fail('편집 성부의 박자 합계가 달라졌습니다.');
+  return {doc,change:{action:'voice-note-relocate',partId,measureIndex,eventIndex,
+    nextEventIndex:nextIndex,fromTick:event.start,toTick:targetTick,grid}};
+}
