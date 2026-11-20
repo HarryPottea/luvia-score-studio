@@ -90,8 +90,22 @@ export async function readPortableScoreProject(file){
      file.size<100||file.size>MAX_ARCHIVE_BYTES)
     fail('프로젝트 백업 파일 크기 또는 형식을 확인할 수 없습니다.');
   let zip;
-  try{zip=await JSZip.loadAsync(await file.arrayBuffer(),{checkCRC32:true});}
+  try{zip=await JSZip.loadAsync(await file.arrayBuffer(),{checkCRC32:false});}
   catch{fail('프로젝트 ZIP이 손상됐거나 읽을 수 없습니다.');}
+  // JSZip's checkCRC32:true decompresses all entries before we can inspect
+  // limits. Verify compressed entry metadata first; subsequent SHA-256 checks
+  // also provide stronger content integrity than CRC32.
+  let expectedTotal=0;
+  for(const entry of Object.values(zip.files)){
+    if(entry.dir)continue;
+    const size=entry._data?.uncompressedSize;
+    if(!Number.isSafeInteger(size)||size<0||size>MAX_XML_BYTES||
+       entry.name==='manifest.json'&&size>65536)
+      fail('프로젝트 ZIP에 과도하거나 확인 불가능한 압축 해제 크기가 있습니다.');
+    expectedTotal+=size;
+    if(expectedTotal>MAX_UNPACKED_BYTES+65536)
+      fail('프로젝트 ZIP의 총 압축 해제 크기가 허용 범위를 초과했습니다.');
+  }
   const manifestFile=zip.file('manifest.json');
   if(!manifestFile)fail('프로젝트 백업의 manifest.json이 없습니다.');
   const json=await manifestFile.async('uint8array');
