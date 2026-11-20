@@ -24,9 +24,7 @@ const TEMPLATE = [
   '<option value="eighth">8분</option><option value="16th">16분</option><option value="32nd">32분</option></select></div></div>',
   '<div class="v3-actions"><button id="v3-pitch" type="button">음정 변경 · 쉼표에 음표 넣기</button>',
   '<button id="v3-duration" type="button">길이 변경</button><button id="v3-delete" type="button">선택 음표를 쉼표로 바꾸기</button>',
-  '<button id="v3-tie" type="button">인접 음표 붙임줄 연결·해제</button>',
-  '<button id="v3-chord-add" type="button">선택 음표에 화음음 추가</button>',
-  '<button id="v3-chord-remove" type="button">선택한 화음음 삭제</button></div>',
+  '<button id="v3-tie" type="button">인접 음표 붙임줄 연결·해제</button></div>',
   '<div class="v3-note-tools"><label for="v3-target-beat">같은 성부 안에서 이동할 박자 위치</label>',
   '<input id="v3-target-beat" type="number" min="1" step="0.25" value="1" />',
   '<button id="v3-move" type="button">선택 음표를 지정 박자로 이동</button></div>',
@@ -120,10 +118,6 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     const samePitch=!!event&&!event.rest&&!!next&&!next.rest&&
       event.step===next.step&&event.alter===next.alter&&event.octave===next.octave;
     $('v3-tie').disabled=!!busy||!!state.showBaseline||!!measure?.reason||!samePitch;
-    $('v3-chord-add').disabled=!advancedEditable||note.rest||note.chord||!note.editableChordTone;
-    const nextChord=advanced?.events[selection.eventIndex+1];
-    $('v3-chord-remove').disabled=!advancedEditable||!note.editableChordTone||
-      !(note.chord||(nextChord?.chord&&nextChord.voice===note.voice&&nextChord.staff===note.staff));
     $('v3-move').disabled=!advancedEditable||note.rest||note.chord||note.tuplet||note.protectedMarkup;
     $('v3-target-beat').disabled=$('v3-move').disabled;
     if(note&&advanced?.divisions&&document.activeElement!==$('v3-target-beat'))
@@ -266,10 +260,6 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
       else void commitExternal(doc=>replaceVoiceNoteWithRest(doc,selection),'선택 성부 음표를 쉼표로 변경');
     }else void commit('to-rest',{},'음표를 쉼표로 대체');
   });
-  $('v3-chord-add').addEventListener('click',()=>void commitExternal(doc=>
-    editAdvancedScore(doc,{...selection,action:'chord-add',...currentPitch()}),'화음음 추가'));
-  $('v3-chord-remove').addEventListener('click',()=>void commitExternal(doc=>
-    editAdvancedScore(doc,{...selection,action:'chord-remove'}),'화음음 삭제'));
   $('v3-move').addEventListener('click',()=>void commitExternal(doc=>
     relocateVoiceNote(doc,{...selection,targetBeat:Number($('v3-target-beat').value),grid:'16th'}),
     '선택 음표 박자 위치 이동'));
