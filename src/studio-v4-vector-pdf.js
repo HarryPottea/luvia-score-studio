@@ -5,6 +5,7 @@
 import JSZip from 'jszip';
 import {baseScoreName,safeFileName} from './part-export.js';
 import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
+import {rasterizeUnicodeSvgText} from './studio-v4-unicode-svg.js';
 
 const MAX_PAGES=80,MAX_PARTS=12,MAX_FILE_BYTES=24*1024*1024;
 const FORMAT={A4_P:{w:595.2756,h:841.8898,orientation:'p'},
@@ -45,7 +46,8 @@ function nonAsciiText(svg){
   }
   return null;
 }
-export function preflightVectorPartPages(pages,pageFormat='A4_P'){
+export function preflightVectorPartPages(pages,pageFormat='A4_P',{allowUnicodeText=false}={}){
+  if(typeof allowUnicodeText!=='boolean')fail('글꼴 대체 처리 옵션이 올바르지 않습니다.');
   if(!FORMAT[pageFormat])fail('벡터 PDF는 A4 세로·가로 규격만 지원합니다.');
   if(!Array.isArray(pages)||pages.length<1||pages.length>MAX_PAGES)
     fail('파트별 PDF 출력은 1~80페이지로 제한합니다.');
@@ -56,8 +58,8 @@ export function preflightVectorPartPages(pages,pageFormat='A4_P'){
       fail('파트 ID와 이름을 확인할 수 없습니다.');
     inspectPrintableSvg(page.svg);
     const unusual=nonAsciiText(page.svg);
-    if(unusual!==null)
-      fail('현재 벡터 ZIP 변환은 한글·특수문자 글꼴을 내장하지 않습니다. 해당 가사·제목을 보호하기 위해 변환을 중단했습니다. \"모든 파트 벡터 악보 인쇄 · PDF로 저장\"을 사용하세요.');
+    if(unusual!==null&&!allowUnicodeText)
+      fail('이 벡터 PDF ZIP은 한글·특수문자 글꼴을 내장하지 않습니다. 손상 방지를 위해 중단했습니다. 브라우저의 벡터 PDF 인쇄를 사용하거나 하이브리드 텍스트 옵션을 켜세요.');
     if(!groups.has(page.partId)){
       if(groups.size>=MAX_PARTS)fail('PDF ZIP은 최대 12개 파트까지 지원합니다.');
       groups.set(page.partId,{name:page.partName,pages:[]});
@@ -68,7 +70,7 @@ export function preflightVectorPartPages(pages,pageFormat='A4_P'){
       fail('개별 악기의 PDF 페이지가 24장을 초과합니다.');
   }
   return {order,groups,pageFormat,parts:groups.size,pages:pages.length,
-    vectorIntent:true,textFontCertified:false};
+    vectorIntent:true,textFontCertified:false,allowUnicodeText};
 }
 function stripEditing(svg){
   const clone=svg.cloneNode(true);
@@ -87,13 +89,13 @@ function assertPdf(bytes){
   if(!prefix.startsWith('%PDF-'))fail('PDF 파일 헤더가 올바르지 않습니다.');
 }
 export async function createVectorPartPdfZip({
-  pages,filename='score.musicxml',pageFormat='A4_P',
+  pages,filename='score.musicxml',pageFormat='A4_P',allowUnicodeText=false,
   onProgress=()=>{}
 }={}){
-  const plan=preflightVectorPartPages(pages,pageFormat);
+  const plan=preflightVectorPartPages(pages,pageFormat,{allowUnicodeText});
   const jsPDF=await loadLibraries();
   const format=FORMAT[pageFormat],zip=new JSZip();
-  let count=0,bytes=0;
+  let count=0,bytes=0,hybridTextCount=0;
   for(const [index,id] of plan.order.entries()){
     const part=plan.groups.get(id);
     // A new PDF per part; all SVG measures are rendered into vector pages.
@@ -105,7 +107,12 @@ export async function createVectorPartPdfZip({
       });
       else pdf.addPage([format.w,format.h],format.orientation);
       const clone=stripEditing(svg);
-      inspectPrintableSvg(clone);
+      if(nonAsciiText(clone)!==null&&allowUnicodeText){
+        const converted=await rasterizeUnicodeSvgText(clone);
+        hybridTextCount+=converted.rasterizedTextCount;
+        // The only image elements were generated from local glyph snapshots
+        // after the original SVG passed the external-resource preflight.
+      }else inspectPrintableSvg(clone);
       await pdf.svg(clone,{x:0,y:0,width:format.w,height:format.h});
       onProgress(++count,plan.pages);
     }
@@ -117,14 +124,16 @@ export async function createVectorPartPdfZip({
     zip.file(ordinal+'-'+safeFileName(part.name,'part-'+ordinal)+'.pdf',buffer);
   }
   zip.file('README.txt',
-    'J-WOO part PDFs converted locally from OSMD SVG to vector PDF paths.\n'+
-    'The source score was not uploaded. Paper: A4. Font validation: NOT CERTIFIED.\n'+
-    'These PDFs are for supported ASCII-only notation. Verify every glyph, '+ 
-    'lyric, barline and page before distribution.\n'+
-    'For Korean text or exact browser font output, use the native vector Print/PDF option.\n');
+    'J-WOO part PDFs converted locally from OSMD SVG. No uploads. A4.\n'+
+    (hybridTextCount?'HYBRID: '+hybridTextCount+
+      ' Unicode text nodes are local PNG glyphs; music vector paths remain vector.\n':
+      'ASCII-only PDF font mode.\n')+
+    'Verify all glyphs and layout in PDF before distributing.\n'+
+    'For entirely native text/print fonts, use the browser vector PDF print option.\n');
   const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',
     compressionOptions:{level:5}});
   return {blob,filename:baseScoreName(filename)+'-vector-part-pdfs.zip',
-    parts:plan.parts,pages:plan.pages,vector:true,
-    glyphVerificationRequired:true,unicodeExportSupported:false};
+    parts:plan.parts,pages:plan.pages,vectorStaffIntended:true,
+    hybridTextCount,glyphVerificationRequired:true,
+    unicodeExportSupported:hybridTextCount>0};
 }
