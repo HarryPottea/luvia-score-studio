@@ -218,11 +218,12 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   let disabledDraft=false;
   let measureToolbar=null;
   let savingCheckpoint=false;
+  let checkpointNotice=null;
   const player=createAuditionPlayer({onState:playing=>{
     $('v4-play').disabled=playing;
     $('v4-play-range').disabled=playing;
     $('v4-stop').disabled=!playing;
-    if(!playing&&$('v4-play-status').textContent.includes('재생 중'))$('v4-play-status').textContent='재생 종료 · 새 재생을 시작할 수 있습니다.';
+    if(!playing&&/재생 중|반복 중|선택 마디/.test($('v4-play-status').textContent))$('v4-play-status').textContent='재생 종료 · 새 재생을 시작할 수 있습니다.';
   }});
   const localeTime=ms=>new Date(ms).toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'});
   function draftStatus(text){$('v4-draft-status').textContent=text;}
@@ -244,11 +245,11 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       if(list.some(x=>x.id===previous))select.value=previous;
       $('v4-checkpoint-restore').disabled=!select.value;
       $('v4-checkpoint-delete').disabled=!select.value;
-      if(!savingCheckpoint)checkpointStatus(list.length+'개 복원 시점 보관 중 · 자동 임시 저장과 독립');
+      if(!savingCheckpoint&&!checkpointNotice)checkpointStatus(list.length+'개 복원 시점 보관 중 · 자동 임시 저장과 독립');
     }catch(error){
       $('v4-checkpoint-restore').disabled=true;
       $('v4-checkpoint-delete').disabled=true;
-      checkpointStatus('체크포인트 목록을 읽을 수 없습니다: '+(error.message||'브라우저 제한'));
+      if(!checkpointNotice)checkpointStatus('체크포인트 목록을 읽을 수 없습니다: '+(error.message||'브라우저 제한'));
     }
   }
   async function refreshDrafts(){
@@ -294,6 +295,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     if(copy)void saveSnapshot(copy);
   }
   function beforeOpen(){
+    checkpointNotice=null;
     measureToolbar?.reset();
     inlineLyrics.close();
     flushPending();
@@ -433,7 +435,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       $('v4-checkpoint-select').value=saved.id;
       $('v4-checkpoint-restore').disabled=false;
       $('v4-checkpoint-delete').disabled=false;
-      checkpointStatus(saved.label+' · '+localeTime(saved.savedAt)+' 복원 시점 저장 완료 (SHA-256 확인 가능)');
+      checkpointNotice=saved.label+' · '+localeTime(saved.savedAt)+' 복원 시점 저장 완료 (SHA-256 확인 가능)';
+      checkpointStatus(checkpointNotice);
     }catch(error){checkpointStatus('체크포인트 저장 실패: '+(error.message||'저장소 제한'));}
     finally{savingCheckpoint=false;$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline;}
   });
@@ -449,8 +452,9 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     try{
       const saved=await loadLocalCheckpoint(id);
       const ok=await openScore(saved.xml,saved.filename);
-      checkpointStatus(ok?'무결성 검사 통과 · '+saved.label+' · '+localeTime(saved.savedAt)+' 복원 완료':
-        '복원본 MusicXML을 표시하지 못했습니다. 원래 화면과 저장된 시점을 확인해 주세요.');
+      checkpointNotice=ok?'무결성 검사 통과 · '+saved.label+' · '+localeTime(saved.savedAt)+' 복원 완료':
+        '복원본 MusicXML을 표시하지 못했습니다. 원래 화면과 저장된 시점을 확인해 주세요.';
+      checkpointStatus(checkpointNotice);
     }catch(error){checkpointStatus('체크포인트 복원 차단: '+(error.message||'무결성 확인 실패'));}
   });
   $('v4-checkpoint-delete').addEventListener('click',async()=>{
@@ -459,7 +463,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     try{
       await removeLocalCheckpoint(id);
       await refreshCheckpoints();
-      checkpointStatus('선택한 복원 시점을 삭제했습니다. 다른 복원 시점은 유지됩니다.');
+      checkpointNotice='선택한 복원 시점을 삭제했습니다. 다른 복원 시점은 유지됩니다.';
+      checkpointStatus(checkpointNotice);
     }catch(error){checkpointStatus('복원 시점 삭제 실패: '+(error.message||'저장소 제한'));}
   });
   async function commit(transform,label){
