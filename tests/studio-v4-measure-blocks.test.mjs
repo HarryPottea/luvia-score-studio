@@ -11,7 +11,7 @@ import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMe
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 import {toggleAdvancedArticulation} from '../src/studio-v4-articulations.js';
 import {editArticulationForVoice} from '../src/studio-v4-articulation-batch.js';
-import {insertGraceNote,removeGraceNote} from '../src/studio-v4-grace-notes.js';
+import {insertGraceNote,removeGraceNote,editGraceNote} from '../src/studio-v4-grace-notes.js';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
@@ -995,4 +995,56 @@ test('enharmonic respell consistently changes a crossbar B-sharp tie to C natura
     assert.equal(first(note,'tie').getAttribute('type'),i===1?'start':'stop');
   }
   assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'B14');
+});
+
+
+test('existing grace note pitch, accidental, slash and written type can be edited without affecting rhythm',()=>{
+  const source=fixture(2,2),main=first(rows(source)[0][0],'note');
+  pitched(main,'C',4);
+  main.appendChild(n('lyric',{number:'1'},[leaf('text','반짝이는')]));
+  const original=insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0,
+    step:'F',alter:1,octave:5,slash:true});
+  const changed=editGraceNote(original.doc,{partId:'P1',measureIndex:0,eventIndex:0,
+    step:'B',alter:-1,octave:4,slash:false,type:'16th'});
+  const notes=rows(changed.doc)[0][0].children.filter(x=>x.localName==='note');
+  assert.equal(first(notes[0],'grace').getAttribute('slash'),'no');
+  assert.equal(first(notes[0],'pitch').textContent,'B-14');
+  assert.equal(first(notes[0],'type').textContent,'16th');
+  assert.equal(first(notes[0],'accidental').textContent,'flat');
+  assert.equal(first(notes[0],'duration'),undefined);
+  assert.equal(first(notes[1],'duration').textContent,'192');
+  assert.equal(first(notes[1],'lyric').textContent,'반짝이는');
+  assert.equal(inspectAdvancedMeasure(changed.doc,'P1',0).events[0].duration,0);
+  assert.equal(inspectAdvancedMeasure(changed.doc,'P1',0).events[1].duration,192);
+  assert.equal(rows(changed.doc)[1][0].children.filter(x=>x.localName==='note').length,1);
+  assert.equal(first(first(rows(original.doc)[0][0],'note'),'pitch').textContent,'F15');
+  assert.equal(changed.change.action,'edit-grace-note');
+});
+
+test('grace note can return to natural pitch, and unchanged settings are blocked',()=>{
+  const source=fixture(1,1);
+  pitched(first(rows(source)[0][0],'note'),'D',4);
+  const added=insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0,
+    step:'G',alter:1,octave:4});
+  const retuned=editGraceNote(added.doc,{partId:'P1',measureIndex:0,eventIndex:0,
+    step:'G',alter:0,octave:4,slash:true,type:'eighth'});
+  const note=first(rows(retuned.doc)[0][0],'note');
+  assert.equal(first(note,'pitch').textContent,'G4');
+  assert.equal(first(note,'accidental').textContent,'natural');
+  assert.throws(()=>editGraceNote(retuned.doc,{partId:'P1',measureIndex:0,
+    eventIndex:0,step:'G',alter:0,octave:4,slash:true,type:'eighth'}),/이미 같은/);
+});
+test('complex grace notation is never rewritten and target must be an existing grace note',()=>{
+  const source=fixture(1,1);
+  pitched(first(rows(source)[0][0],'note'),'D',4);
+  assert.throws(()=>editGraceNote(source,{partId:'P1',measureIndex:0,
+    eventIndex:0}),/기존 꾸밈음/);
+  const added=insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0});
+  const grace=first(rows(added.doc)[0][0],'note');
+  grace.appendChild(n('notations',{},[n('slur',{number:'1',type:'start'})]));
+  assert.throws(()=>editGraceNote(added.doc,{partId:'P1',measureIndex:0,
+    eventIndex:0,step:'E',alter:0,octave:4}),/기존 꾸밈음/);
+  assert.equal(first(grace,'pitch').textContent,'C4');
+  assert.throws(()=>editGraceNote(source,{partId:'P1',measureIndex:0,
+    eventIndex:0,type:'quarter'}),/설정/);
 });
