@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
+import {authorTupletGroup} from '../src/studio-v4-tuplet-groups.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
 import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
@@ -629,4 +630,64 @@ test('crossbar: multi-measure slur connects endpoints while preserving the inter
   const restored=toggleSlurAcrossBarline(connected,options).doc;
   assert.equal(serialize(restored),untouched);
   assert.throws(()=>toggleSlurAcrossBarline(original,{...options,endMeasureOffset:9}),/거리/);
+});
+
+function groupedTupletFixture(type='16th'){
+  const source=fixture(),m=measure(source);
+  const old=children(m,'note'),duration=type==='16th'?12:type==='eighth'?24:48;
+  for(let i=0;i<4;i++){
+    const next=voiceNote(['C','E','G','B'][i],4,duration,type,'1','1');
+    m.replaceChild(next,old[i]);
+  }
+  const beforeBackup=first(m,'backup'),unused=192-4*duration;
+  if(unused>=96){m.insertBefore(voiceRest(96,'half','1','1'),beforeBackup);}
+  const remaining=unused-(unused>=96?96:0);
+  if(remaining>=48)m.insertBefore(voiceRest(48,'quarter','1','1'),beforeBackup);
+  if(remaining%48)throw Error('Unsupported test duration');
+  assert.equal(inspectAdvancedMeasure(source,'P1',0).reason,null);
+  return source;
+}
+for(const [ratio,type,expectedFactor,actual,normal] of [
+  ['3:2','16th',1,3,2],
+  ['5:4','16th',5,5,4],
+  ['6:4','16th',1,6,4],
+  ['7:4','16th',7,7,4],
+  ['5:4','eighth',5,5,4],
+]){
+  test('tuplets: '+ratio+' '+type+' uses exact ticks and preserves unrelated voices',()=>{
+    const source=groupedTupletFixture(type),saved=serialize(source);
+    const original=inspectAdvancedMeasure(source,'P1',0);
+    const result=authorTupletGroup(source,{...params(),ratio,type,step:'D',octave:5});
+    const after=inspectAdvancedMeasure(result.doc,'P1',0);
+    assert.equal(serialize(source),saved);
+    assert.equal(result.change.divisionsScale,expectedFactor);
+    assert.equal(after.divisions,original.divisions*expectedFactor);
+    assert.equal(after.reason,null);
+    const groups=after.events.slice(0,actual),slot=original.divisions*expectedFactor/({quarter:1,eighth:2,'16th':4,'32nd':8}[type])*normal/actual;
+    assert.equal(groups.length,actual);
+    assert.ok(groups.every(e=>e.tuplet&&e.duration===slot&&!e.rest));
+    assert.deepEqual(groups.slice(0,normal).map(e=>e.step),['C','E','G','B'].slice(0,normal));
+    assert.ok(groups.slice(normal).every(e=>e.step==='D'&&e.octave===5));
+    const remaining=after.events.filter(e=>e.voice==='2');
+    const originalOther=original.events.filter(e=>e.voice==='2');
+    assert.deepEqual(remaining.map(e=>[e.start,e.duration,e.rest,e.step]),
+      originalOther.map(e=>[e.start*expectedFactor,e.duration*expectedFactor,e.rest,e.step]));
+    assert.equal(first(first(notes(result.doc)[0],'notations'),'tuplet').getAttribute('type'),'start');
+    assert.equal(first(first(notes(result.doc)[actual-1],'notations'),'tuplet').getAttribute('type'),'stop');
+    assert.equal(first(first(notes(result.doc)[actual-1],'time-modification'),'actual-notes').textContent,String(actual));
+  });
+}
+test('tuplets: protect pre-existing lyrics, unsupported settings and MusicXML source',()=>{
+  const source=groupedTupletFixture(),saved=serialize(source);
+  assert.throws(()=>authorTupletGroup(source,{...params(),ratio:'9:8',type:'16th'}),/비율|길이/);
+  assert.throws(()=>authorTupletGroup(source,{...params(3),ratio:'5:4',type:'16th'}),/부족|연속/);
+  assert.equal(serialize(source),saved);
+  const decorated=groupedTupletFixture(),node=notes(decorated)[1];
+  node.appendChild(E('tie',[],{type:'start'}));
+  assert.throws(()=>authorTupletGroup(decorated,{...params(),ratio:'5:4',type:'16th'}),/기존 붙임줄|일반 음표/);
+  const lyric=groupedTupletFixture();
+  notes(lyric)[1].appendChild(E('lyric',[T('text','가')]));
+  const next=authorTupletGroup(lyric,{...params(),ratio:'5:4',type:'16th'}).doc;
+  assert.equal(first(first(notes(next)[1],'lyric'),'text').textContent,'가');
+  assert.equal(first(notes(next)[4],'lyric'),undefined);
 });
