@@ -1877,6 +1877,24 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_CROSSBAR_TIE_CHAIN_PITCH_CHANGE_AND_UNDO');
 
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-articulation-kind','accent');
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  const articulationEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const articulationXml=await fs.readFile(await (await articulationEvent).path(),'utf8');
+  assert.match(articulationXml,/<notations><tied type="start"\s*\/><slur number="1" type="start"\s*\/><articulations><accent\s*\/><\/articulations><\/notations>/);
+  assert.match(articulationXml,/<text>반짝<\/text>/);
+  assert.match(articulationXml,/<tie type="start"/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_TIED_NOTE_ARTICULATION_WITH_KOREAN_LYRIC_UNDO');
+
+
 
   // A tiny originally synthesized TTF with Han/Geul glyphs validates actual
   // embedded Unicode vector text without shipping a proprietary font.
