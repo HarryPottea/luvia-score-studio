@@ -68,7 +68,8 @@ function validatePart(part,partId,totalMeasures){
         reject('일반 음표·쉼표의 type/duration이 일치하지 않습니다.');
       const pitch=first(note,'pitch');
       if(pitch){
-        if(!'CDEFGAB'.includes(val(pitch,'step'))||!isInt(Number(val(pitch,'octave')),1,8)||
+        if(val(pitch,'step').length!==1||!'CDEFGAB'.includes(val(pitch,'step'))||
+          !isInt(Number(val(pitch,'octave')),1,8)||
           kid(note,'accidental').length||val(pitch,'alter')&&val(pitch,'alter')!=='0')
           reject('화성·변화표의 기보 의미가 달라질 수 있어 단순 리바링을 중단합니다.');
       }
