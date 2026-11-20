@@ -97,3 +97,78 @@ export function transferVoicePhrase(source,params={}){
     movedNotes:plan.notes.length,movedLyrics:lyrics,splitRestCount:splitRests,
     nextMeasureIndex:plan.measureIndex,nextEventIndex:transactionNotes[0]}};
 }
+
+
+// Multi-bar full-voice migration. Every measure is independently checked
+// BEFORE editing: complete contiguous source lane, one staff, no protected
+// markup and target notes have matching available rests. All transformations
+// remain on ephemeral MusicXML clones; any failure aborts the entire passage.
+export function transferVoiceAcrossMeasures(source,{
+  partId,startMeasureIndex,endMeasureIndex,sourceVoice,targetVoice='2',staff='1'
+}={}){
+  const part=getPart(source,partId);
+  if(!int(startMeasureIndex,0,255)||!int(endMeasureIndex,startMeasureIndex,255)||
+     endMeasureIndex-startMeasureIndex+1<2||endMeasureIndex-startMeasureIndex+1>8||
+     !/^[1-4]$/.test(String(sourceVoice))||
+     !/^[1-4]$/.test(String(targetVoice))||
+     sourceVoice===targetVoice||!/^[1-9][0-9]*$/.test(String(staff))||
+     !all(part,'measure')[endMeasureIndex])
+    fail('이동 구간은 연속된 2~8마디이며, 출발·도착 성부는 달라야 합니다.');
+  const plans=[];
+  for(let index=startMeasureIndex;index<=endMeasureIndex;index++){
+    const audit=inspectAdvancedMeasure(source,partId,index);
+    if(audit.reason)fail((index+1)+'마디의 시간 구조가 유효하지 않습니다: '+audit.reason);
+    const selected=audit.events.filter(e=>e.voice===String(sourceVoice)&&
+      e.staff===String(staff));
+    if(!selected.length||selected.length>16||selected[0].start!==0||
+       selected.at(-1).start+selected.at(-1).duration!==audit.max||
+       selected.some(e=>e.rest||e.chord||e.tuplet||e.protectedMarkup||!e.editablePitch))
+      fail((index+1)+'마디에서 시작부터 끝까지 이어지는 일반 음표 성부가 필요합니다.');
+    for(let j=1;j<selected.length;j++){
+      if(selected[j].start!==selected[j-1].start+selected[j-1].duration)
+        fail((index+1)+'마디에는 이동할 수 없는 시간 공백이 있습니다.');
+    }
+    if(selected.length>1){
+      const plan=inspectTransferableVoicePhrase(source,{
+        partId,measureIndex:index,startEventIndex:selected[0].eventIndex,
+        endEventIndex:selected.at(-1).eventIndex,targetVoice:String(targetVoice)
+      });
+      if(plan.notes.length!==selected.length)
+        fail((index+1)+'마디 구간에 다른 성부의 음표가 섞여 있습니다.');
+    }else{
+      const only=selected[0];
+      const rest=audit.events.filter(e=>e.voice===String(targetVoice)&&
+        e.staff===String(staff)&&e.rest&&!e.chord&&!e.tuplet&&
+        e.start<=only.start&&e.start+e.duration>=only.start+only.duration);
+      if(rest.length!==1)
+        fail((index+1)+'마디의 대상 성부에 빈 쉼표가 없습니다.');
+    }
+    plans.push({index,selection:selected});
+  }
+  let candidate=source,totalNotes=0,totalLyrics=0,splitRests=0;
+  for(const plan of plans){
+    const firstEvent=plan.selection[0].eventIndex,
+      lastEvent=plan.selection.at(-1).eventIndex;
+    const result=plan.selection.length===1?
+      moveNoteToRestingVoice(candidate,{
+        partId,measureIndex:plan.index,eventIndex:firstEvent,
+        targetVoice:String(targetVoice)
+      }):
+      transferVoicePhrase(candidate,{
+        partId,measureIndex:plan.index,startEventIndex:firstEvent,
+        endEventIndex:lastEvent,targetVoice:String(targetVoice)
+      });
+    candidate=result.doc;
+    totalNotes+=result.change.movedNotes||1;
+    totalLyrics+=result.change.movedLyrics;
+    splitRests+=result.change.splitRestCount;
+  }
+  if(totalNotes!==plans.reduce((n,p)=>n+p.selection.length,0))
+    fail('연속 마디의 음표 이동 개수가 일치하지 않습니다.');
+  return {doc:candidate,change:{action:'multi-measure-voice-transfer',partId,
+    startMeasureIndex,endMeasureIndex,sourceVoice:String(sourceVoice),
+    targetVoice:String(targetVoice),measures:plans.length,movedNotes:totalNotes,
+    movedLyrics:totalLyrics,splitRestCount:splitRests,
+    nextMeasureIndex:startMeasureIndex,
+    nextEventIndex:plans[0].selection[0].eventIndex}};
+}
