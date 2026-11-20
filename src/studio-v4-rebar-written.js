@@ -81,8 +81,10 @@ function validatePart(part,partId,totalMeasures){
           [...note.children].some(x=>!allowedNote.has(x.localName))||
           !!first(note,'chord')||!first(note,'type')||!first(note,'duration')||
           !!first(note,'notations')||!first(note,'pitch')&&!first(note,'rest')||
-          kid(note,'dot').length>1)
-          reject('기존 화음·잇단음·붙임줄·장식은 리바링에서 보호합니다.');
+          ['pitch','rest','duration','voice','type','staff','stem','accidental']
+            .some(tag=>kid(note,tag).length>1)||
+          kid(note,'dot').length>1||!!first(note,'pitch')&&!!first(note,'rest'))
+          reject('중복된 성부·보표나 기존 화음·잇단음·붙임줄·장식은 리바링에서 보호합니다.');
         const duration=Number(val(note,'duration')),type=val(note,'type');
         const dotted=kid(note,'dot').length===1;
         const expected=RATIOS.find(x=>x[0]===type&&x[2]===dotted);
