@@ -17,6 +17,7 @@ import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printboo
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline} from './studio-v4-crossbar.js';
 import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
+import {changeSingleEmptyMeasureMeter} from './studio-v4-meter-single.js';
 import './studio-v4.css';
 
 const intro=[
@@ -118,8 +119,9 @@ const panel=[
   '<button id="v4-apply-key" type="button">모든 파트 조표 변경</button>',
   '<button id="v4-key-from-measure" type="button">선택 마디부터 모든 파트 조표 변경</button>',
   '<label for="v4-meter">선택 마디 이후 비어 있는 구간의 박자표</label><select id="v4-meter"><option value="2/4">2/4</option><option value="3/4" selected>3/4</option><option value="4/4">4/4</option><option value="6/8">6/8</option><option value="3/8">3/8</option><option value="2/2">2/2</option></select>',
-  '<button id="v4-meter-empty" type="button">선택 마디부터 빈 악보 구간 박자 변경</button>',
-  '<p class="v4-tiny">이미 음표가 작성된 마디를 자동으로 다시 나누지는 않습니다. 빈 구간의 쉼표·피아노 양손 시간 이동만 정확하게 조정합니다.</p>',
+  '<div class="v4-inline"><button id="v4-meter-empty" type="button">선택 마디 이후 빈 구간 박자 변경</button>',
+  '<button id="v4-meter-single" type="button">선택한 빈 마디만 박자 변경</button></div>',
+  '<p class="v4-tiny">선택한 빈 마디만 변경하면 다음 마디에는 기존 박자표를 자동 복구합니다. 다른 음표가 작성된 마디를 자동으로 재분할하지는 않습니다.</p>',
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
@@ -628,6 +630,10 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     const [beats,beatType]=$('v4-meter').value.split('/').map(Number);
     return setMeterForEmptyTail(doc,{measureIndex:selected().measureIndex,beats,beatType});
   },'빈 구간 박자표 변경'));
+  $('v4-meter-single').addEventListener('click',()=>void commit(doc=>{
+    const [beats,beatType]=$('v4-meter').value.split('/').map(Number);
+    return changeSingleEmptyMeasureMeter(doc,{measureIndex:selected().measureIndex,beats,beatType});
+  },'선택 빈 마디 박자표 변경'));
 
   $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>setScoreLayoutBreak(doc,{
     measureIndex:selected().measureIndex,kind:$('v4-layout').value,
