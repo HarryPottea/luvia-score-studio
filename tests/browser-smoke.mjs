@@ -2175,6 +2175,37 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_SCOPED_VOICE_TRANSPOSITION_AND_UNDO');
 
+  // A multi-measure articulation batch is one undoable edit and preserves
+  // the other voice's rests, the original lyrics and all rhythmic offsets.
+  await page.locator('#file-input').setInputFiles({
+    name:'polyphonic-articulation-batch.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(twoBarPhrase)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===2,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','1');
+  await page.fill('#jwoo-range-to','2');
+  await page.click('#jwoo-range-apply');
+  await page.selectOption('#jwoo-batch-articulation-kind','accent');
+  await page.selectOption('#jwoo-batch-articulation-mode','add');
+  await page.selectOption('#jwoo-batch-articulation-voice','1');
+  await page.click('#jwoo-measure-toolbar [data-act="articulation"]');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('표현 기호 일괄 적용 완료'),
+    null,{timeout:30000});
+  const articulationDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const articulationXml=await fs.readFile(await (await articulationDownload).path(),'utf8');
+  assert.equal((articulationXml.match(/<accent\s*\/>/g)||[]).length,6);
+  assert.equal((articulationXml.match(/<voice>2<\/voice>/g)||[]).length,2);
+  assert.equal((articulationXml.match(/<backup>/g)||[]).length,2);
+  assert.match(articulationXml,/<text>별빛<\/text>/);
+  assert.match(articulationXml,/<text>달빛<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_MULTI_MEASURE_ARTICULATION_BATCH_AND_UNDO');
+
+
 
 
 
