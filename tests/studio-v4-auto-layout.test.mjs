@@ -163,3 +163,23 @@ test('layout-only structural guard prohibits changes to rhythm or metadata',()=>
     partIds:['P0','P1'],start:0,end:7,kind:'layout'
   }),/보존 대상/);
 });
+
+
+test('density layout recognizes tie connections and charges a protected seam',()=>{
+  const source=score({parts:1,count:8,notes:4});
+  const part=source.documentElement.children[0],barsOfPart=bars(part);
+  const tiedA=first(barsOfPart[2],'note'),tiedB=first(barsOfPart[3],'note');
+  tiedA.appendChild(el('tie',[],{type:'start'}));
+  tiedB.appendChild(el('tie',[],{type:'stop'}));
+  tiedA.appendChild(el('notations',[el('tied',[],{type:'start'})]));
+  tiedB.appendChild(el('notations',[el('tied',[],{type:'stop'})]));
+  const plan=planDensityLayout(source);
+  assert.ok(plan.breakPenaltyTotal>=140);
+  assert.match(plan.balancePolicy,/BALANCED_WIDTH/);
+  assert.equal(plan.totalMeasures,8);
+  const result=applyDensityLayout(source);
+  assert.equal(result.change.collisionVerified,false);
+  assert.equal(first(tiedA,'tie').getAttribute('type'),'start');
+  assert.equal(first(tiedB,'tie').getAttribute('type'),'stop');
+  assert.equal(first(first(bars(result.doc.documentElement.children[0])[2],'note'),'tie').getAttribute('type'),'start');
+});
