@@ -644,6 +644,23 @@ try {
   assert.ok(bookPdf.length>1800);
   await bothPartsTab.close();
   console.log('BROWSER_STAGE=V4_TWO_PART_VECTOR_PRINT_BOOK');
+  const partSvgZipDownload=page.waitForEvent('download',{timeout:45000});
+  await page.click('#v4-part-svg-zip');
+  const partSvgZip=await partSvgZipDownload;
+  assert.match(partSvgZip.suggestedFilename(),/-part-svg\.zip$/);
+  const partSvgZipBytes=await fs.readFile(await partSvgZip.path());
+  const partSvgArchive=await JSZip.loadAsync(partSvgZipBytes);
+  const svgNames=Object.keys(partSvgArchive.files).filter(name=>name.endsWith('.svg')).sort();
+  assert.ok(svgNames.length>=2,'Both parts must receive their own vector pages');
+  assert.ok(svgNames.some(name=>name.startsWith('01-')));
+  assert.ok(svgNames.some(name=>name.startsWith('02-')));
+  for(const name of svgNames){
+    const text=await partSvgArchive.file(name).async('string');
+    assert.match(text,/<svg[\s>]/);
+    assert.doesNotMatch(text,/<image[\s>]|<script[\s>]/i);
+  }
+  console.log('BROWSER_STAGE=V4_INDIVIDUAL_PART_VECTOR_SVG_ZIP');
+
 
 
 
