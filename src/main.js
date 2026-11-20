@@ -11,6 +11,7 @@ import { midiToMusicXml } from './midi-import.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { editableScoreRenderOptions } from './osmd-render-policy.js';
 import { mountStudioV4 } from './studio-v4.js';
+import { assertMusicXmlRoundTrip } from './studio-v4-xml-roundtrip.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
 import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
@@ -475,6 +476,7 @@ function serializeXmlDocument(doc) {
 }
 function downloadXmlDocument(doc, filename) {
   const xml = serializeXmlDocument(doc);
+  assertMusicXmlRoundTrip(doc,xml);
   const url = URL.createObjectURL(new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' }));
   const link = document.createElement('a');
   link.href = url; link.download = filename; link.click();
@@ -482,18 +484,22 @@ function downloadXmlDocument(doc, filename) {
 }
 $('download-xml').addEventListener('click', () => {
   if (!state.doc) return;
-  const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
-  downloadXmlDocument(state.doc, `${safeFileName(base)}-정리.musicxml`);
-  setMessage('전체 MusicXML 파일을 저장했습니다.');
+  try{
+    const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
+    downloadXmlDocument(state.doc, `${safeFileName(base)}-정리.musicxml`);
+    setMessage('전체 MusicXML 직렬화·재파싱 구조 검증 통과 · 파일을 저장했습니다.');
+  }catch(error){setMessage('MusicXML 저장 차단: '+(error.message||'구조 보존 검사 실패'),true);}
 });
 $('download-part-xml').addEventListener('click', () => {
   if (!state.doc) return;
-  const id = $('export-part').value;
-  const part = scoreParts().find(item => item.id === id);
-  if (!part) { setMessage('내보낼 파트를 선택해주세요.', true); return; }
-  const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
-  downloadXmlDocument(filteredDocument(new Set([id])), `${safeFileName(base)}-${safeFileName(part.name)}.musicxml`);
-  setMessage(`${part.name} 파트를 MusicXML로 저장했습니다. 인쇄하려면 ‘선택 파트 보기’ 후 PDF로 인쇄를 누르세요.`);
+  try{
+    const id = $('export-part').value;
+    const part = scoreParts().find(item => item.id === id);
+    if (!part) { setMessage('내보낼 파트를 선택해주세요.', true); return; }
+    const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
+    downloadXmlDocument(filteredDocument(new Set([id])), `${safeFileName(base)}-${safeFileName(part.name)}.musicxml`);
+    setMessage(`${part.name} 파트 MusicXML 구조 검증 후 저장 완료. 인쇄하려면 ‘선택 파트 보기’ 후 PDF로 인쇄를 누르세요.`);
+  }catch(error){setMessage('파트 MusicXML 저장 차단: '+(error.message||'구조 보존 검사 실패'),true);}
 });
 let partZipInProgress = false;
 $('download-all-parts-zip').addEventListener('click', async () => {
@@ -507,7 +513,12 @@ $('download-all-parts-zip').addEventListener('click', async () => {
   try {
     const blob = await buildPartZip({
       parts, scoreFilename: state.filename,
-      serializePart: (id) => serializeXmlDocument(filteredDocument(new Set([id]))),
+      serializePart: (id) => {
+        const partDoc=filteredDocument(new Set([id]));
+        const xml=serializeXmlDocument(partDoc);
+        assertMusicXmlRoundTrip(partDoc,xml);
+        return xml;
+      },
       onProgress: (percent) => setMessage(`파트별 악보 압축 중… ${percent}%`),
     });
     const url = URL.createObjectURL(blob);
