@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {
-  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest
+  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie
 } from '../src/studio-v4-professional.js';
 
 // Deterministic DOM supporting the exact MusicXML tree operations used by the
@@ -307,4 +307,37 @@ test('professional: protect the second note lyric when converting into tuplets',
   const before=serialize(doc);
   assert.throws(()=>createEighthTriplet(doc,{...params(),step:'G'}),/가사/);
   assert.equal(serialize(doc),before);
+});
+
+test('professional: split a polyphonic half note into two tied quarters with exact duration',()=>{
+  const original=fixture(),before=serialize(original),unaffectedVoice=values(original).events.filter(x=>x.voice==='1');
+  const result=splitVoiceNoteWithTie(original,{...params(6),firstType:'quarter'});
+  assert.equal(serialize(original),before,'The input document remains immutable');
+  assert.deepEqual(values(result.doc).events.filter(x=>x.voice==='1'),unaffectedVoice);
+  assert.deepEqual(secondVoice(result.doc).map(x=>[x[0],x[1],x[3]]),[
+    [0,48,'C'],[48,48,''],[96,48,'G'],[144,48,'G']]);
+  const halves=notes(result.doc).filter(x=>first(first(x,'pitch'),'step')?.textContent==='G');
+  assert.equal(halves.length,2);
+  assert.deepEqual(halves.map(x=>first(x,'tie')?.getAttribute('type')),['start','stop']);
+  assert.deepEqual(halves.map(x=>first(first(x,'notations'),'tied')?.getAttribute('type')),['start','stop']);
+  assert.equal(first(children(measure(result.doc),'backup')[0],'duration').textContent,'192');
+});
+test('professional: splitting a lyric note preserves the syllable only on the first segment',()=>{
+  const original=fixture(),sustained=notes(original)[6];
+  sustained.appendChild(E('lyric',[T('text','오늘')]));
+  const result=splitVoiceNoteWithTie(original,{...params(6),firstType:'quarter'});
+  const pitches=notes(result.doc).filter(x=>first(first(x,'pitch'),'step')?.textContent==='G');
+  assert.equal(first(first(pitches[0],'lyric'),'text').textContent,'오늘');
+  assert.equal(first(pitches[1],'lyric'),undefined);
+  assert.equal(first(sustained,'duration').textContent,'96');
+});
+test('professional: unrepresentable or protected note splits are blocked',()=>{
+  const original=fixture(),serial=serialize(original);
+  assert.throws(()=>splitVoiceNoteWithTie(original,{...params(0),firstType:'quarter'}),/나눌 수 없는/);
+  assert.throws(()=>splitVoiceNoteWithTie(original,{...params(0),firstType:'32nd'}),/나눌 수 없는/);
+  assert.throws(()=>splitVoiceNoteWithTie(original,{...params(2),firstType:'16th'}),/대상이 아닙니다/);
+  const marked=fixture();
+  notes(marked)[6].appendChild(E('tie',[],{type:'start'}));
+  assert.throws(()=>splitVoiceNoteWithTie(marked,{...params(6),firstType:'quarter'}),/보호|복합/);
+  assert.equal(serialize(original),serial);
 });
