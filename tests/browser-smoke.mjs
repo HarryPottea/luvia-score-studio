@@ -30,6 +30,12 @@ try {
   page.on('pageerror',error=>errors.push(String(error)));
   await page.goto(url,{waitUntil:'domcontentloaded'});
   console.log('BROWSER_STAGE=PAGE_OPEN');
+  assert.equal(await page.locator('#try-sample').count(),0,'No sample-score action is exposed');
+  assert.equal(await page.locator('#empty-preview svg').count(),0,'No decorative sample score is shown');
+  assert.match(await page.locator('#empty-preview').textContent(),/아직 열린 악보가 없습니다/);
+  assert.equal(await page.locator('#toggle-settings').isDisabled(),true);
+  assert.equal(await page.locator('#editor-controls').isVisible(),false);
+  console.log('BROWSER_STAGE=BLANK_START_NO_SAMPLE');
   assert.ok((await page.title()).includes('JaeWoo'));
 
   // Brand assets must be served as real resources, not SPA fallback HTML.
@@ -95,6 +101,18 @@ try {
   await page.click('#v4-new');
   await page.locator('#v3-events .v3-event').first().waitFor();
   assert.match(await page.locator('#score-title').inputValue(),/통합 검증/);
+  assert.equal(await page.locator('#toggle-settings').isEnabled(),true);
+  assert.equal(await page.locator('#toggle-settings').getAttribute('aria-expanded'),'true');
+  const originalTitle=await page.locator('#score-title').inputValue();
+  await page.click('#toggle-settings');
+  assert.equal(await page.locator('#editor-controls').isVisible(),false);
+  assert.equal(await page.locator('#toggle-settings').getAttribute('aria-expanded'),'false');
+  await page.click('#toggle-settings');
+  assert.equal(await page.locator('#editor-controls').isVisible(),true);
+  assert.equal(await page.locator('#toggle-settings').getAttribute('aria-expanded'),'true');
+  assert.equal(await page.locator('#score-title').inputValue(),originalTitle,
+    'Toggling settings must preserve edited score state');
+  console.log('BROWSER_STAGE=SETTINGS_TOGGLE_DOES_NOT_REPLACE_SCORE');
   await page.selectOption('#v3-length','quarter');
   await page.click('#v4-insert-note');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('음표 삽입 완료'));
@@ -150,7 +168,12 @@ try {
   await page.click('#v4-stop');
   console.log('BROWSER_STAGE=V4_WEB_AUDIO_AUDITION');
   // Explicit restore uses the draft rather than the changed current score.
-  await page.click('#try-sample');
+  // Replace the current score deliberately, then verify draft restore still works.
+  // The removed sample-score action must not be part of the app's workflow.
+  await page.fill('#v4-new-title','임시 복원 대상');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.waitForFunction(()=>document.querySelector('#score-title')?.value==='임시 복원 대상',null,{timeout:15000});
   await page.selectOption('#v4-draft-select','통합 검증.musicxml');
   page.once('dialog',dialog=>dialog.accept());
   await page.click('#v4-restore');
@@ -158,7 +181,13 @@ try {
   assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/C4/);
   console.log('BROWSER_STAGE=V4_LOCAL_DRAFT_RESTORED');
 
-  await page.click('#try-sample');
+  // Use a test-only MusicXML fixture to exercise representative real notation.
+  // It is not bundled into the public application and has no sample UI button.
+  const notationFixture=await fs.readFile(new URL('./fixtures/browser-smoke-notation.musicxml',import.meta.url));
+  await page.setInputFiles('#file-input',{name:'notation-fixture.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:notationFixture});
+  await page.waitForFunction(()=>document.querySelector('#score-title')?.value==='새벽의 스케치',null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false',null,{timeout:30000});
   await page.locator('#score-container svg').first().waitFor({timeout:30000});
   console.log('BROWSER_STAGE=SCORE_RENDERED');
   assert.equal(await page.locator('#zoom').count(),0,'Legacy zoom slider must not control print size');

@@ -1,4 +1,4 @@
-export const sampleScore = `<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE score-partwise  PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
   <work><work-title>새벽의 스케치</work-title></work>
@@ -12,4 +12,4 @@ export const sampleScore = `<?xml version="1.0" encoding="utf-8"?>
     <measure implicit="no" number="3"><note default-x="10" default-y="-35"><pitch><step>F</step><octave>4</octave></pitch><duration>10080</duration><type>quarter</type><stem>up</stem></note><note default-x="95" default-y="-25"><pitch><step>A</step><octave>4</octave></pitch><duration>10080</duration><type>quarter</type><stem>up</stem></note><note default-x="180" default-y="-20"><pitch><step>B</step><octave>4</octave></pitch><duration>10080</duration><type>quarter</type><stem>up</stem></note><note default-x="265" default-y="-15"><pitch><step>C</step><octave>5</octave></pitch><duration>10080</duration><type>quarter</type><stem>down</stem></note></measure>
     <measure implicit="no" number="4"><note default-x="10" default-y="-25"><pitch><step>A</step><octave>4</octave></pitch><duration>40320</duration><type>whole</type></note><barline location="right"><bar-style>light-heavy</bar-style></barline></measure>
   </part>
-</score-partwise>`;
+</score-partwise>
