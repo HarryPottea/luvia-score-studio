@@ -1482,6 +1482,19 @@ try {
     null,{timeout:30000});
   assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip').count(),5);
   console.log('BROWSER_STAGE=V4_DIRECT_MEASURE_COPY_PASTE');
+
+  const partPdfZipDownload=page.waitForEvent('download',{timeout:60000});
+  await page.click('#v4-part-pdf-zip');
+  const pdfZip=await partPdfZipDownload;
+  const vectorPartsZip=await JSZip.loadAsync(await fs.readFile(await pdfZip.path()));
+  const pdfEntries=Object.keys(vectorPartsZip.files).filter(x=>x.endsWith('.pdf'));
+  assert.equal(pdfEntries.length,1);
+  const vectorPdf=await vectorPartsZip.file(pdfEntries[0]).async('nodebuffer');
+  assert.equal(vectorPdf.subarray(0,5).toString(),'%PDF-');
+  assert.ok(vectorPdf.length>1000);
+  assert.match(vectorPdf.toString('latin1'),/\/Type\s*\/Page/);
+  console.log('BROWSER_STAGE=V4_LOCAL_VECTOR_PART_PDF_ZIP');
+
   await page.locator('#jwoo-measure-toolbar [data-act="duplicate"]').click();
   await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===6,
     null,{timeout:30000});
