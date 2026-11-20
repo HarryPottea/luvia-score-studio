@@ -110,6 +110,20 @@ function rewriteClock(note,type,duration){
       note.ownerDocument.createElement('dot');
     note.insertBefore(e,first(note,'type').nextSibling);
   }
+  // A tuplet's normal-type/normal-dot must describe the new written
+  // subdivision. Stale metadata makes otherwise correct durations invalid.
+  const tm=first(note,'time-modification');
+  if(tm){
+    const normalType=first(tm,'normal-type');
+    if(normalType)normalType.textContent=type.replace('-dotted','');
+    for(const dot of children(tm,'normal-dot'))tm.removeChild(dot);
+    if(dotted&&normalType){
+      const e=tm.ownerDocument.createElementNS?
+        tm.ownerDocument.createElementNS(tm.namespaceURI??null,'normal-dot'):
+        tm.ownerDocument.createElement('normal-dot');
+      tm.insertBefore(e,normalType.nextSibling);
+    }
+  }
   const stem=first(note,'stem');if(stem)note.removeChild(stem);
 }
 function execute(source,{partId,measureIndex,firstIndex,lastIndex,types,ratio,tuplet}){
