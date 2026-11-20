@@ -174,8 +174,23 @@ export function editVoiceRhythm(source,{partId,measureIndex,eventIndex,type,mode
     guardNote(note,{rest:true});
     if(!STEPS.includes(step)||step.length!==1||!int(alter,-2,2)||!int(octave,1,8))
       fail('음정 입력값이 잘못되었습니다.');
-    if(desired>old)fail('선택한 쉼표보다 긴 음표는 넣을 수 없습니다.');
-    const chunks=decomposeRest(old-desired,divisions);
+    // Extend the selected rest across subsequent ordinary rests in the same
+    // voice/staff. Written notes, backup/forward and decorated rests are
+    // boundaries: an insertion never silently displaces existing material.
+    let remaining=Math.max(0,desired-old),cursor=note.nextSibling;
+    const consumed=[];
+    while(remaining>0){
+      if(cursor?.localName!=='note'||!direct(cursor,'rest')||!sameLaneNote(note,cursor))
+        fail('필요한 길이만큼 같은 성부의 연속된 쉼표가 없습니다.');
+      guardNote(cursor,{rest:true});
+      const len=Number(value(cursor,'duration'));
+      if(!int(len,1,262144))fail('연속된 쉼표의 길이가 올바르지 않습니다.');
+      consumed.push({node:cursor,left:len-Math.min(remaining,len)});
+      remaining-=Math.min(remaining,len);
+      cursor=cursor.nextSibling;
+    }
+    const chunks=decomposeRest(Math.max(0,old-desired),divisions);
+    const retained=consumed.map(x=>({...x,chunks:decomposeRest(x.left,divisions)}));
     const pitch=make(note,'pitch');
     pitch.appendChild(make(pitch,'step',step));
     if(alter) pitch.appendChild(make(pitch,'alter',alter));
@@ -183,6 +198,11 @@ export function editVoiceRhythm(source,{partId,measureIndex,eventIndex,type,mode
     note.replaceChild(pitch,direct(note,'rest'));
     setWrittenDuration(note,type,desired);
     emitRests(measure,note,note,chunks);
+    for(const item of retained){
+      for(const rest of item.chunks)
+        measure.insertBefore(makeRest(measure,item.node,rest.duration,rest.type),item.node);
+      measure.removeChild(item.node);
+    }
   } else {
     if(event.rest)fail('쉼표의 길이 변경은 음표 삽입으로 처리하세요.');
     if(event.tuplet)fail('기존 셋잇단음의 개별 길이 변경은 별도 튜플릿 그룹 기능에서 처리해야 합니다.');
