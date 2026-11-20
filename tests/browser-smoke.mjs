@@ -2371,6 +2371,75 @@ try {
     'exported score re-import retains second-voice rest');
   console.log('BROWSER_STAGE=STAGE1_SVG_DELETE_UNDO_AND_XML_ROUNDTRIP');
 
+
+  // Stage 2 actual Chromium UI -> MusicXML -> Undo -> import, with two voices.
+  const s2Note=(step,duration,type,voice,staff)=>'<note><pitch><step>'+step+
+    '</step><octave>'+(staff===2?'3':'4')+'</octave></pitch><duration>'+duration+
+    '</duration><voice>'+voice+'</voice><type>'+type+'</type><staff>'+staff+'</staff></note>';
+  const s2Rest=(duration,type,voice,staff)=>'<note><rest/><duration>'+duration+
+    '</duration><voice>'+voice+'</voice><type>'+type+'</type><staff>'+staff+'</staff></note>';
+  const s2Start='<?xml version="1.0"?><score-partwise version="4.0"><part-list>'+
+    '<score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef>'+
+    '<clef number="2"><sign>F</sign><line>4</line></clef></attributes>';
+  const s2Xml=s2Start+s2Note('C',24,'eighth',1,1)+s2Note('E',24,'eighth',1,1)+
+    s2Rest(144,'half',1,1).replace('<type>half</type>','<type>half</type><dot/>')+
+    '<backup><duration>192</duration></backup>'+
+    s2Note('C',48,'quarter',2,2)+s2Rest(48,'quarter',2,2)+
+    s2Note('G',96,'half',2,2)+'</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'stage2-polyphonic.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(s2Xml)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===6,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.fill('#v4-rhythm-group-end','2');
+  await page.fill('#v4-rhythm-group-types','eighth-dotted,16th');
+  await page.click('#v4-rhythm-group-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('성부별 음표·화음 리듬 재분배 완료'),
+    null,{timeout:30000});
+  const s2Export=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s2Changed=await fs.readFile(await (await s2Export).path(),'utf8');
+  assert.match(s2Changed,/<step>C<\/step><octave>4<\/octave><\/pitch><duration>36<\/duration>/);
+  assert.match(s2Changed,/<step>E<\/step><octave>4<\/octave><\/pitch><duration>12<\/duration>/);
+  assert.match(s2Changed,/<backup><duration>192<\/duration><\/backup>/);
+  assert.match(s2Changed,/<step>C<\/step><octave>3<\/octave><\/pitch><duration>48<\/duration>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE2_POLYPHONIC_RHYTHM_AND_UNDO');
+
+  await page.selectOption('#v4-tuplet-ratio','3:2');
+  await page.selectOption('#v4-tuplet-unit','eighth');
+  await page.click('#v4-tuplet-author');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('잇단음'),
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.fill('#v4-tuplet-rhythm-types','quarter,16th,16th');
+  await page.click('#v4-tuplet-rhythm-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('잇단음 그룹 리듬 구조 변경 완료'),
+    null,{timeout:30000});
+  const s2TuExport=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s2TuXml=await fs.readFile(await (await s2TuExport).path(),'utf8');
+  assert.match(s2TuXml,/<duration>32<\/duration><voice>1<\/voice><type>quarter<\/type>/);
+  assert.match(s2TuXml,/<duration>8<\/duration><voice>1<\/voice><type>16th<\/type>/);
+  assert.match(s2TuXml,/<actual-notes>3<\/actual-notes><normal-notes>2<\/normal-notes>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const s2UndoExport=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s2Undone=await fs.readFile(await (await s2UndoExport).path(),'utf8');
+  assert.match(s2Undone,/<duration>16<\/duration><voice>1<\/voice><type>eighth<\/type>/);
+  await page.locator('#file-input').setInputFiles({name:'stage2-tupler-roundtrip.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(s2TuXml)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===7,
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE2_TUPLET_RHYTHM_UNDO_AND_MUSICXML_REIMPORT');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
