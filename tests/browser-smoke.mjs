@@ -2294,6 +2294,18 @@ try {
   });
   await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===11,
     null,{timeout:30000});
+  const s1Targets=page.locator('#score-container .jwoo-note-target');
+  const s1TargetCount=await s1Targets.count();
+  let selectedChord=false;
+  for(let i=0;i<Math.min(s1TargetCount,8);i++){
+    const target=s1Targets.nth(i);
+    await target.focus();
+    await target.press('Enter');
+    const label=await page.locator('#v3-advanced-report').textContent();
+    if(label?.includes('화음 구성 음')){selectedChord=true;break;}
+  }
+  assert.ok(selectedChord,'a rendered chord tone must be directly selectable on the SVG');
+  console.log('BROWSER_STAGE=STAGE1_CHORD_HEAD_DIRECT_SELECTION');
   await page.locator('#v3-events .v3-event').first().click();
   assert.equal(await page.locator('#v3-chord-remove').isDisabled(),false,
     'chord root is removable with safe promotion');
