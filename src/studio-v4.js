@@ -993,9 +993,11 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-add-dynamic').addEventListener('click',()=>void commit(doc=>addExpression(doc,{
     ...selected(),kind:'dynamic',value:$('v4-dynamic').value,
   }),'셈여림 기보'));
-  $('v4-apply-articulation').addEventListener('click',()=>void commit(doc=>addExpression(doc,{
-    ...selected(),kind:$('v4-articulation').value,
-  }),'아티큘레이션 토글'));
+  // The quick articulation button shares the guarded professional notation
+  // engine, so a tied/slurred/ornamented/lyric note behaves identically here.
+  $('v4-apply-articulation').addEventListener('click',()=>void commit(doc=>
+    toggleAdvancedArticulation(doc,{...selected(),kind:$('v4-articulation').value}),
+    '아티큘레이션 토글'));
   $('v4-lyric-set').addEventListener('click',()=>void commit(doc=>setNoteVerse(doc,{
     ...selected(),verse:Number($('v4-lyric-verse').value),text:$('v4-lyric-text').value,
     syllabic:$('v4-lyric-syllabic').value,extend:$('v4-lyric-extend').value,mode:'set',
