@@ -91,3 +91,75 @@ export function removeGraceNote(source,{partId,measureIndex,eventIndex}={}){
   return {doc,change:{action:'remove-grace-note',partId,measureIndex,eventIndex,
     nextMeasureIndex:measureIndex,nextEventIndex:Math.max(0,eventIndex-1)}};
 }
+
+
+// Edit an existing zero-duration grace note, leaving every other event,
+// including the accented main note, unchanged. Keep unsupported editorial
+// attachments intact by refusing to change them.
+export function editGraceNote(source,{partId,measureIndex,eventIndex,
+  step='C',alter=0,octave=4,slash=true,type='eighth'}={}){
+  if(typeof step!=='string'||step.length!==1||!'CDEFGAB'.includes(step)||
+     !valid(alter,-2,2)||!valid(octave,1,8)||typeof slash!=='boolean'||
+     !['eighth','16th','32nd'].includes(type))
+    fail('꾸밈음의 음정·빗금·음표 길이 표기를 확인해 주세요.');
+  const original=locate(source,{partId,measureIndex,eventIndex}),note=original.note;
+  const grace=first(note,'grace'),pitch=first(note,'pitch'),writtenType=first(note,'type');
+  const allowed=new Set(['grace','pitch','voice','type','accidental','staff','stem']);
+  if(!grace||!pitch||!writtenType||first(note,'duration')||
+     note.attributes?.length||all(note,'grace').length!==1||
+     all(note,'pitch').length!==1||all(note,'type').length!==1||
+     all(note,'accidental').length>1||
+     [...note.children].some(n=>!allowed.has(n.localName))||
+     [...grace.attributes].some(a=>a.name!=='slash')||
+     (grace.getAttribute('slash')!==null&&
+      !['yes','no'].includes(grace.getAttribute('slash')))||
+     [...pitch.children].some(n=>!['step','alter','octave'].includes(n.localName))||
+     all(pitch,'step').length!==1||all(pitch,'octave').length!==1||
+     all(pitch,'alter').length>1||pitch.attributes?.length||
+     writtenType.attributes?.length||writtenType.children.length||
+     [...all(note,'accidental')].some(n=>n.attributes?.length||n.children.length||
+       !['flat-flat','flat','natural','sharp','double-sharp'].includes(n.textContent.trim())))
+    fail('기존 꾸밈음에 수정할 수 없는 장식·속성 또는 구조가 있습니다.');
+  const oldStep=first(pitch,'step').textContent.trim(),
+    oldAlter=Number(first(pitch,'alter')?.textContent.trim()||0),
+    oldOctave=Number(first(pitch,'octave').textContent.trim());
+  if(!'CDEFGAB'.includes(oldStep)||oldStep.length!==1||
+     !valid(oldAlter,-2,2)||!valid(oldOctave,1,8)||
+     !['eighth','16th','32nd'].includes(writtenType.textContent.trim()))
+    fail('기존 꾸밈음의 음정·음표 종류가 지원되지 않습니다.');
+  const accidental=all(note,'accidental');
+  const oldSlash=grace.getAttribute('slash')==='yes';
+  if(oldStep===step&&oldAlter===alter&&oldOctave===octave&&
+     oldSlash===slash&&writtenType.textContent.trim()===type)
+    fail('이미 같은 꾸밈음 설정입니다.');
+  const doc=source.cloneNode(true);
+  const part=all(doc.documentElement,'part').find(p=>p.getAttribute('id')===partId);
+  const bar=all(part,'measure')[measureIndex],notes=all(bar,'note'),target=notes[eventIndex];
+  const nextGrace=first(target,'grace');
+  nextGrace.setAttribute('slash',slash?'yes':'no');
+  const newPitch=make(target,'pitch');
+  newPitch.appendChild(make(newPitch,'step',step));
+  if(alter!==0)newPitch.appendChild(make(newPitch,'alter',alter));
+  newPitch.appendChild(make(newPitch,'octave',octave));
+  target.replaceChild(newPitch,first(target,'pitch'));
+  first(target,'type').textContent=type;
+  for(const mark of all(target,'accidental'))target.removeChild(mark);
+  const accidentalName=alter===0?
+    (accidental.length||oldStep===step&&oldAlter!==0?'natural':null):
+    ACCIDENTAL[alter];
+  if(accidentalName){
+    const mark=make(target,'accidental',accidentalName);
+    target.insertBefore(mark,first(target,'stem')||first(target,'staff')||null);
+  }
+  const after=inspectAdvancedMeasure(doc,partId,measureIndex);
+  check(original.audit,after);
+  const edited=all(bar,'note')[eventIndex];
+  if(after.events[eventIndex]?.duration!==0||!first(edited,'grace')||
+     first(edited,'duration')||first(first(edited,'pitch'),'step')?.textContent!==step||
+     Number(first(first(edited,'pitch'),'alter')?.textContent||0)!==alter||
+     Number(first(first(edited,'pitch'),'octave')?.textContent)!==octave)
+    fail('꾸밈음 편집이 박자 없는 음표로 보존되지 않았습니다.');
+  return {doc,change:{action:'edit-grace-note',partId,measureIndex,eventIndex,
+    step,alter,octave,slash,type,nextMeasureIndex:measureIndex,
+    nextEventIndex:eventIndex}};
+}
