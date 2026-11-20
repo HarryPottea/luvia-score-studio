@@ -4,8 +4,8 @@ import { inspectAdvancedMeasure, editAdvancedScore } from './advanced-score.js';
 const $ = id=>document.getElementById(id);
 const html=[
 '<section class="control-group v3-advanced" aria-label="화음 다성부 셋잇단음 검토">',
-'<div class="control-heading"><span>화음·다성부·셋잇단음</span><span>10</span></div>',
-'<p class="control-hint">기존 박자·성부·셋잇단음 길이를 유지한 채 개별 음정과 단순 화음 음을 편집합니다. 복잡한 기보 자체의 길이·구성 변경은 보호됩니다.</p>',
+'<div class="control-heading"><span>화음·다성부 음정 편집</span><span>10</span></div>',
+'<p class="control-hint">다성부·셋잇단음의 박자 구조를 유지하면서 음정과 화음 구성음을 편집합니다. 지원하지 않는 복잡한 구조는 변경하지 않습니다.</p>',
 '<div id="v3-advanced-report" class="v3-meter" aria-live="polite">악보를 불러오면 고급 구조 검사를 표시합니다.</div>',
 '<div class="v3-note-tools">',
 '<div><label for="v3-advanced-step">음이름</label><select id="v3-advanced-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div>',
