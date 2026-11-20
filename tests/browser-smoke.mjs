@@ -549,6 +549,51 @@ try {
   assert.match(insertedXml,/<backup><duration>192<\/duration><\/backup>/);
   assert.match(insertedXml,/<step>G<\/step><octave>3<\/octave>/);
   console.log('BROWSER_STAGE=V4_DIRECT_TIMELINE_NOTE_ENTRY');
+  const crossbarScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves>'+
+    '<clef number="1"><sign>G</sign><line>2</line></clef>'+
+    '<clef number="2"><sign>F</sign><line>4</line></clef></attributes>'+
+    '<note><rest/><duration>192</duration><voice>1</voice><type>whole</type><staff>1</staff></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><pitch><step>G</step><octave>3</octave></pitch><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '<note><pitch><step>B</step><octave>3</octave></pitch><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '</measure><measure number="2">'+
+    '<note><rest/><duration>192</duration><voice>1</voice><type>whole</type><staff>1</staff></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '<note><pitch><step>A</step><octave>3</octave></pitch><duration>96</duration><voice>2</voice><type>half</type><staff>2</staff></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'crossbar-voice.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(crossbarScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(2).click();
+  assert.match(await page.locator('#v3-selection').textContent(),/96\/48/);
+  await page.selectOption('#v4-crossbar-type','quarter');
+  await page.click('#v4-crossbar-extend');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('다음 마디로 음표 붙임줄 연장 완료'),null,{timeout:30000});
+  const crossbarDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const crossbarEditedXml=await fs.readFile(await (await crossbarDownload).path(),'utf8');
+  assert.equal((crossbarEditedXml.match(/<tie type="start"\s*\/>/g)||[]).length,1);
+  assert.equal((crossbarEditedXml.match(/<tie type="stop"\s*\/>/g)||[]).length,1);
+  assert.equal((crossbarEditedXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,2);
+  assert.match(crossbarEditedXml,/<step>B<\/step><octave>3<\/octave>/);
+  console.log('BROWSER_STAGE=V4_CROSSBAR_SUSTAINING_NOTE_WITH_VOICE_TIMING');
+
+  await page.fill('#v4-pro-end','4');
+  await page.selectOption('#v4-slur-next-measure','1');
+  await page.click('#v4-pro-slur');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('이음줄 추가·해제 완료'),null,{timeout:30000});
+  const crossSlurDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const crossSlurXml=await fs.readFile(await (await crossSlurDownload).path(),'utf8');
+  assert.match(crossSlurXml,/<slur type="start" number="1"\s*\/>/);
+  assert.match(crossSlurXml,/<slur type="stop" number="1"\s*\/>/);
+  assert.equal((crossSlurXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,2);
+  console.log('BROWSER_STAGE=V4_CROSSBAR_SLUR_ADDED_AND_EXPORTED');
+
 
 
 
@@ -660,6 +705,21 @@ try {
     assert.doesNotMatch(text,/<image[\s>]|<script[\s>]/i);
   }
   console.log('BROWSER_STAGE=V4_INDIVIDUAL_PART_VECTOR_SVG_ZIP');
+  await page.selectOption('#v4-cadence-bars','2');
+  await page.selectOption('#v4-cadence-systems','2');
+  await page.click('#v4-cadence-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('전체 악보 줄·페이지 나눔 완료'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-cadence-status').textContent(),/모든 파트 2개/);
+  const scoreCadenceDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const scoreCadenceXml=await fs.readFile(await (await scoreCadenceDownload).path(),'utf8');
+  assert.equal((scoreCadenceXml.match(/<print new-system="yes"/g)||[]).length,2,
+    'The third bar must start a new system in each part');
+  assert.equal((scoreCadenceXml.match(/<print new-page="yes"/g)||[]).length,2,
+    'The fifth bar must start a new page in each part');
+  assert.match(scoreCadenceXml,/<backup><duration>144<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_MULTIPART_CADENCE_SYSTEM_PAGE_WRITTEN');
+
 
 
 
