@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {
-  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote
+  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest
 } from '../src/studio-v4-professional.js';
 
 // Deterministic DOM supporting the exact MusicXML tree operations used by the
@@ -235,9 +235,31 @@ test('professional: reject non-grid targets, occupied notes, crossing backup and
   assert.throws(()=>relocateVoiceNote(original,{...params(1),targetBeat:2.1,grid:'16th'}),/격자/);
   assert.throws(()=>relocateVoiceNote(original,{...params(1),targetBeat:8,grid:'16th'}),/격자/);
   assert.throws(()=>relocateVoiceNote(original,{...params(1),targetBeat:1.5,grid:'16th'}),/해당 박자/);
-  assert.throws(()=>relocateVoiceNote(original,{...params(4),targetBeat:2,grid:'16th'}),/연속된 빈 쉼표/);
+  assert.throws(()=>relocateVoiceNote(original,{...params(4),targetBeat:4.5,grid:'16th'}),/연속된 빈 쉼표/);
   const protectedDoc=fixture();
   notes(protectedDoc)[1].appendChild(E('tie',[],{type:'start'}));
   assert.throws(()=>relocateVoiceNote(protectedDoc,{...params(1),targetBeat:3,grid:'16th'}),/붙임줄|복잡한/);
   assert.equal(serialize(original),serial);
+});
+
+test('professional: polyphonic note-to-rest preserves full timeline and unrelated notes',()=>{
+  const original=fixture(),before=serialize(original),other=secondVoice(original);
+  const changed=replaceVoiceNoteWithRest(original,params(1)).doc;
+  assert.equal(serialize(original),before);
+  assert.deepEqual(secondVoice(changed),other);
+  const changedEvents=values(changed).events;
+  assert.equal(changedEvents[1].rest,true);
+  assert.equal(changedEvents[1].duration,24);
+  assert.equal(changedEvents[1].start,24);
+  assert.equal(first(children(measure(changed),'backup')[0],'duration').textContent,'192');
+  assert.equal(values(changed).reason,null);
+});
+test('professional: protect lyric-bearing, chord and tupletted notes against implicit deletion',()=>{
+  const original=fixture(),lyric=notes(original)[1];
+  lyric.appendChild(E('lyric',[T('text','한')]));
+  assert.throws(()=>replaceVoiceNoteWithRest(original,params(1)),/가사/);
+  assert.equal(first(lyric,'pitch')!==undefined,true);
+  const tuple=fixture();notes(tuple)[1].appendChild(E('time-modification',[
+    T('actual-notes',3),T('normal-notes',2)]));
+  assert.throws(()=>replaceVoiceNoteWithRest(tuple,params(1)),/보호|기보|시간/);
 });
