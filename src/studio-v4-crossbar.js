@@ -156,10 +156,11 @@ export function extendVoiceAcrossBarline(source,{partId,measureIndex,eventIndex,
  * removing an existing matching connection. No rhythm is rewritten.
  */
 export function toggleSlurAcrossBarline(source,{partId,measureIndex,eventIndex,
-  endEventIndex=0}={}){
+  endEventIndex=0,endMeasureOffset=1}={}){
   const start=locate(source,partId,measureIndex,eventIndex);
-  if(!integer(endEventIndex,0,99999))fail('끝 음표 위치가 잘못되었습니다.');
-  const nextMeasureIndex=measureIndex+1;
+  if(!integer(endEventIndex,0,99999)||!integer(endMeasureOffset,1,8))
+    fail('끝 음표 위치 또는 이음줄 마디 거리가 잘못되었습니다.');
+  const nextMeasureIndex=measureIndex+endMeasureOffset;
   const end=locate(source,partId,nextMeasureIndex,endEventIndex);
   if(!start.event||!end.event||start.event.rest||end.event.rest||start.event.chord||end.event.chord||
     lane(start.event)!==lane(end.event))
@@ -201,7 +202,8 @@ export function toggleSlurAcrossBarline(source,{partId,measureIndex,eventIndex,
   assertPreserved(source,candidate,partId,measureIndex,lane(start.event));
   assertPreserved(source,candidate,partId,nextMeasureIndex,lane(start.event));
   return {doc:candidate,change:{action:matched?'crossbar-slur-remove':'crossbar-slur-add',
-    partId,measureIndex,eventIndex,endMeasureIndex:nextMeasureIndex,endEventIndex}};
+    partId,measureIndex,eventIndex,endMeasureIndex:nextMeasureIndex,
+    endMeasureOffset,endEventIndex}};
 }
 
 
