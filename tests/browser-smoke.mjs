@@ -113,6 +113,16 @@ try {
   assert.equal(await page.locator('#score-title').inputValue(),originalTitle,
     'Toggling settings must preserve edited score state');
   console.log('BROWSER_STAGE=SETTINGS_TOGGLE_DOES_NOT_REPLACE_SCORE');
+  const directRestDiagnostic=await page.evaluate(()=>({
+    mappedRests:document.querySelectorAll('#score-container .jwoo-rest-target').length,
+    noteheads:document.querySelectorAll('#score-container .vf-notehead').length,
+    stavenotes:document.querySelectorAll('#score-container .vf-stavenote').length,
+    vfRests:document.querySelectorAll('#score-container .vf-rest').length,
+    graphicHint:document.querySelector('#v3-graphic-hint')?.textContent,
+    example:[...document.querySelectorAll('#score-container .vf-stavenote')].slice(0,2)
+      .map(x=>x.outerHTML.slice(0,650))
+  }));
+  console.log('BROWSER_STAGE=V4_REST_MAP_DIAGNOSTIC',JSON.stringify(directRestDiagnostic));
   await page.waitForFunction(()=>document.querySelectorAll('#score-container .jwoo-rest-target').length>0,
     null,{timeout:15000});
   const restHead=page.locator('#score-container .jwoo-rest-target').first();
