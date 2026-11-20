@@ -494,3 +494,57 @@ export function replaceVoiceNoteWithRest(source,{partId,measureIndex,eventIndex}
     fail('음표 삭제 후 쉼표 위치가 일치하지 않습니다.');
   return {doc,change:{action:'voice-note-to-rest',partId,measureIndex,eventIndex}};
 }
+
+
+/**
+ * Split one plain note into two equal-pitch notes joined by sounding AND
+ * engraved ties. Only two exactly representable, plain note lengths are
+ * accepted; dots, tuplets, existing ties, chords, and beams remain protected.
+ * The first segment keeps all original lyrics and the continuation has none.
+ */
+export function splitVoiceNoteWithTie(source,{partId,measureIndex,eventIndex,
+  firstType='quarter'}={}){
+  const {doc,loc}=start(source,{partId,measureIndex,eventIndex});
+  const {note,measure,audit,event}=loc;
+  if(!event||event.rest||event.chord||event.tuplet||event.protectedMarkup)
+    fail('복합 기보·쉼표·화음은 붙임줄 분할 대상이 아닙니다.');
+  guardNote(note);
+  const duration=durationFor(firstType,audit.divisions);
+  const remaining=event.duration-duration;
+  const second=TYPES.find(([type])=>durationFor(type,audit.divisions)===remaining);
+  if(duration<=0||!second)
+    fail('두 개의 일반 음표로 정확히 나눌 수 없는 길이입니다.');
+  const old=event.duration,continuation=note.cloneNode(true);
+  for(const lyric of all(continuation,'lyric'))continuation.removeChild(lyric);
+  const setLength=(node,length,type)=>{
+    direct(node,'duration').textContent=String(length);
+    direct(node,'type').textContent=type;
+    const stem=direct(node,'stem');if(stem)node.removeChild(stem);
+  };
+  setLength(note,duration,firstType);
+  setLength(continuation,remaining,second[0]);
+  const tie=(node,kind)=>{
+    const sound=make(node,'tie');sound.setAttribute('type',kind);
+    node.insertBefore(sound,direct(node,'voice')||direct(node,'type'));
+    const notations=make(node,'notations');
+    const tied=make(notations,'tied');tied.setAttribute('type',kind);
+    notations.appendChild(tied);
+    node.insertBefore(notations,direct(node,'lyric')||null);
+  };
+  tie(note,'start');tie(continuation,'stop');
+  measure.insertBefore(continuation,note.nextSibling);
+  const updated=validateChange(doc,{...loc,measure:loc.sourceMeasure,part:loc.sourcePart},
+    partId,measureIndex,new Set([identity(event)]));
+  const firstIndex=all(measure,'note').indexOf(note);
+  const first=updated.events[firstIndex],next=updated.events[firstIndex+1];
+  if(!first||!next||first.start!==event.start||first.duration!==duration||
+    next.start!==event.start+duration||next.duration!==remaining||
+    first.step!==event.step||next.step!==event.step||
+    next.alter!==event.alter||next.octave!==event.octave||
+    first.voice!==event.voice||next.voice!==event.voice||
+    first.staff!==event.staff||next.staff!==event.staff||
+    old!==first.duration+next.duration)
+    fail('붙임줄 분할 후 음악 시간 또는 음정 보존 검사에 실패했습니다.');
+  return {doc,change:{action:'voice-note-tied-split',partId,measureIndex,eventIndex,
+    nextEventIndex:firstIndex,firstType,secondType:second[0]}};
+}
