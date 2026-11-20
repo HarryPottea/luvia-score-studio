@@ -2554,7 +2554,11 @@ try {
   const stage3Roundtrip=page.waitForEvent('download');
   await page.click('#download-xml');
   const stage3Reimported=await fs.readFile(await (await stage3Roundtrip).path(),'utf8');
-  assert.equal(stage3Reimported,stage3Xml,'real MusicXML reimport keeps all expressions');
+  // The import/export normalizer may remove the newline between the XML
+  // declaration and score root. Compare the XML content, not header spacing.
+  const normalizeStage3Xml=xml=>xml.replace(/>\\s+</g,'><');
+  assert.equal(normalizeStage3Xml(stage3Reimported),normalizeStage3Xml(stage3Xml),
+    'real MusicXML reimport keeps all expressions');
   console.log('BROWSER_STAGE=STAGE3_LYRICS_INDEPENDENT_EDIT_UNDO_REIMPORT');
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
