@@ -4,6 +4,7 @@ import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from '../src/studio-v4-measure-blocks.js';
 import {createEditorHistory} from '../src/editor-history.js';
 import {transposeMeasurePassage} from '../src/studio-v4-passage-transpose.js';
+import {addIndependentVoice} from '../src/studio-v4-add-voice.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
 const xmlOwner={
@@ -366,4 +367,43 @@ test('complex chord spellings fail before mutating source',()=>{
   assert.throws(()=>transposeMeasurePassage(source,{start:1,end:1,semitones:3}),/복잡한 코드/);
   assert.equal(first(first(chord,'root'),'root-step').textContent,'C');
   assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'C4');
+});
+
+
+test('add a full second voice to one part without rewriting the companion part',()=>{
+  const source=fixture(4,2);
+  const result=addIndependentVoice(source,{partId:'P1',voice:'2',staff:1});
+  assert.equal(result.change.measures,4);
+  assert.equal(result.change.rests,4);
+  for(let i=0;i<4;i++){
+    const created=rows(result.doc)[0][i];
+    assert.equal(created.children.filter(n=>n.localName==='backup').length,1);
+    assert.equal(created.children.filter(n=>n.localName==='note').length,2);
+    assert.equal(created.children.find(n=>n.localName==='backup').textContent,'192');
+    const newRest=created.children.filter(n=>n.localName==='note')[1];
+    assert.equal(first(newRest,'voice').textContent,'2');
+    assert.equal(first(newRest,'duration').textContent,'192');
+    assert.equal(first(newRest,'rest').localName,'rest');
+  }
+  assert.equal(rows(result.doc)[1][0].children.filter(n=>n.localName==='note').length,1);
+  assert.equal(rows(source)[0][0].children.filter(n=>n.localName==='note').length,1);
+  assert.throws(()=>addIndependentVoice(result.doc,{partId:'P1',voice:'2'}),/이미 사용/);
+});
+test('a 3/4 second voice is spelled as a dotted half rest with an exact clock',()=>{
+  const source=fixture(1,1),bar=rows(source)[0][0],attrs=first(bar,'attributes');
+  first(first(attrs,'time'),'beats').textContent='3';
+  const note=first(bar,'note');first(note,'duration').textContent='144';
+  first(note,'type').textContent='half';note.appendChild(n('dot'));
+  const result=addIndependentVoice(source,{partId:'P1',voice:'2',staff:1});
+  const next=rows(result.doc)[0][0].children.filter(n=>n.localName==='note')[1];
+  assert.equal(first(next,'duration').textContent,'144');
+  assert.equal(first(next,'type').textContent,'half');
+  assert.equal(first(next,'dot').localName,'dot');
+});
+test('reject partial measure voice addition while leaving original intact',()=>{
+  const source=fixture(2,1);
+  first(first(rows(source)[0][1],'note'),'duration').textContent='48';
+  assert.throws(()=>addIndependentVoice(source,{partId:'P1'}),/완전하지 않아/);
+  assert.equal(rows(source)[0][0].children.filter(n=>n.localName==='backup').length,0);
+  assert.equal(rows(source)[0][1].children.filter(n=>n.localName==='note').length,1);
 });
