@@ -74,7 +74,9 @@ const panel=[
   '<p class="v4-tiny">같은 성부·보표의 연속된 쉼표 안에서 이동합니다. 다른 음표·마디·붙임줄·셋잇단음·빔은 넘지 않습니다. 변경은 실행 취소할 수 있습니다.</p></div>',
   '<p class="v4-subhead">현재 마디 성부 시간표</p>',
   '<p class="v4-tiny">음표를 선택해 위치를 확인하세요. Shift+←/→로 한 격자씩 이동하거나, 위에서 이동·입력 모드를 선택하고 빈 쉼표를 클릭하세요.</p>',
-  '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치"></div>',
+  '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치" tabindex="0"></div>',
+  '<label class="v4-timeline-move-check v4-keyboard-enable"><input id="v4-keys-enabled" type="checkbox" /> 키보드 작곡 단축키 사용 (선택 기능)</label>',
+  '<p class="v4-tiny">편집 화면에서 영문 N: 선택 쉼표에 음표 입력 · R: 음표를 쉼표로 변경 · [ / ]: 앞/뒤 쉼표로 한 격자 이동. 텍스트 입력 중에는 작동하지 않습니다.</p>',
   '<button id="v4-pro-triplet" type="button">4·8·16분음표 두 개 → 셋잇단음 세 개</button>',
   '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
@@ -496,6 +498,26 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     const position=selected(),targetBeat=Number($('v4-relocate-beat').value);
     void commit(doc=>relocateVoiceNote(doc,{...position,targetBeat,
       grid:$('v4-grid-step').value}),'음표를 지정한 박자로 이동');
+  });
+  document.addEventListener('keydown',event=>{
+    if(!$('v4-keys-enabled').checked||!state.doc||state.showBaseline||
+      event.ctrlKey||event.metaKey||event.altKey||event.isComposing||event.repeat)return;
+    const target=event.target;
+    if(target?.closest?.('input,textarea,select,button,[contenteditable="true"]'))return;
+    if(!document.activeElement?.closest?.('.site-shell'))return;
+    const key=event.key.toLowerCase();
+    if(!['n','r','[',']'].includes(key))return;
+    event.preventDefault();
+    const current=selected();
+    if(key==='n')void commit(doc=>editVoiceRhythm(doc,{...current,mode:'insert',
+      type:$('v4-pro-type').value,step:$('v4-pro-step').value,
+      alter:Number($('v4-pro-alter').value),octave:Number($('v4-pro-octave').value)}),
+      '키보드 음표 입력');
+    if(key==='r')void commit(doc=>replaceVoiceNoteWithRest(doc,current),'키보드 음표를 쉼표로 변경');
+    if(key==='['||key===']')
+      void commit(doc=>nudgeVoiceNoteOnGrid(doc,{...current,
+        direction:key==='['?'earlier':'later',grid:$('v4-grid-step').value}),
+        '키보드 음표 시작 위치 이동');
   });
   $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
     ...selected(),mode:'duration',type:$('v4-pro-type').value,
