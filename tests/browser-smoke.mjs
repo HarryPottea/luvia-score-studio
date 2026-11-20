@@ -561,6 +561,24 @@ try {
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('키보드 음표를 쉼표로 변경 완료'),null,{timeout:30000});
   await page.locator('#v4-keys-enabled').uncheck();
   console.log('BROWSER_STAGE=V4_OPT_IN_KEYBOARD_NOTE_COMPOSING');
+  // The professional editor can now consume a run of same-lane rests rather
+  // than requiring the selected rest to fit the entire note by itself.
+  await page.locator('#file-input').setInputFiles({name:'piano-multirest-entry.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(nudgeXml)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(2).click();
+  await page.selectOption('#v4-pro-type','half');
+  await page.selectOption('#v4-pro-step','A');
+  await page.click('#v4-pro-insert');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('전문 음표 입력 완료'),null,{timeout:30000});
+  const longEntryDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const longEntryXml=await fs.readFile(await (await longEntryDownload).path(),'utf8');
+  assert.match(longEntryXml,/<step>A<\/step><octave>4<\/octave><\/pitch><duration>96<\/duration>/);
+  assert.match(longEntryXml,/<step>G<\/step><octave>3<\/octave><\/pitch><duration>96<\/duration>/);
+  assert.match(longEntryXml,/<backup><duration>192<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_MULTI_REST_SINGLE_NOTE_ENTRY');
+
 
   const crossbarScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
     '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
@@ -606,6 +624,24 @@ try {
   assert.match(crossSlurXml,/<slur type="stop" number="1"\s*\/>/);
   assert.equal((crossSlurXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,2);
   console.log('BROWSER_STAGE=V4_CROSSBAR_SLUR_ADDED_AND_EXPORTED');
+  // Moving a pitch to another bar is distinct from lengthening it with a
+  // sounding tie: it must retain one source attack and update the selection.
+  await page.locator('#file-input').setInputFiles({name:'crossbar-onset-move.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(crossbarScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(2).click();
+  await page.click('#v4-crossbar-move');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 음표를 다음 마디로 이동 완료'),null,{timeout:30000});
+  assert.equal(await page.locator('#v3-measure').inputValue(),'1');
+  assert.match(await page.locator('#v3-selection').textContent(),/시작 0\/48/);
+  const crossMovedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const crossMovedXml=await fs.readFile(await (await crossMovedDownload).path(),'utf8');
+  assert.equal((crossMovedXml.match(/<step>B<\/step><octave>3<\/octave>/g)||[]).length,1);
+  assert.equal((crossMovedXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,2);
+  assert.match(crossMovedXml,/<step>A<\/step><octave>3<\/octave>/);
+  console.log('BROWSER_STAGE=V4_CROSSBAR_ONSET_MOVE_AND_SELECTION');
+
 
 
 
