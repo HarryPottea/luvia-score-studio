@@ -838,7 +838,18 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   // but never depend on fields disabled for polyphony or tuplets.
   const proFieldIds={'v3-step':'v4-pro-step','v3-alter':'v4-pro-alter',
     'v3-octave':'v4-pro-octave','v3-length':'v4-pro-type'};
-  const editInput=id=>$(id).disabled?$(proFieldIds[id]):$(id);
+  // V3 now exposes advanced graphical editing too. Do not infer that the
+  // professional input must use V3 values merely because V3 fields are enabled.
+  const legacySingleVoice=()=>{
+    const position=selected();
+    if(!state.doc||!position.partId)return false;
+    try{
+      const measure=inspectAdvancedMeasure(state.doc,position.partId,position.measureIndex);
+      if(measure.reason||!measure.events[position.eventIndex])return false;
+      return measure.events.every(e=>e.voice==='1'&&e.staff==='1'&&!e.chord&&!e.tuplet);
+    }catch{return false;}
+  };
+  const editInput=id=>legacySingleVoice()?$(id):$(proFieldIds[id]);
   function pitch(){return {step:editInput('v3-step').value,
     alter:Number(editInput('v3-alter').value),octave:Number(editInput('v3-octave').value)};}
   $('v4-insert-note').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
