@@ -5,6 +5,7 @@ import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
 import {createEditorHistory} from '../src/editor-history.js';
 import {transposeMeasurePassage} from '../src/studio-v4-passage-transpose.js';
 import {addIndependentVoice} from '../src/studio-v4-add-voice.js';
+import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
@@ -486,4 +487,51 @@ test('unsupported accidental ornamentation is blocked while preserving original'
   assert.throws(()=>editConnectedPitch(source,{partId:'P1',measureIndex:1,eventIndex:0,
     step:'D'}),/특수 임시표/);
   assert.equal(first(note,'pitch').textContent,'C4');
+});
+
+
+test('transfer a written note and Korean lyric to a simultaneous empty second voice',()=>{
+  const score=fixture(3,2);
+  for(const bar of rows(score)[0]){
+    const note=first(bar,'note');
+    note.replaceChild(n('pitch',{},[leaf('step','C'),leaf('octave',4)]),
+      first(note,'rest'));
+  }
+  const sourceNote=first(rows(score)[0][0],'note');
+  sourceNote.appendChild(n('lyric',{number:'1'},[leaf('text','하늘')]));
+  const twoVoices=addIndependentVoice(score,{partId:'P1',voice:'2',staff:1}).doc;
+  const result=moveNoteToRestingVoice(twoVoices,{partId:'P1',measureIndex:0,
+    eventIndex:0,targetVoice:'2'});
+  const bar=rows(result.doc)[0][0],newNotes=bar.children.filter(x=>x.localName==='note');
+  assert.equal(newNotes.length,2);
+  assert.ok(first(newNotes[0],'rest'));
+  assert.equal(first(newNotes[0],'duration').textContent,'192');
+  assert.equal(first(newNotes[1],'pitch').textContent,'C4');
+  assert.equal(first(newNotes[1],'voice').textContent,'2');
+  assert.equal(first(newNotes[1],'lyric').textContent,'하늘');
+  assert.equal(first(newNotes[1],'duration').textContent,'192');
+  assert.equal(result.change.movedLyrics,1);
+  assert.equal(result.change.nextEventIndex,1);
+  assert.equal(first(first(rows(twoVoices)[0][0],'note'),'pitch').textContent,'C4');
+  assert.equal(first(first(rows(twoVoices)[0][0],'note'),'lyric').textContent,'하늘');
+  assert.equal(first(first(rows(result.doc)[1][0],'note'),'rest').localName,'rest');
+  assert.equal(first(rows(result.doc)[0][1],'note').children.some(x=>x.localName==='pitch'),true);
+});
+test('transfer refuses missing matching rest, mismatched beat, same voice and decorated tie',()=>{
+  const source=fixture(1,1),note=first(rows(source)[0][0],'note');
+  note.replaceChild(n('pitch',{},[leaf('step','D'),leaf('octave',4)]),first(note,'rest'));
+  assert.throws(()=>moveNoteToRestingVoice(source,{partId:'P1',
+    measureIndex:0,eventIndex:0,targetVoice:'2'}),/빈 쉼표/);
+  const two=addIndependentVoice(source,{partId:'P1',voice:'2'}).doc;
+  assert.throws(()=>moveNoteToRestingVoice(two,{partId:'P1',
+    measureIndex:0,eventIndex:0,targetVoice:'1'}),/다른 대상 성부/);
+  const bar=rows(two)[0][0],rest=bar.children.filter(x=>x.localName==='note')[1];
+  first(rest,'duration').textContent='96';
+  assert.throws(()=>moveNoteToRestingVoice(two,{partId:'P1',
+    measureIndex:0,eventIndex:0,targetVoice:'2'}),/빈 쉼표/);
+  first(rest,'duration').textContent='192';
+  first(bar,'note').appendChild(n('notations',{},[n('slur',{type:'start'})]));
+  assert.throws(()=>moveNoteToRestingVoice(two,{partId:'P1',
+    measureIndex:0,eventIndex:0,targetVoice:'2'}),/일반 음표|보호된/);
+  assert.equal(first(first(bar,'note'),'pitch').textContent,'D4');
 });
