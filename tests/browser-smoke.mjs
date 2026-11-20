@@ -1706,6 +1706,34 @@ try {
   await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===13,null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_KEYBOARD_COPY_DUPLICATE_MEASURE');
 
+  const harmonicScore=fourBarScore.replace(
+    '<measure number="2"><note>',
+    '<measure number="2"><harmony><root><root-step>C</root-step></root>'+
+    '<kind text="maj7">major-seventh</kind>'+
+    '<bass><bass-step>G</bass-step></bass></harmony><note>');
+  await page.locator('#file-input').setInputFiles({name:'harmonic-passage.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(harmonicScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','2');
+  await page.fill('#jwoo-range-to','2');
+  await page.click('#jwoo-range-apply');
+  await page.fill('#jwoo-transpose-semitones','2');
+  assert.equal(await page.locator('#jwoo-transpose-chords').isChecked(),true);
+  await page.locator('#jwoo-measure-toolbar [data-act="transpose"]').click();
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 구간 +2반음 이조 완료'),
+    null,{timeout:30000});
+  const chordSave=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const movedChordXml=await fs.readFile(await (await chordSave).path(),'utf8');
+  const bar2=movedChordXml.match(/<measure number="2">([\s\S]*?)<\/measure>/)?.[1]||'';
+  assert.match(bar2,/<root-step>D<\/root-step>/);
+  assert.match(bar2,/<bass-step>A<\/bass-step>/);
+  assert.match(bar2,/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(bar2,/<kind text="maj7">major-seventh<\/kind>/);
+  console.log('BROWSER_STAGE=V4_CHORD_AND_NOTE_SEMITONE_TRANSPOSE_TOGETHER');
+
+
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
