@@ -57,23 +57,38 @@ const laneSignature=e=>{
     ?base+'@voice='+String(voice)+'@staff='+String(staff):null;
 };
 export function matchScoreEvents(events,graphics) {
-  const pairs=[],usedEvents=new Set(),usedGraphics=new Set();
-  for(const identify of [laneSignature,signature]){
-    const source=new Map(),visual=new Map();
-    for(const [list,store,used] of [[events,source,usedEvents],[graphics,visual,usedGraphics]]){
-      for(const e of list){
-        if(used.has(e))continue;
-        const key=identify(e);
-        if(key===null)continue;
-        const bucket=store.get(key)||[];bucket.push(e);store.set(key,bucket);
-      }
+  const source=new Map(),visual=new Map();
+  for(const [list,store] of [[events,source],[graphics,visual]]){
+    for(const event of list){
+      const key=signature(event);
+      if(key===null)continue;
+      const found=store.get(key)||[];found.push(event);store.set(key,found);
     }
-    for(const [key,matches] of source){
-      const drawn=visual.get(key)||[];
-      if(matches.length!==1||drawn.length!==1)continue;
-      const event=matches[0],graphic=drawn[0];
-      pairs.push({event,graphic});usedEvents.add(event);usedGraphics.add(graphic);
+  }
+  const pairs=[];
+  for(const [key,group] of source){
+    const rendered=visual.get(key)||[];
+    if(group.length===1&&rendered.length===1){
+      pairs.push({event:group[0],graphic:rendered[0]});continue;
     }
+    // Duplicated simultaneous pitches/rests need complete, unambiguous voice
+    // evidence. Never pair only a subset: OSMD could renumber voices.
+    if(group.length<2||group.length!==rendered.length)continue;
+    const byLane=new Map();
+    let valid=true;
+    for(const item of group){
+      const id=laneSignature(item);
+      if(id===null||byLane.has(id)){valid=false;break;}
+      byLane.set(id,item);
+    }
+    if(!valid)continue;
+    const seen=new Set(),candidate=[];
+    for(const item of rendered){
+      const id=laneSignature(item),original=id===null?null:byLane.get(id);
+      if(!original||seen.has(id)){valid=false;break;}
+      seen.add(id);candidate.push({event:original,graphic:item});
+    }
+    if(valid&&seen.size===group.length)pairs.push(...candidate);
   }
   return pairs;
 }
