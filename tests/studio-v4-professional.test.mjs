@@ -790,8 +790,9 @@ test('chord: flat spelling and explicit protections never retime written music',
   ]);
   const plain=fixture();
   assert.throws(()=>transposeChordChromatically(plain,{...params(),semitones:1}),/화음/);
-  const tied=transposableChordFixture(),before=serialize(tied);
+  const tied=transposableChordFixture();
   notes(tied)[0].appendChild(E('tie',[],{type:'start'}));
+  const before=serialize(tied);
   assert.throws(()=>transposeChordChromatically(tied,{...params(),semitones:1}),/붙임줄|장식/);
   assert.equal(serialize(tied),before);
 });
