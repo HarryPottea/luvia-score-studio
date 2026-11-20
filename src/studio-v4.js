@@ -827,7 +827,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }
   });
   void refreshDrafts();
-  return {beforeOpen,onRendered,onLoaded,onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();},
+  return {beforeOpen,onRendered,onLoaded,onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();inlineLyrics.onSelectionChange(selected());},
     lyricMode:()=>inlineLyrics.isMode(),
     openLyricFromScore:(position,element)=>inlineLyrics.openFromScore(position,element),
     stop:()=>player.stop()};
