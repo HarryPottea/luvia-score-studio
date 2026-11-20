@@ -1489,10 +1489,10 @@ try {
   const vectorPartsZip=await JSZip.loadAsync(await fs.readFile(await pdfZip.path()));
   const pdfEntries=Object.keys(vectorPartsZip.files).filter(x=>x.endsWith('.pdf'));
   assert.equal(pdfEntries.length,1);
-  const vectorPdf=await vectorPartsZip.file(pdfEntries[0]).async('nodebuffer');
-  assert.equal(vectorPdf.subarray(0,5).toString(),'%PDF-');
-  assert.ok(vectorPdf.length>1000);
-  assert.match(vectorPdf.toString('latin1'),/\/Type\s*\/Page/);
+  const vectorPartPdfBytes=await vectorPartsZip.file(pdfEntries[0]).async('nodebuffer');
+  assert.equal(vectorPartPdfBytes.subarray(0,5).toString(),'%PDF-');
+  assert.ok(vectorPartPdfBytes.length>1000);
+  assert.match(vectorPartPdfBytes.toString('latin1'),/\/Type\s*\/Page/);
   console.log('BROWSER_STAGE=V4_LOCAL_VECTOR_PART_PDF_ZIP');
 
   await page.locator('#jwoo-measure-toolbar [data-act="duplicate"]').click();
