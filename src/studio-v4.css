@@ -162,12 +162,12 @@
 .jwoo-lyric-pop-header button{flex:none;font-size:22px;line-height:1;width:32px;height:32px;
   padding:1px;background:transparent;border:1px solid #748568;color:#ebf6df;border-radius:4px;cursor:pointer}
 .jwoo-lyric-popover>label:not(.jwoo-lyric-overwrite){display:block;margin:9px 0 5px;font-size:12px;font-weight:700}
-.jwoo-lyric-popover input[type=text],.jwoo-lyric-popover select{
+.jwoo-lyric-popover textarea,.jwoo-lyric-popover select{
   display:block;box-sizing:border-box;width:100%;min-height:40px;padding:8px 10px;
   background:#fff;color:#1c2419;border:1px solid #9da995;border-radius:4px;
   font-size:16px;font-family:inherit
 }
-.jwoo-lyric-popover input:focus-visible,.jwoo-lyric-popover select:focus-visible,
+.jwoo-lyric-popover textarea:focus-visible,.jwoo-lyric-popover select:focus-visible,
 .jwoo-lyric-popover button:focus-visible{outline:2px solid #d6fa7c;outline-offset:2px}
 .jwoo-lyric-preview{margin:10px 0;padding:8px 10px;min-height:20px;
   font-size:12px;line-height:1.6;overflow-wrap:anywhere;background:#35432d;border-radius:3px}
@@ -187,3 +187,5 @@
   .jwoo-lyric-popover{padding:11px}
 }
 @media print{.jwoo-lyric-popover,.jwoo-lyric-mode-button{display:none!important}}
+
+.jwoo-lyric-popover textarea{resize:vertical;min-height:60px;max-height:132px;line-height:1.5}
