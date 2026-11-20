@@ -2440,6 +2440,122 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=STAGE2_TUPLET_RHYTHM_UNDO_AND_MUSICXML_REIMPORT');
 
+
+  // Stage 3: compose a mixed note stack in the real Chromium UI, then toggle
+  // each expression independently. Confirm original tie, slur, multiple lyrics
+  // and cross-bar continuation survive every isolated edit and MusicXML roundtrip.
+  await page.locator('#file-input').setInputFiles({name:'stage3-tied-vocal.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(tiedPitchScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===2,
+    null,{timeout:30000});
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-articulation-kind','accent');
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  await page.selectOption('#v4-ornament-kind','trill-mark');
+  await page.click('#v4-ornament-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('음악 장식 기호 추가 / 해제 완료'),null,{timeout:30000});
+  await page.fill('#v4-lyric-verse','2');
+  await page.fill('#v4-lyric-text','Together');
+  await page.click('#v4-lyric-set');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('가사 입력·교체 완료'),null,{timeout:30000});
+  const stage3Export=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3Xml=await fs.readFile(await (await stage3Export).path(),'utf8');
+  assert.match(stage3Xml,/<notations><tied type="start"\s*\/><slur number="1" type="start"\s*\/><ornaments><trill-mark\s*\/><\/ornaments><articulations><accent\s*\/><\/articulations><\/notations>/);
+  assert.match(stage3Xml,/<lyric number="1"><syllabic>single<\/syllabic><text>반짝<\/text><\/lyric>/);
+  assert.match(stage3Xml,/<lyric number="2"><syllabic>single<\/syllabic><text>Together<\/text><\/lyric>/);
+  console.log('BROWSER_STAGE=STAGE3_COMPLEX_TIE_SLUR_TRILL_ACCENT_TWO_VERSES');
+
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  const stage3NoAccent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3NoAccentXml=await fs.readFile(await (await stage3NoAccent).path(),'utf8');
+  assert.doesNotMatch(stage3NoAccentXml,/<articulations><accent\s*\/><\/articulations>/);
+  assert.match(stage3NoAccentXml,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  assert.match(stage3NoAccentXml,/<text>반짝<\/text>/);
+  assert.match(stage3NoAccentXml,/<text>Together<\/text>/);
+  assert.match(stage3NoAccentXml,/<tied type="start"/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE3_ISOLATED_ARTICULATION_TOGGLE_AND_UNDO');
+
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-slur-next-measure','1');
+  await page.fill('#v4-pro-end','1');
+  await page.click('#v4-pro-slur');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('이음줄 추가·해제 완료'),null,{timeout:30000});
+  const stage3NoSlur=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3NoSlurXml=await fs.readFile(await (await stage3NoSlur).path(),'utf8');
+  assert.doesNotMatch(stage3NoSlurXml,/<slur\b/);
+  assert.match(stage3NoSlurXml,/<tied type="start"/);
+  assert.match(stage3NoSlurXml,/<articulations><accent\s*\/><\/articulations>/);
+  assert.match(stage3NoSlurXml,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE3_CROSSBAR_SLUR_TOGGLE_PRESERVES_TIE_LYRICS');
+
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-tie-next-measure','1');
+  await page.fill('#v4-pro-end','1');
+  await page.click('#v4-tie-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('붙임줄 연결'),null,{timeout:30000});
+  const stage3NoTie=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3NoTieXml=await fs.readFile(await (await stage3NoTie).path(),'utf8');
+  assert.doesNotMatch(stage3NoTieXml,/<tie type="(?:start|stop)"/);
+  assert.match(stage3NoTieXml,/<slur number="1" type="start"/);
+  assert.match(stage3NoTieXml,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  assert.match(stage3NoTieXml,/<text>Together<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE3_SOUNDING_TIE_TOGGLE_PRESERVES_SLUR_AND_EXPRESSIONS');
+
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.fill('#v4-lyric-verse','1');
+  await page.fill('#v4-lyric-text','우리');
+  await page.click('#v4-lyric-set');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('가사 입력·교체 완료'),
+    null,{timeout:30000});
+  const stage3LyricEdited=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3Edited=await fs.readFile(await (await stage3LyricEdited).path(),'utf8');
+  assert.match(stage3Edited,/<lyric number="1">[\s\S]*?<text>우리<\/text>/);
+  assert.match(stage3Edited,/<lyric number="2">[\s\S]*?<text>Together<\/text>/);
+  assert.match(stage3Edited,/<articulations><accent\s*\/><\/articulations>/);
+  assert.match(stage3Edited,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const stage3Restored=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3RestoredXml=await fs.readFile(await (await stage3Restored).path(),'utf8');
+  assert.equal(stage3RestoredXml,stage3Xml,'undo must restore the exact stacked notation');
+  await page.locator('#file-input').setInputFiles({name:'stage3-complex-roundtrip.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage3Xml)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===2,
+    null,{timeout:30000});
+  const stage3Roundtrip=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3Reimported=await fs.readFile(await (await stage3Roundtrip).path(),'utf8');
+  assert.equal(stage3Reimported,stage3Xml,'real MusicXML reimport keeps all expressions');
+  console.log('BROWSER_STAGE=STAGE3_LYRICS_INDEPENDENT_EDIT_UNDO_REIMPORT');
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
