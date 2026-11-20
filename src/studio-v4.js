@@ -187,6 +187,7 @@ const panel=[
   '<div class="v4-inline"><button id="v4-play" type="button">▶ 악보 재생</button><button id="v4-play-range" type="button">▶ 선택 마디 청음</button><button id="v4-stop" type="button" disabled>■ 정지</button></div>',
   '<label class="v4-timeline-move-check"><input id="v4-loop-range" type="checkbox" /> 선택 마디 반복 청음 (■ 정지로 종료)</label>',
   '<p id="v4-play-status" class="v4-tiny" role="status">Web Audio 기반 간이 신시사이저 · 음악적 표현과 실제 악기 음색을 재현하지 않습니다.</p>',
+  '<p id="v4-playing-measure" class="v4-tiny" role="status" aria-live="off">악보 재생 위치를 여기에서 표시합니다.</p>',
   '<p class="v4-subhead">06 / 음악 구조 무결성 검사</p>',
   '<button id="v4-audit-run" type="button">현재 악보의 박자·성부·연결 기호 검사</button>',
   '<p id="v4-audit-result" class="v4-tiny" role="status">검사 전입니다. 저장 전 최신 악보를 검사해 주세요.</p>',
@@ -225,12 +226,22 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   let measureToolbar=null;
   let savingCheckpoint=false;
   let checkpointNotice=null;
-  const player=createAuditionPlayer({onState:playing=>{
-    $('v4-play').disabled=playing;
-    $('v4-play-range').disabled=playing;
-    $('v4-stop').disabled=!playing;
-    if(!playing&&/재생 중|반복 중|선택 마디/.test($('v4-play-status').textContent))$('v4-play-status').textContent='재생 종료 · 새 재생을 시작할 수 있습니다.';
-  }});
+  const player=createAuditionPlayer({
+    onState:playing=>{
+      $('v4-play').disabled=playing;
+      $('v4-play-range').disabled=playing;
+      $('v4-stop').disabled=!playing;
+      if(!playing&&/재생 중|반복 중|선택 마디/.test($('v4-play-status').textContent))
+        $('v4-play-status').textContent='재생 종료 · 새 재생을 시작할 수 있습니다.';
+    },
+    onPosition:position=>{
+      const index=position?.measureIndex??null;
+      $('v4-playing-measure').textContent=index===null?'청음 중인 마디 없음':
+        (index+1)+'마디 재생 중'+(position.loopCycle?' · 반복 '+(position.loopCycle+1)+'회차':'');
+      measureToolbar?.followPlaybackMeasure(index);
+      state.graphicBridge?.highlightPlaybackMeasure?.(index);
+    },
+  });
   const localeTime=ms=>new Date(ms).toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'});
   function draftStatus(text){$('v4-draft-status').textContent=text;}
   function checkpointStatus(text){$('v4-checkpoint-status').textContent=text;}
