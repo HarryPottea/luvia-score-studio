@@ -869,3 +869,18 @@ test('rebarring: piano two independent staves reject incomplete voice clocks',()
   first(children(measure(mismatch),'note')[6],'staff').textContent='1';
   assert.throws(()=>rebarWrittenScore(mismatch,{meter:'3/4'}),/성부|보표|복잡/);
 });
+
+test('tuplets: preserve MusicXML type–accidental–time-modification–staff ordering',()=>{
+  const source=groupedTupletFixture(),firstNote=notes(source)[0],pitch=first(firstNote,'pitch');
+  pitch.insertBefore(T('alter',1),first(pitch,'octave'));
+  firstNote.insertBefore(T('accidental','sharp'),first(firstNote,'staff'));
+  const before=serialize(source);
+  const result=authorTupletGroup(source,{...params(),ratio:'5:4',type:'16th',step:'G',octave:4});
+  assert.equal(serialize(source),before);
+  const revised=notes(result.doc)[0],tags=revised.children.map(x=>x.localName);
+  assert.ok(tags.indexOf('type')<tags.indexOf('accidental'));
+  assert.ok(tags.indexOf('accidental')<tags.indexOf('time-modification'));
+  assert.ok(tags.indexOf('time-modification')<tags.indexOf('staff'));
+  assert.equal(first(first(revised,'pitch'),'alter').textContent,'1');
+  assert.equal(first(revised,'accidental').textContent,'sharp');
+});
