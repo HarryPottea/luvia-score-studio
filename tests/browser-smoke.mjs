@@ -2556,7 +2556,7 @@ try {
   const stage3Reimported=await fs.readFile(await (await stage3Roundtrip).path(),'utf8');
   // The import/export normalizer may remove the newline between the XML
   // declaration and score root. Compare the XML content, not header spacing.
-  const normalizeStage3Xml=xml=>xml.replace(/>\\s+</g,'><');
+  const normalizeStage3Xml=xml=>xml.replace(/>\s+</g,'><');
   assert.equal(normalizeStage3Xml(stage3Reimported),normalizeStage3Xml(stage3Xml),
     'real MusicXML reimport keeps all expressions');
   console.log('BROWSER_STAGE=STAGE3_LYRICS_INDEPENDENT_EDIT_UNDO_REIMPORT');
