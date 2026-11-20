@@ -123,3 +123,52 @@ export function applyDensityLayout(source,options={}){
     pagesEstimated:plan.pages,staves:plan.totalStaves,
     collisionVerified:false}};
 }
+
+
+// Parts may have very different engraving densities (for example, a Korean
+// vocal lyric line versus an instrumental rest-heavy score). Independent part
+// layout intentionally gives each player different system/page turns instead
+// of forcing the full-score cadence on every extracted part.
+export function planIndependentPartLayout(source,options={}){
+  if(source?.documentElement?.localName!=='score-partwise')
+    fail('MusicXML partwise 악보만 파트별 조판할 수 있습니다.');
+  const parts=all(source.documentElement,'part');
+  if(!parts.length||parts.length>12)
+    fail('개별 파트 자동 조판은 1~12개 악기만 지원합니다.');
+  const ids=parts.map(p=>p.getAttribute('id'));
+  if(ids.some(id=>!id)||new Set(ids).size!==ids.length)
+    fail('파트 식별자가 중복되거나 비어 있어 개별 조판하지 않습니다.');
+  const partPlans=parts.map((part,index)=>{
+    // Read-only facade: reuses the same single-part density planning rules.
+    const partial={documentElement:{localName:'score-partwise',children:[part]}};
+    const plan=planDensityLayout(partial,options);
+    return {...plan,partId:ids[index]};
+  });
+  return {partPlans,parts:partPlans.length,systems:partPlans.reduce((n,p)=>n+p.systems,0),
+    pagesEstimated:partPlans.reduce((n,p)=>n+p.pages,0),
+    kind:'INDEPENDENT_PART_DENSITY_HEURISTIC_NOT_COLLISION_CERTIFIED'};
+}
+export function applyIndependentPartLayout(source,options={}){
+  const plan=planIndependentPartLayout(source,options),doc=source.cloneNode(true);
+  const copies=new Map(all(doc.documentElement,'part').map(p=>[p.getAttribute('id'),p]));
+  for(const target of plan.partPlans){
+    const part=copies.get(target.partId);
+    const measures=all(part,'measure');
+    for(let i=1;i<measures.length;i++){
+      const bar=measures[i],expected=target.expected[i];
+      let print=first(bar,'print');
+      if(!print&&expected==='none')continue;
+      if(!print){
+        print=make(bar,'print');
+        bar.insertBefore(print,bar.firstChild);
+      }
+      print.removeAttribute('new-page');
+      print.removeAttribute('new-system');
+      if(expected==='page')print.setAttribute('new-page','yes');
+      else if(expected==='system')print.setAttribute('new-system','yes');
+      if(!print.attributes.length&&!print.children.length)bar.removeChild(print);
+    }
+  }
+  return {doc,change:{action:'independent-part-density-layout',parts:plan.parts,
+    systems:plan.systems,pagesEstimated:plan.pagesEstimated,collisionVerified:false}};
+}
