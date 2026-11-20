@@ -219,7 +219,14 @@ export function editVoiceRhythm(source,{partId,measureIndex,eventIndex,type,mode
   if(oldSpan!==newSpan)fail('해당 성부의 총 길이가 달라져 작업을 취소했습니다.');
   return {doc,change:{action:mode==='insert'?'voice-note-insert':'voice-duration',partId,measureIndex,eventIndex,type}};
 }
-export function createEighthTriplet(source,{partId,measureIndex,eventIndex,
+/**
+ * Convert two adjacent equal-length straight notes into a 3:2 triplet,
+ * preserving the original endpoints and adding the specified middle note.
+ * 4th, 8th and 16th notes share the same exact MusicXML time model.
+ * Existing irregular beams, lyrics on the second note, ties and articulations
+ * are guarded to avoid silently discarding musical meaning.
+ */
+export function createTimedTriplet(source,{partId,measureIndex,eventIndex,
   step='G',alter=0,octave=4}={}){
   if(!STEPS.includes(step)||step.length!==1||!int(alter,-2,2)||!int(octave,1,8))
     fail('셋잇단음 가운데 음정이 올바르지 않습니다.');
@@ -227,39 +234,43 @@ export function createEighthTriplet(source,{partId,measureIndex,eventIndex,
   const {note,measure,audit,event,part}=loc;
   const following=note.nextSibling,other=audit.events[eventIndex+1];
   if(!following||following.localName!=='note'||!other||
-     event.rest||other.rest||event.chord||other.chord||event.tuplet||other.tuplet||
-     !sameLaneNote(note,following)||event.voice!==other.voice||event.staff!==other.staff)
-    fail('같은 성부·보표의 인접한 일반 8분음표 2개를 선택하세요.');
-  const div=audit.divisions;
-  if(div%6!==0||!int(div,6,65536))fail('이 악보 divisions에서는 정확한 셋잇단음 분할이 불가능합니다.');
-  if(event.type!=='eighth'||other.type!=='eighth'||
-     event.duration!==div/2||other.duration!==div/2||
-     event.start%div!==0)
-    fail('한 박자에 들어 있는 동일한 8분음표 2개만 셋잇단음으로 바꿉니다.');
+    event.rest||other.rest||event.chord||other.chord||event.tuplet||other.tuplet||
+    !sameLaneNote(note,following)||event.voice!==other.voice||event.staff!==other.staff)
+    fail('같은 성부·보표의 인접한 일반 음표 두 개를 선택하세요.');
+  const div=audit.divisions,type=event.type;
+  if(!['quarter','eighth','16th'].includes(type)||other.type!==type)
+    fail('같은 길이의 4분·8분·16분음표 두 개만 셋잇단음으로 바꿀 수 있습니다.');
+  const unit=durationFor(type,div),tupleTicks=unit*2/3;
+  if(!int(tupleTicks,1,262144))
+    fail('이 MusicXML divisions에서는 정확한 셋잇단음 박자를 표현할 수 없습니다.');
+  if(event.duration!==unit||other.duration!==unit||
+    other.start!==event.start+unit||event.start%(unit*2)!==0)
+    fail('동일 길이의 인접 음표 두 개가 정상 박자 경계에 있어야 합니다.');
   guardNote(note,{beam:true});guardNote(following,{beam:true});
+  if(all(following,'lyric').length)
+    fail('두 번째 음표의 가사를 보존할 수 없어 셋잇단음 변환을 차단했습니다.');
   const firstBeam=all(note,'beam'),lastBeam=all(following,'beam');
-  const isBeamed=firstBeam.length===1&&lastBeam.length===1&&
-     firstBeam[0].getAttribute('number')==='1'&&lastBeam[0].getAttribute('number')==='1'&&
-     firstBeam[0].textContent.trim()==='begin'&&lastBeam[0].textContent.trim()==='end';
-  if((firstBeam.length||lastBeam.length)&&!isBeamed)fail('다른 음표까지 이어진 빔은 자동으로 재구성하지 않습니다.');
+  const isBeamed=type==='eighth'&&firstBeam.length===1&&lastBeam.length===1&&
+    firstBeam[0].getAttribute('number')==='1'&&lastBeam[0].getAttribute('number')==='1'&&
+    firstBeam[0].textContent.trim()==='begin'&&lastBeam[0].textContent.trim()==='end';
+  if((firstBeam.length||lastBeam.length)&&!isBeamed)
+    fail('기존 빔 구조는 안전하게 재구성할 수 없어 변환하지 않습니다.');
   const number=chooseMarkupNumber(part,'tuplet');
   const middle=note.cloneNode(true);
   for(const rem of all(middle,'lyric'))middle.removeChild(rem);
   for(const rem of all(middle,'accidental'))middle.removeChild(rem);
   const pitch=direct(middle,'pitch');
   if(!pitch)fail('가운데 음을 구성할 수 없습니다.');
-  pitch.replaceChildren?.();
-  // replaceChildren is not available in the lightweight test DOM
   for(const child of [...pitch.children])pitch.removeChild(child);
   pitch.appendChild(make(pitch,'step',step));
   if(alter)pitch.appendChild(make(pitch,'alter',alter));
   pitch.appendChild(make(pitch,'octave',octave));
   for(const item of [note,middle,following]){
-    direct(item,'duration').textContent=String(div/3);
+    direct(item,'duration').textContent=String(tupleTicks);
     const tm=make(item,'time-modification');
     tm.appendChild(make(tm,'actual-notes',3));
     tm.appendChild(make(tm,'normal-notes',2));
-    tm.appendChild(make(tm,'normal-type','eighth'));
+    tm.appendChild(make(tm,'normal-type',type));
     item.insertBefore(tm,direct(item,'type').nextSibling);
     const stem=direct(item,'stem');if(stem)item.removeChild(stem);
   }
@@ -267,14 +278,16 @@ export function createEighthTriplet(source,{partId,measureIndex,eventIndex,
   addNotation(note,'tuplet',{number,type:'start',bracket:isBeamed?'no':'yes'});
   addNotation(following,'tuplet',{number,type:'stop'});
   measure.insertBefore(middle,following);
-  post(source,doc,loc,new Set([identity(event)]),'eighth-triplet');
+  post(source,doc,loc,new Set([identity(event)]),type+'-triplet');
   const newState=inspectAdvancedMeasure(doc,partId,measureIndex);
   const events=newState.events.filter(e=>identity(e)===identity(event)&&e.tuplet&&
-     e.start>=event.start&&e.start<event.start+div);
-  if(events.length!==3||events.some(e=>e.duration!==div/3))
+    e.start>=event.start&&e.start<event.start+unit*2);
+  if(events.length!==3||events.some(e=>e.duration!==tupleTicks))
     fail('셋잇단음 분할 후 구조 검증에 실패했습니다.');
-  return {doc,change:{action:'eighth-triplet',partId,measureIndex,eventIndex}};
+  return {doc,change:{action:type+'-triplet',partId,measureIndex,eventIndex}};
 }
+// Preserve the old exported API for regression clients.
+export const createEighthTriplet=createTimedTriplet;
 function endpoints(source,params){
   const {doc,loc}=start(source,params);
   const to=Number(params.endEventIndex);
