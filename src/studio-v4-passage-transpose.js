@@ -3,6 +3,7 @@
 // non-selected parts. Chord symbols and transposing instruments fail closed.
 import {assertClosedMeasureRange} from './studio-v4-measure-links.js';
 import {transposeHarmonyMarkup} from './studio-v4-harmony-transpose.js';
+import {assertScopedScoreMutation} from './studio-v4-structural-guard.js';
 
 const all=(node,tag)=>node?[...node.children].filter(n=>n.localName===tag):[];
 const first=(node,tag)=>all(node,tag)[0]||null;
@@ -135,6 +136,8 @@ export function transposeMeasurePassage(source,{
     if(noteMIDI(n)!==change.midi)
       fail('이조한 음표의 음정 확인에 실패했습니다.');
   }
+  assertScopedScoreMutation(source,doc,{partIds:selected.map(p=>p.getAttribute('id')),
+    start,end,kind:'pitches'});
   return {doc,change:{action:'transpose-measure-passage',partId,start,end,semitones,
     spelling,notes:changes.length,chords,nextMeasureIndex:start,nextEventIndex:0}};
 }
