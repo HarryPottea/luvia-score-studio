@@ -1,8 +1,8 @@
-// Rebar written *single-voice* MusicXML scores without losing note onsets.
+// Rebar conservative written MusicXML scores, including independent voices and simple chords.
 //
 // Scope intentionally explicit: whole score, simultaneous independent
-// monophonic instrument parts, normal/dotted durations, no tuplets, chords,
-// independent voices or mid-score directions/key changes. Unsafe scores remain
+// instrument parts, normal/dotted durations and basic simultaneous chord tones.
+// Existing tuplets, ties, ornaments and mid-score directions/key changes are blocked. Unsafe scores remain
 // untouched and receive a precise refusal instead of destructive rewriting.
 const kid=(n,t)=>n?[...n.children].filter(c=>c.localName===t):[];
 const first=(n,t)=>kid(n,t)[0]||null;
@@ -13,7 +13,7 @@ const METERS=Object.freeze({'2/4':[2,4],'3/4':[3,4],'4/4':[4,4],'3/8':[3,8],'6/8
 const RATIOS=[['whole',4,false],['half',3,true],['half',2,false],
   ['quarter',1.5,true],['quarter',1,false],['eighth',.75,true],
   ['eighth',.5,false],['16th',.375,true],['16th',.25,false],['32nd',.125,false]];
-const allowedNote=new Set(['pitch','rest','duration','voice','type','dot','staff','stem','accidental','lyric']);
+const allowedNote=new Set(['chord','pitch','rest','duration','voice','type','dot','staff','stem','accidental','lyric']);
 function make(parent,name,value){
   const d=parent.ownerDocument;
   const n=d.createElementNS?d.createElementNS(parent.namespaceURI??null,name):d.createElement(name);
@@ -79,9 +79,9 @@ function validatePart(part,partId,totalMeasures){
         if(totalNotes>5000)reject('리바링 가능한 전체 음표 수를 초과합니다.');
         if(note.attributes?.length||
           [...note.children].some(x=>!allowedNote.has(x.localName))||
-          !!first(note,'chord')||!first(note,'type')||!first(note,'duration')||
+          !first(note,'type')||!first(note,'duration')||
           !!first(note,'notations')||!first(note,'pitch')&&!first(note,'rest')||
-          ['pitch','rest','duration','voice','type','staff','stem','accidental']
+          ['chord','pitch','rest','duration','voice','type','staff','stem','accidental']
             .some(tag=>kid(note,tag).length>1)||
           kid(note,'dot').length>1||!!first(note,'pitch')&&!!first(note,'rest'))
           reject('중복된 성부·보표나 기존 화음·잇단음·붙임줄·장식은 리바링에서 보호합니다.');
@@ -102,9 +102,28 @@ function validatePart(part,partId,totalMeasures){
         if(!groupKey)groupKey=key;
         if(groupKey!==key)reject('한 성부 블록에 서로 다른 성부·보표가 있습니다.');
         if(!lanes[groupIndex])lanes[groupIndex]=[];
-        lanes[groupIndex].push({node:note,duration,
-          absoluteStart:index*expectedBar+offset,rest:!!first(note,'rest')});
-        offset+=duration;
+        if(first(note,'chord')){
+          const prior=lanes[groupIndex].at(-1);
+          if(!prior||prior.rest||!first(note,'pitch')||
+             first(note,'chord').attributes?.length||
+             first(note,'chord').children.length||
+             kid(note,'lyric').length||prior.duration!==duration)
+            reject('화음 음표는 앞선 일반 음표와 동일한 길이여야 하며 별도 가사는 지원하지 않습니다.');
+          const sig=val(first(note,'pitch'),'step')+':' +
+            (val(first(note,'pitch'),'alter')||'0')+':' +
+            val(first(note,'pitch'),'octave');
+          const existing=[prior.node,...prior.tones].map(n=>
+            val(first(n,'pitch'),'step')+':' +
+            (val(first(n,'pitch'),'alter')||'0')+':' +
+            val(first(n,'pitch'),'octave'));
+          if(prior.tones.length>=7||existing.includes(sig))
+            reject('8개를 넘거나 음정이 중복된 화음은 리바링하지 않습니다.');
+          prior.tones.push(note);
+        }else{
+          lanes[groupIndex].push({node:note,tones:[],duration,
+            absoluteStart:index*expectedBar+offset,rest:!!first(note,'rest')});
+          offset+=duration;
+        }
       }
       if(offset!==expectedBar)reject('모든 성부가 마디 전체 박자를 채워야 재분할할 수 있습니다.');
       keys.push(groupKey);
@@ -184,8 +203,23 @@ function generatePart(part,report,targetTicks,beats,beatType){
           if(i>0)appendTie(note,'stop');
           if(i<span.length-1)appendTie(note,'start');
         }
-        events[Math.floor(unit.at/targetTicks)][voiceIndex].push(note);
+        const out=events[Math.floor(unit.at/targetTicks)][voiceIndex];
+        out.push(note);
         renderedNotes++;
+        // A chord is one onset but multiple MusicXML <note> elements. Every
+        // tone is duration-matched to the anchor; each receives its own
+        // sounded/written continuation ties when an onset crosses barlines.
+        for(const tone of event.tones){
+          const chordTone=makeContinuation(tone,unit,i===0);
+          if(!first(chordTone,'chord'))
+            reject('화음 음표의 동시 발음 표시가 누락되었습니다.');
+          if(span.length>1){
+            if(i>0)appendTie(chordTone,'stop');
+            if(i<span.length-1)appendTie(chordTone,'start');
+          }
+          out.push(chordTone);
+          renderedNotes++;
+        }
       }
     }
     if(cursor!==report.totalTicks)reject('원본 성부 길이가 일치하지 않습니다.');
@@ -207,7 +241,7 @@ function generatePart(part,report,targetTicks,beats,beatType){
   }
   for(const [measureIndex,groups] of events.entries()){
     for(const [voiceIndex,notes] of groups.entries()){
-      const total=notes.reduce((sum,n)=>sum+Number(val(n,'duration')),0);
+      const total=notes.reduce((sum,n)=>sum+(first(n,'chord')?0:Number(val(n,'duration'))),0);
       if(total!==targetTicks)
         reject((measureIndex+1)+'마디의 성부 박자 합계가 올바르지 않습니다.');
       if(voiceIndex>0){
@@ -224,8 +258,8 @@ function generatePart(part,report,targetTicks,beats,beatType){
     voices:report.lanes.length};
 }
 /**
- * Rebar all written notes in simple one-voice-per-part scores.
- * The transaction is immutable; changes to compound structures fail closed.
+ * Rebar regular written notes, independent 1-4 voices and simple chords.
+ * Tuplets, existing ties and expressive markings still fail closed.
  */
 export function rebarWrittenScore(source,{meter='3/4'}={}){
   const selected=METERS[meter];if(!selected)
@@ -253,5 +287,6 @@ export function rebarWrittenScore(source,{meter='3/4'}={}){
     originalMeasures:totalMeasures,newMeasures:changes[0].measures,parts:changes.length,
     paddedTicks:changes[0].measures*targetTicks-firstReport.totalTicks,
     affectedNotes:changes.reduce((n,x)=>n+x.originalNotes,0),
-    maxVoices:Math.max(...changes.map(x=>x.voices))}};
+    maxVoices:Math.max(...changes.map(x=>x.voices)),
+    simpleChordsPreserved:true}};
 }
