@@ -998,6 +998,11 @@ try {
   assert.ok(mobileUi.quickWidth<=mobileUi.pageWidth,'Shortcut bar fits the mobile layout');
   assert.ok(mobileUi.quickScrollWidth>=mobileUi.quickWidth,'Shortcut bar can scroll horizontally');
   assert.equal(await page.locator('.footer-credit').textContent(),'© 2026 PARKJAEWOO. All rights reserved.');
+  await page.getByRole('button',{name:'새 악보 설정으로 이동'}).click();
+  assert.equal(await page.locator('#v4-new').isVisible(),true);
+  const newScoreScrollMargin=await page.locator('#v4-new')
+    .evaluate(el=>parseFloat(getComputedStyle(el).scrollMarginTop));
+  assert.ok(newScoreScrollMargin>=300,'The new-score shortcut must account for the mobile sticky preview');
   await page.screenshot({path:output+'/ui-refinement-mobile.png'});
   await page.setViewportSize({width:1440,height:1000});
   console.log('BROWSER_STAGE=POLISHED_MOBILE_NAVIGATION_AND_ENGLISH_CREDIT');
