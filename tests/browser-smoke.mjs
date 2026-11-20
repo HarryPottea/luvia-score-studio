@@ -1356,6 +1356,26 @@ try {
   console.log('BROWSER_STAGE=V4_WHOLE_CHORD_SEMITONE_SHIFT_AND_MUSICXML');
 
 
+
+  // Two-staff polyphonic rebarring preserves every lane's measure clock.
+  await page.locator('#file-input').setInputFiles({name:'piano-voice-rebar.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(crossbarScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.selectOption('#v4-rebar-meter','3/4');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-rebar-written');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('작성된 악보 전체 리바링 완료'),null,{timeout:30000});
+  const polyRebarDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const polyRebarText=await fs.readFile(await (await polyRebarDownload).path(),'utf8');
+  assert.equal((polyRebarText.match(/<measure number="/g)||[]).length,3);
+  assert.equal((polyRebarText.match(/<backup><duration>144<\/duration><\/backup>/g)||[]).length,3);
+  assert.ok((polyRebarText.match(/<tie type="start"\s*\/>/g)||[]).length>=1);
+  assert.match(polyRebarText,/<staff>2<\/staff>/);
+  assert.match(polyRebarText,/<beats>3<\/beats><beat-type>4<\/beat-type>/);
+  assert.doesNotMatch(polyRebarText,/<backup><duration>192<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_MULTIVOICE_GRANDSTAFF_WRITTEN_REBAR');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
