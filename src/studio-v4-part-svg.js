@@ -2,7 +2,7 @@
 // This does not claim to generate or validate vector PDF files.
 import JSZip from 'jszip';
 import {baseScoreName,safeFileName} from './part-export.js';
-import {inspectPrintableSvg} from './studio-v4-printbook.js';
+import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 
 const MAX_PAGES=80,MAX_CHARS=35*1024*1024;
 export async function createPartSvgZip({pages,filename='score.musicxml',onProgress=()=>{}}={}){
