@@ -680,7 +680,7 @@ for(const [ratio,type,expectedFactor,actual,normal] of [
 test('tuplets: protect pre-existing lyrics, unsupported settings and MusicXML source',()=>{
   const source=groupedTupletFixture(),saved=serialize(source);
   assert.throws(()=>authorTupletGroup(source,{...params(),ratio:'9:8',type:'16th'}),/비율|길이/);
-  assert.throws(()=>authorTupletGroup(source,{...params(3),ratio:'5:4',type:'16th'}),/부족|연속/);
+  assert.throws(()=>authorTupletGroup(source,{...params(3),ratio:'5:4',type:'16th'}),/부족|연속|일반 음표/);
   assert.equal(serialize(source),saved);
   const decorated=groupedTupletFixture(),node=notes(decorated)[1];
   node.appendChild(E('tie',[],{type:'start'}));
