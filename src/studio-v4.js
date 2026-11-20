@@ -19,7 +19,7 @@ import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
 import {editConnectedPitch} from './studio-v4-connected-pitch.js';
 import {toggleAdvancedArticulation} from './studio-v4-articulations.js';
-import {insertGraceNote,removeGraceNote} from './studio-v4-grace-notes.js';
+import {insertGraceNote,removeGraceNote,editGraceNote} from './studio-v4-grace-notes.js';
 import {authorTupletGroup} from './studio-v4-tuplet-groups.js';
 import {editTupletPitches,inspectEditableTuplet} from './studio-v4-tuplet-pitch-edit.js';
 import {rebarWrittenScore} from './studio-v4-rebar-written.js';
@@ -129,6 +129,9 @@ const panel=[
   '<div class="v4-inline"><label class="v4-timeline-move-check"><input id="v4-grace-slash" type="checkbox" checked /> 짧은 꾸밈음 (빗금 표시)</label>',
   '<button id="v4-grace-insert" type="button">선택 음표 앞에 꾸밈음 삽입</button>',
   '<button id="v4-grace-remove" type="button">선택한 꾸밈음 삭제</button></div>',
+  '<div class="v4-inline"><label for="v4-grace-type">꾸밈음 음표 종류</label>',
+  '<select id="v4-grace-type"><option value="eighth">8분</option><option value="16th">16분</option><option value="32nd">32분</option></select>',
+  '<button id="v4-grace-edit" type="button">기존 꾸밈음 음정·빗금 수정</button></div>',
   '<p class="v4-tiny">음이름·변화표·옥타브는 위의 전문 음정 입력값을 사용합니다. 꾸밈음은 음표의 박자를 소비하지 않으며 가사와 다른 성부의 시간을 바꾸지 않습니다.</p>',
   '<p class="v4-tiny">위의 음이름·변화표·옥타브를 사용합니다. 붙임줄의 시작·중간·끝 중 어느 음표를 선택해도 연결된 모든 음표의 음정을 함께 바꾸고 가사·리듬·이음줄은 보존합니다. 악보에서 직접 선택할 수 없는 보호 음표는 09 / 음표 목록에서 선택하세요.</p>',
   '<p class="v4-tiny">다성부에서도 성부·보표를 유지합니다. 가사·붙임줄·화음·셋잇단음 등 복합 기보는 보호됩니다.</p>',
@@ -875,6 +878,11 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   }),'꾸밈음 추가'));
   $('v4-grace-remove').addEventListener('click',()=>void commit(doc=>removeGraceNote(doc,selected()),
     '꾸밈음 삭제'));
+  $('v4-grace-edit').addEventListener('click',()=>void commit(doc=>editGraceNote(doc,{
+    ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
+    octave:Number($('v4-pro-octave').value),slash:$('v4-grace-slash').checked,
+    type:$('v4-grace-type').value
+  }),'기존 꾸밈음 음정·기호 수정'));
   $('v4-articulation-toggle').addEventListener('click',()=>void commit(
     doc=>toggleAdvancedArticulation(doc,{...selected(),
       kind:$('v4-articulation-kind').value}),
