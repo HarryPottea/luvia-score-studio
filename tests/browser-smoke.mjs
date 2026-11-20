@@ -1467,6 +1467,44 @@ try {
   await page.waitForFunction(()=>document.querySelector('#v4-audit-result')?.textContent?.includes('기본 음악 구조 검사 통과'),null,{timeout:30000});
   assert.match(await page.locator('#v4-audit-result').textContent(),/오류 0건/);
   console.log('BROWSER_STAGE=V4_NEW_TUPLET_MUSIC_XML_STRUCTURAL_AUDIT_CLEAN');
+
+  const tupletTm='<time-modification><actual-notes>3</actual-notes>'+
+    '<normal-notes>2</normal-notes><normal-type>eighth</normal-type></time-modification>';
+  const tupletMixed='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list><score-part id="P1">'+
+    '<part-name>Vocal</part-name></score-part></part-list><part id="P1">'+
+    '<measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>16</duration>'+
+    '<type>eighth</type>'+tupletTm+
+    '<notations><tuplet number="1" type="start"/></notations>'+
+    '<lyric number="1"><text>별빛</text></lyric></note>'+
+    '<note><rest/><duration>16</duration><type>eighth</type>'+tupletTm+'</note>'+
+    '<note><pitch><step>D</step><octave>4</octave></pitch><duration>16</duration>'+
+    '<type>eighth</type>'+tupletTm+
+    '<notations><tuplet number="1" type="stop"/></notations></note>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'tuplet-rest.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(tupletMixed)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===4,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.fill('#v4-tuplet-pitches','E4 R G4');
+  await page.click('#v4-tuplet-pitches-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('기존 잇단음 그룹 음정 일괄 수정 완료'),null,{timeout:30000});
+  const mixedExport=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const mixedXml=await fs.readFile(await (await mixedExport).path(),'utf8');
+  assert.match(mixedXml,/<step>E<\/step><octave>4<\/octave>/);
+  assert.match(mixedXml,/<step>G<\/step><octave>4<\/octave>/);
+  assert.equal((mixedXml.match(/<actual-notes>3<\/actual-notes>/g)||[]).length,3);
+  assert.match(mixedXml,/<rest\s*\/><duration>16<\/duration><type>eighth<\/type>/);
+  assert.match(mixedXml,/<text>별빛<\/text>/);
+  console.log('BROWSER_STAGE=V4_MIXED_TUPLET_REST_AND_NOTES_EDIT_WITH_UNCHANGED_RHYTHM');
+
   const fullChord='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
     '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
     '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
