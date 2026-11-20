@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {authorTupletGroup} from '../src/studio-v4-tuplet-groups.js';
+import {rebarWrittenScore} from '../src/studio-v4-rebar-written.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
 import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
@@ -690,4 +691,72 @@ test('tuplets: protect pre-existing lyrics, unsupported settings and MusicXML so
   const next=authorTupletGroup(lyric,{...params(),ratio:'5:4',type:'16th'}).doc;
   assert.equal(first(first(notes(next)[1],'lyric'),'text').textContent,'가');
   assert.equal(first(notes(next)[4],'lyric'),undefined);
+});
+
+function writtenScoreFixture(){
+  const attrs=E('attributes',[T('divisions',48),
+    E('time',[T('beats',4),T('beat-type',4)]),
+    E('clef',[T('sign','G'),T('line',2)])]);
+  return new Doc(E('score-partwise',[E('part',[
+    E('measure',[attrs,voiceNote('C',4,96,'half','1','1'),
+      voiceNote('E',4,96,'half','1','1')],{number:'1'}),
+    E('measure',[voiceNote('G',4,96,'half','1','1'),
+      voiceNote('B',4,96,'half','1','1')],{number:'2'}),
+  ],{id:'P1'})]));
+}
+test('rebarring: 4/4 written melody becomes three 3/4 measures with tied split and final rest',()=>{
+  const source=writtenScoreFixture(),before=serialize(source);
+  const result=rebarWrittenScore(source,{meter:'3/4'}),bars=children(part(result.doc),'measure');
+  assert.equal(serialize(source),before);
+  assert.equal(result.change.originalMeasures,2);
+  assert.equal(result.change.newMeasures,3);
+  assert.equal(result.change.paddedTicks,48);
+  assert.deepEqual(bars.map(m=>children(m,'note').map(n=>[
+    first(first(n,'pitch')||E('rest'),'step')?.textContent||'rest',
+    first(n,'duration').textContent
+  ])),[
+    [['C','96'],['E','48']],
+    [['E','48'],['G','96']],
+    [['B','96'],['rest','48']]
+  ]);
+  assert.equal(first(first(bars[0],'attributes'),'time').children[0].textContent,'3');
+  assert.equal(first(first(children(bars[0],'note')[1],'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(first(first(children(bars[1],'note')[0],'notations'),'tied').getAttribute('type'),'stop');
+  assert.equal(first(children(bars[1],'note')[0],'tie').getAttribute('type'),'stop');
+  assert.equal(first(children(bars[0],'note')[1],'tie').getAttribute('type'),'start');
+});
+test('rebarring: preserve lyric on original attack, restore music timing across two parts',()=>{
+  const source=writtenScoreFixture();
+  const lyric=E('lyric',[T('text','기억')]);
+  children(measure(source),'note')[1].appendChild(lyric);
+  const p2=part(source).cloneNode(true);p2.setAttribute('id','P2');
+  source.documentElement.appendChild(p2);
+  const before=serialize(source);
+  const result=rebarWrittenScore(source,{meter:'3/8'}),parts=children(result.doc.documentElement,'part');
+  assert.equal(serialize(source),before);
+  assert.equal(result.change.parts,2);
+  assert.equal(result.change.newMeasures,6);
+  for(const p of parts){
+    const bars=children(p,'measure');
+    assert.equal(bars.length,6);
+    for(const m of bars)assert.equal(children(m,'note')
+      .reduce((n,x)=>n+Number(first(x,'duration').textContent),0),72);
+    const marked=bars.flatMap(m=>children(m,'note')).filter(n=>
+      first(first(n,'lyric')||E('empty'),'text')?.textContent==='기억');
+    assert.equal(marked.length,1,'Lyric should stay on the first tied segment');
+  }
+});
+test('rebarring: reject polyphony, meter anomalies, decorated music and unchanged source',()=>{
+  const original=writtenScoreFixture(),before=serialize(original);
+  assert.throws(()=>rebarWrittenScore(original,{meter:'9/8'}),/지원/);
+  assert.throws(()=>rebarWrittenScore(original,{meter:'4/4'}),/같은 박자/);
+  assert.throws(()=>rebarWrittenScore(fixture(),{meter:'3/4'}),/복합|성부/);
+  const annotated=writtenScoreFixture();
+  const lastMeasure=children(part(annotated),'measure')[1];
+  lastMeasure.insertBefore(E('direction',[E('direction-type',[T('words','rit.')])]),lastMeasure.children[0]);
+  assert.throws(()=>rebarWrittenScore(annotated,{meter:'3/4'}),/복합 마디|보호/);
+  const altered=writtenScoreFixture();
+  first(children(measure(altered),'note')[1],'pitch').appendChild(T('alter',1));
+  assert.throws(()=>rebarWrittenScore(altered,{meter:'3/4'}),/변화표/);
+  assert.equal(serialize(original),before);
 });
