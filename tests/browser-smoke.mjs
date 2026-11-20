@@ -1624,7 +1624,9 @@ try {
 
 
 
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
   await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).focus();
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip.is-selected').count(),1);
   await page.keyboard.press('ControlOrMeta+c');
   await page.waitForFunction(()=>document.querySelector('#jwoo-block-status')?.textContent?.includes('복사했습니다'),null,{timeout:10000});
   await page.keyboard.press('ControlOrMeta+d');
