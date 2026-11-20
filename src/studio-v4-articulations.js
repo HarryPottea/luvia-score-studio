@@ -2,6 +2,7 @@
 // Accepts notes that have ties, slurs, tuplets, lyrics and independent
 // polyphonic voices. Never rewrites those notations or their rhythmic clocks.
 import {inspectAdvancedMeasure} from './advanced-score.js';
+import {assertNotationMutation} from './studio-v4-notation-guard.js';
 
 const all=(parent,tag)=>parent?[...parent.children].filter(x=>x.localName===tag):[];
 const first=(parent,tag)=>all(parent,tag)[0]||null;
@@ -71,6 +72,8 @@ export function toggleAdvancedArticulation(source,params={}){
     'articulations'),spec.kind);
   if(!!mark===spec.already)
     fail('아티큘레이션 토글 결과를 확인할 수 없습니다.');
+  assertNotationMutation(source,doc,{partId:spec.partId,targets:[{measureIndex:spec.measureIndex,
+    eventIndex:spec.eventIndex,allowed:[{name:'articulations',kind:spec.kind}]}]});
   return {doc,change:{action:'toggle-advanced-articulation',partId:spec.partId,
     measureIndex:spec.measureIndex,eventIndex:spec.eventIndex,kind:spec.kind,
     enabled:!spec.already,nextMeasureIndex:spec.measureIndex,
