@@ -314,3 +314,8 @@
   .jwoo-quick-link{transition:none!important}
 }
 @media print{.jwoo-quick-links{display:none!important}}
+
+/* The create-score panel sits above #editor-controls; give its quick link the
+   same safe scroll offset as inspector inputs under the mobile sticky preview. */
+#v4-new{scroll-margin-top:24px}
+@media(max-width:670px){#v4-new{scroll-margin-top:325px}}
