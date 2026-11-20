@@ -69,3 +69,16 @@
 .v4-chord-editor .v4-inline button:hover:not(:disabled),.v4-chord-presets button:hover{
   filter:brightness(1.13)}
 @media(max-width:670px){.v4-chord-editor input{font-size:16px}}
+
+
+/* Exact-beat note relocation on the multi-voice timeline. */
+.v4-relocate-panel{margin:13px 0 15px;padding:12px;border:1px solid #5d7454;border-radius:4px;background:#243221}
+.v4-relocate-panel>label:first-child{margin:0 0 8px!important;color:#e7f4da}
+.v4-relocate-panel .v4-inline{align-items:end}
+.v4-editor .v4-relocate-panel #v4-relocate-note{margin:0;min-height:38px;background:#d9ff7a;color:#171815;border-color:#d9ff7a}
+.v4-editor .v4-relocate-panel #v4-relocate-note:hover:not(:disabled){background:#efffc0}
+.v4-relocate-panel #v4-relocate-status{min-height:22px;color:#d1e6c3}
+.v4-editor .v4-timeline-move-check{display:flex;justify-content:flex-start;align-items:center;gap:9px;color:#e9f5de;margin:12px 0}
+.v4-timeline-move-check input[type=checkbox]{flex:none;width:17px;height:17px;min-height:0;accent-color:var(--lime);margin:0}
+.v4-beat-event.rest:hover{border-color:#d9ff7a!important;color:white!important}
+@media(max-width:670px){.v4-relocate-panel{padding:10px}.v4-editor .v4-relocate-panel #v4-relocate-note{font-size:11px;line-height:1.3}}
