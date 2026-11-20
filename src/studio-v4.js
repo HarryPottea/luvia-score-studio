@@ -8,6 +8,7 @@ import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './
 import {saveLocalCheckpoint,listLocalCheckpoints,loadLocalCheckpoint,removeLocalCheckpoint} from './studio-v4-checkpoints.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {createPartSvgZip} from './studio-v4-part-svg.js';
+import {createVectorPartPdfZip} from './studio-v4-vector-pdf.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
@@ -177,6 +178,8 @@ const panel=[
   '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
   '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 미리보기의 조판 간격 선택도 파트보에 적용됩니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
   '<button id="v4-part-svg-zip" type="button">모든 파트 SVG ZIP 저장 (벡터)</button>',
+  '<button id="v4-part-pdf-zip" type="button">파트별 벡터 PDF ZIP 생성 (영문 악보)</button>',
+  '<p class="v4-tiny">모든 파트의 PDF를 벡터 경로로 만들어 ZIP으로 다운로드합니다. 한글·일부 특수문자 글꼴을 내장하지 않으므로 해당 악보는 손상 방지를 위해 변환하지 않습니다. 한글 악보는 위 브라우저 벡터 인쇄를 이용하세요.</p>',
   '<p class="v4-tiny">각 악기 파트의 모든 SVG 페이지를 각각 이름 붙여 압축합니다. 이미지로 변환하지 않지만 PDF 파일은 아닙니다.</p>',
   '<button id="v4-vector-zip" type="button">현재 미리보기 SVG ZIP 저장</button>',
   '<p class="v4-tiny">벡터 PDF는 미리보기 상단 ‘인쇄 · PDF 저장’을 이용하세요. 08 / 파트별 PDF ZIP은 이미지 기반 출력입니다.</p>',
@@ -920,6 +923,31 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
         '페이지 ZIP 저장 완료 · SVG는 벡터이지만 PDF 파일은 아닙니다.');
     }catch(error){setMessage('파트별 벡터 ZIP 생성 실패: '+error.message,true);}
     finally{button.disabled=false;}
+  });
+  $('v4-part-pdf-zip').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    const button=$('v4-part-pdf-zip');button.disabled=true;
+    try{
+      const names=new Map([...state.doc.querySelectorAll('part-list > score-part')].map(p=>[
+        p.getAttribute('id'),p.querySelector('part-name')?.textContent||p.getAttribute('id'),
+      ]));
+      const parts=[...state.doc.documentElement.children].filter(n=>n.localName==='part')
+        .map(p=>({id:p.getAttribute('id'),name:names.get(p.getAttribute('id'))||p.getAttribute('id')}));
+      const pageFormat=$('page-orientation').value;
+      const pages=await renderPartSvgPages({doc:state.doc,parts,pageFormat,
+        layout:$('v2-layout')?.value||'auto',
+        measureNumbers:$('measure-numbers').checked,
+        onProgress:detail=>setMessage('파트별 벡터 PDF 렌더링: '+detail)});
+      const result=await createVectorPartPdfZip({pages,filename:state.filename,pageFormat,
+        onProgress:(count,total)=>setMessage('벡터 PDF 페이지 변환: '+count+' / '+total)});
+      const url=URL.createObjectURL(result.blob),a=document.createElement('a');
+      a.href=url;a.download=result.filename;a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),10000);
+      setMessage('영문 벡터 PDF '+result.parts+'개 파트 · '+result.pages+
+        '페이지 ZIP 저장 완료 · 변환된 악보 글꼴·페이지 배치를 실제 인쇄 전 확인해 주세요.');
+    }catch(error){
+      setMessage('벡터 PDF ZIP 생성 차단: '+(error.message||'지원하지 않는 SVG 표기입니다.'),true);
+    }finally{button.disabled=false;}
   });
   $('v4-vector-zip').addEventListener('click',async()=>{
     if(!state.doc)return;
