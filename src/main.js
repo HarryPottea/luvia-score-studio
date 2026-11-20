@@ -10,7 +10,6 @@ import { bindGraphicalEditor } from './score-hit.js';
 import { midiToMusicXml } from './midi-import.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { editableScoreRenderOptions } from './osmd-render-policy.js';
-import { sampleScore } from './sample.js';
 import { mountStudioV4 } from './studio-v4.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
@@ -45,7 +44,7 @@ app.innerHTML = `
             <p class="workspace-description">음표·리듬·가사·코드를 수정하며 실시간으로 악보를 확인하세요.</p>
             <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="악보 또는 MIDI 파일 선택"><span class="drop-index">OPEN SCORE FILE</span><strong>악보 파일을 끌어놓거나 선택하세요</strong><small>.musicxml · .xml · .mxl · .mid · .midi</small><span class="drop-link">+ 파일 선택</span></div>
             <input id="file-input" type="file" accept=".musicxml,.xml,.mxl,.mid,.midi,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml,audio/midi" hidden />
-            <div class="sample-action"><button id="try-sample" type="button">예시 악보 보기 <span aria-hidden="true">↗</span></button></div>
+            <div class="settings-action"><button id="toggle-settings" type="button" aria-expanded="false" aria-controls="editor-controls" disabled>세부 설정 열기 <span aria-hidden="true">＋</span></button><p id="settings-action-hint" class="control-hint">새 악보를 만들거나 파일을 열면 세부 설정을 사용할 수 있습니다.</p></div>
             <div id="editor-controls" class="editor-controls" hidden>
               <div class="control-group"><div class="control-heading"><span>곡 정보</span><span>01</span></div><label for="score-title">곡 제목</label><input id="score-title" type="text" maxlength="120" placeholder="곡 제목" /><label for="score-composer">작곡가</label><input id="score-composer" type="text" maxlength="120" placeholder="작곡가" /></div>
               <div class="control-group"><div class="control-heading"><span>파트 표시·이름</span><span>02</span></div><p class="control-hint">체크박스는 현재 미리보기와 상단 인쇄에만 적용됩니다. 전체 MusicXML·파트별 저장에서는 모든 파트가 유지됩니다.</p><div id="parts-list" class="parts-list"></div></div>
@@ -57,7 +56,14 @@ app.innerHTML = `
           </aside>
           <div class="preview-column">
             <div class="preview-toolbar"><div class="preview-summary"><span class="preview-indicator"></span><strong>악보 미리보기</strong><span id="score-info" class="score-info">파일을 열면 악보가 표시됩니다</span></div><div id="output-actions" class="output-actions" hidden><button id="download-xml" type="button">MusicXML 저장</button><button id="print-score" type="button">인쇄 · PDF 저장 ↗</button></div></div>
-            <div id="preview-shell" class="preview-shell"><div id="empty-preview" class="empty-preview"><div class="empty-heading"><span>DEMO SCORE / SELECT A FILE</span><span>1 / 1</span></div><div class="empty-sheet"><div class="empty-score-title"><strong>새벽의 스케치</strong><span>Sketch at Dawn</span></div><span class="empty-composer">박재우</span><svg class="score-svg" viewBox="0 0 620 360" xmlns="http://www.w3.org/2000/svg" aria-label="악보 구성 예시"><g fill="none" stroke="#252932" stroke-width="1.1"><path d="M40 36H610M40 49H610M40 62H610M40 75H610M40 88H610M40 163H610M40 176H610M40 189H610M40 202H610M40 215H610M40 290H610M40 303H610M40 316H610M40 329H610M40 342H610"/><path d="M40 36V88M40 163V215M40 290V342M235 290V342M430 290V342M610 290V342M235 36V88M430 36V88M610 36V88M235 163V215M430 163V215M610 163V215"/></g><g fill="#252932" font-family="Georgia,serif"><text x="48" y="87" font-size="62">𝄞</text><text x="90" y="61" font-size="17">4</text><text x="90" y="83" font-size="17">4</text><text x="48" y="214" font-size="62">𝄞</text><text x="90" y="188" font-size="17">4</text><text x="90" y="210" font-size="17">4</text></g><g fill="#252932" stroke="#252932" stroke-width="1.5"><ellipse cx="139" cy="75" rx="7" ry="4.5" transform="rotate(-24 139 75)"/><path d="M145 73V37"/><ellipse cx="180" cy="62" rx="7" ry="4.5" transform="rotate(-24 180 62)"/><path d="M186 60V24"/><ellipse cx="271" cy="55" rx="7" ry="4.5" transform="rotate(-24 271 55)"/><path d="M277 53V17"/><ellipse cx="320" cy="62" rx="7" ry="4.5" transform="rotate(-24 320 62)"/><path d="M326 60V24"/><ellipse cx="375" cy="68" rx="7" ry="4.5" transform="rotate(-24 375 68)"/><path d="M381 66V30"/><ellipse cx="477" cy="62" rx="7" ry="4.5" transform="rotate(-24 477 62)"/><path d="M483 60V24"/><ellipse cx="524" cy="49" rx="7" ry="4.5" transform="rotate(-24 524 49)"/><path d="M530 47V11"/><ellipse cx="565" cy="56" rx="7" ry="4.5" transform="rotate(-24 565 56)"/><path d="M571 54V18"/><ellipse cx="138" cy="202" rx="7" ry="4.5" transform="rotate(-24 138 202)"/><path d="M144 200V164"/><ellipse cx="178" cy="189" rx="7" ry="4.5" transform="rotate(-24 178 189)"/><path d="M184 187V151"/><ellipse cx="275" cy="196" rx="7" ry="4.5" transform="rotate(-24 275 196)"/><path d="M281 194V158"/><ellipse cx="320" cy="202" rx="7" ry="4.5" transform="rotate(-24 320 202)"/><path d="M326 200V164"/><ellipse cx="375" cy="189" rx="7" ry="4.5" transform="rotate(-24 375 189)"/><path d="M381 187V151"/><ellipse cx="477" cy="183" rx="7" ry="4.5" transform="rotate(-24 477 183)"/><path d="M483 181V145"/><ellipse cx="525" cy="190" rx="7" ry="4.5" transform="rotate(-24 525 190)"/><path d="M531 188V152"/><ellipse cx="136" cy="329" rx="7" ry="4.5" transform="rotate(-24 136 329)"/><path d="M142 327V291"/><ellipse cx="179" cy="316" rx="7" ry="4.5" transform="rotate(-24 179 316)"/><path d="M185 314V278"/><ellipse cx="279" cy="309" rx="7" ry="4.5" transform="rotate(-24 279 309)"/><path d="M285 307V271"/><ellipse cx="327" cy="316" rx="7" ry="4.5" transform="rotate(-24 327 316)"/><path d="M333 314V278"/><ellipse cx="479" cy="322" rx="7" ry="4.5" transform="rotate(-24 479 322)"/><path d="M485 320V284"/><ellipse cx="535" cy="309" rx="7" ry="4.5" transform="rotate(-24 535 309)"/><path d="M541 307V271"/></g><g fill="#7b828d" font-size="9" font-family="Arial,sans-serif"><text x="0" y="69">Piano</text><text x="23" y="192">Pno.</text><text x="15" y="320">3</text></g></svg><div class="empty-sheet-foot">예시 악보 · 실제 파일을 열면 교체됩니다</div></div></div><div id="score-container" class="score-container"></div></div>
+            <div id="preview-shell" class="preview-shell"><div id="empty-preview" class="empty-preview" role="status">
+              <div class="empty-score-state">
+                <span class="empty-state-eyebrow">READY TO COMPOSE</span>
+                <span class="empty-state-mark" aria-hidden="true">𝄞</span>
+                <strong>아직 열린 악보가 없습니다.</strong>
+                <p>새 악보를 만들거나 MusicXML·MIDI 파일을 열어 편집을 시작하세요.</p>
+              </div>
+            </div><div id="score-container" class="score-container"></div></div>
             <p id="message" class="message" role="status" aria-live="polite"></p>
           </div>
         </div>
@@ -121,9 +127,21 @@ function scoreMeasureSummary(){
   return scoreParts().length+'개 파트 · '+label;
 }
 function setMessage(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
+function syncSettingsToggle(){
+  const button=$('toggle-settings'),ready=!!state.doc;
+  button.disabled=!ready;
+  const expanded=ready&&!$('editor-controls').hidden;
+  button.setAttribute('aria-expanded',String(expanded));
+  button.innerHTML=expanded?'세부 설정 접기 <span aria-hidden="true">−</span>':
+    '세부 설정 열기 <span aria-hidden="true">＋</span>';
+  $('settings-action-hint').textContent=ready?
+    '필요한 설정만 열어 편집하세요. 접어도 악보와 입력값은 유지됩니다.':
+    '새 악보를 만들거나 파일을 열면 세부 설정을 사용할 수 있습니다.';
+}
 function showLoaded() {
   document.querySelector('.site-shell')?.classList.add('has-active-score');
   $('editor-controls').hidden = false;
+  syncSettingsToggle();
   $('output-actions').hidden = false;
   $('empty-preview').hidden = true;
   $('drop-zone').classList.add('has-file');
@@ -375,7 +393,13 @@ drop.addEventListener('dragover', event => { event.preventDefault(); drop.classL
 drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
 drop.addEventListener('drop', event => { event.preventDefault(); drop.classList.remove('drag-over'); handleFile(event.dataTransfer?.files?.[0]); });
 input.addEventListener('change', () => { handleFile(input.files?.[0]); input.value = ''; });
-$('try-sample').addEventListener('click', () => openScore(sampleScore, '새벽의 스케치.musicxml'));
+$('toggle-settings').addEventListener('click',()=>{
+  if(!state.doc)return;
+  $('editor-controls').hidden=!$('editor-controls').hidden;
+  syncSettingsToggle();
+  if(!$('editor-controls').hidden)
+    $('editor-controls').scrollIntoView({behavior:'smooth',block:'start'});
+});
 
 $('score-title').addEventListener('change', () => {
   if (!state.doc) return;
