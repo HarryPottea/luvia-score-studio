@@ -1550,6 +1550,32 @@ try {
   assert.match(await page.locator('#v4-checkpoint-status').textContent(),/복원 완료/);
   console.log('BROWSER_STAGE=V4_MANUAL_CHECKPOINT_RESTORE');
 
+  const portableDownload=page.waitForEvent('download',{timeout:30000});
+  await page.click('#v4-project-export');
+  const portablePath=await (await portableDownload).path();
+  const portableFile=await fs.readFile(portablePath);
+  const portableArchive=await JSZip.loadAsync(portableFile,{checkCRC32:true});
+  const portableManifest=JSON.parse(await portableArchive.file('manifest.json').async('string'));
+  assert.equal(portableManifest.format,'J-WOO-PROJECT');
+  assert.equal(portableManifest.version,1);
+  assert.equal(portableManifest.versions.length>=1,true);
+  assert.equal((await portableArchive.file('score.musicxml').async('string')).includes('<score-partwise'),true);
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(0).click();
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#jwoo-measure-toolbar [data-act="delete"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===3,
+    null,{timeout:30000});
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-project-file').setInputFiles({
+    name:'jwoo-recovery.jwoo',mimeType:'application/zip',buffer:portableFile
+  });
+  await page.waitForFunction(()=>document.querySelector('#v4-project-status')?.textContent?.includes('검증된 프로젝트 복원 완료'),
+    null,{timeout:30000});
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip').count(),4);
+  assert.match(await page.locator('#v4-project-status').textContent(),/SHA-256 일치/);
+  console.log('BROWSER_STAGE=V4_PORTABLE_PROJECT_ARCHIVE_RESTORED_WITH_HISTORY');
+
+
 
 
   const autoLayoutScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
