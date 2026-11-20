@@ -47,6 +47,12 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
   help.className='v4-tiny jwoo-lyric-helper';
   help.textContent='악보 위 음표를 더블클릭하면 가사를 직접 수정할 수 있습니다. 악보 미리보기의 ‘가사 입력 모드’를 켜면 한 번 클릭으로 열립니다. 문장을 입력하면 한국어 음절을 자동으로 나눠 배치할 수도 있습니다.';
   document.getElementById('v4-lyric-text')?.insertAdjacentElement('beforebegin',help);
+  const editSelection=document.createElement('button');
+  editSelection.type='button';editSelection.id='v4-inline-selected';
+  editSelection.className='jwoo-lyric-selected';
+  editSelection.textContent='선택 음표의 가사 바로 편집';
+  editSelection.title='음표를 선택한 뒤 누르면 악보 옆에서 가사를 입력합니다. 연결되지 않은 음표는 보호됩니다.';
+  help.insertAdjacentElement('afterend',editSelection);
   const editor=document.createElement('section');
   editor.id='v4-inline-lyric-editor';
   editor.className='jwoo-lyric-popover';
@@ -64,6 +70,7 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
   }
   function updateButton(){
     button.disabled=!enabled();
+    editSelection.disabled=!enabled();
     if(!enabled())mode=false;
     button.classList.toggle('is-active',mode);
     button.setAttribute('aria-pressed',String(mode));
@@ -209,6 +216,10 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
     mode=!mode;updateButton();
     if(!mode)close();
     else showStatus('악보 위 음표를 누르면 가사 입력창이 열립니다.');
+  });
+  editSelection.addEventListener('click',()=>{
+    const position=v3.getSelection();
+    open(position,getNoteRect?.(position));
   });
   $('v4-inline-close').addEventListener('click',close);
   verse.addEventListener('change',()=>{
