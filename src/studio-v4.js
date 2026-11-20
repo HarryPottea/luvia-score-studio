@@ -85,7 +85,7 @@ const panel=[
   '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
   '<input id="v4-pro-end" type="number" min="2" max="9999" step="1" value="2" />',
-  '<label for="v4-slur-next-measure">이음줄 끝 마디</label><select id="v4-slur-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option></select>',
+  '<label for="v4-slur-next-measure">이음줄 끝 마디</label><select id="v4-slur-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option><option value="2">2마디 뒤</option><option value="3">3마디 뒤</option><option value="4">4마디 뒤</option><option value="8">8마디 뒤</option></select>',
   '<button id="v4-pro-slur" type="button">선택 음표부터 끝 음표까지 이음줄 추가 / 해제</button>',
   '<label for="v4-pro-wedge">셈여림 변화</label><select id="v4-pro-wedge"><option value="crescendo">크레셴도 &lt;</option><option value="diminuendo">디미누엔도 &gt;</option></select>',
   '<button id="v4-pro-hairpin" type="button">선택 음표부터 끝 음표까지 셈여림 변화 추가</button>',
@@ -549,8 +549,10 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   }),'8분음표 셋잇단음 변환'));
   const span=()=>({...selected(),endEventIndex:Number($('v4-pro-end').value)-1});
   $('v4-pro-slur').addEventListener('click',()=>void commit(doc=>
-    $('v4-slur-next-measure').value==='1'?
-      toggleSlurAcrossBarline(doc,span()):toggleSlur(doc,span()),'이음줄 추가·해제'));
+    Number($('v4-slur-next-measure').value)>0?
+      toggleSlurAcrossBarline(doc,{...span(),
+        endMeasureOffset:Number($('v4-slur-next-measure').value)}):
+      toggleSlur(doc,span()),'이음줄 추가·해제'));
   $('v4-pro-hairpin').addEventListener('click',()=>void commit(doc=>addHairpin(doc,{
     ...span(),kind:$('v4-pro-wedge').value,
   }),'셈여림 변화 기보'));
