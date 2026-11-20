@@ -1554,6 +1554,14 @@ try {
   assert.equal((autoLayoutXml.match(/<text>반짝이는<\/text>/g)||[]).length,48);
   console.log('BROWSER_STAGE=V4_DENSITY_AWARE_AUTOMATIC_MUSICXML_LAYOUT');
 
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).focus();
+  await page.keyboard.press('ControlOrMeta+c');
+  await page.waitForFunction(()=>document.querySelector('#jwoo-block-status')?.textContent?.includes('복사했습니다'),null,{timeout:10000});
+  await page.keyboard.press('ControlOrMeta+d');
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===13,null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_KEYBOARD_COPY_DUPLICATE_MEASURE');
+
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
