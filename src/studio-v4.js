@@ -15,6 +15,7 @@ import {planBatchLyrics,applyBatchLyrics} from './studio-v4-lyrics-batch.js';
 import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
+import {extendVoiceAcrossBarline,toggleSlurAcrossBarline} from './studio-v4-crossbar.js';
 import './studio-v4.css';
 
 const intro=[
@@ -57,6 +58,10 @@ const panel=[
   '<p class="v4-tiny">다성부에서도 성부·보표를 유지합니다. 가사·붙임줄·화음·셋잇단음 등 복합 기보는 보호됩니다.</p>',
   '<div class="v4-inline"><div><label for="v4-split-type">붙임줄로 나눌 첫 음표 길이</label><select id="v4-split-type"><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select></div><button id="v4-split-tie" type="button">선택 음표 분할·붙임줄 연결</button></div>',
   '<p class="v4-tiny">선택 음표를 정확한 길이의 두 음표로 나누고 재생·기보용 붙임줄을 함께 만듭니다. 가사는 첫 음표에 보존합니다. 분할 가능한 길이만 적용됩니다.</p>',
+  '<div class="v4-crossbar"><p class="v4-subhead">마디 경계 · 이어지는 음표</p>',
+  '<div class="v4-inline"><div><label for="v4-crossbar-type">다음 마디에서 이어질 음표 길이</label><select id="v4-crossbar-type"><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select></div>',
+  '<button id="v4-crossbar-extend" type="button">마디 넘어 붙임줄로 연장</button></div>',
+  '<p class="v4-tiny">현재 마디 끝 음표와 다음 마디 첫 쉼표를 연결합니다. 기존 음정·가사·성부는 보존하고, 다른 성부는 변경하지 않습니다.</p></div>',
   '<label for="v4-grid-step">시작 위치 이동 간격</label><select id="v4-grid-step"><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select>',
   '<div class="v4-inline"><button id="v4-nudge-earlier" type="button">← 선택 음표를 앞 쉼표로 이동</button><button id="v4-nudge-later" type="button">선택 음표를 뒤 쉼표로 이동 →</button></div>',
   '<div class="v4-relocate-panel"><label for="v4-relocate-beat">선택 음표를 이동할 박자 위치 (1부터, 4분음표 기준)</label>',
@@ -73,6 +78,7 @@ const panel=[
   '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
   '<input id="v4-pro-end" type="number" min="2" max="9999" step="1" value="2" />',
+  '<label for="v4-slur-next-measure">이음줄 끝 마디</label><select id="v4-slur-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option></select>',
   '<button id="v4-pro-slur" type="button">선택 음표부터 끝 음표까지 이음줄 추가 / 해제</button>',
   '<label for="v4-pro-wedge">셈여림 변화</label><select id="v4-pro-wedge"><option value="crescendo">크레셴도 &lt;</option><option value="diminuendo">디미누엔도 &gt;</option></select>',
   '<button id="v4-pro-hairpin" type="button">선택 음표부터 끝 음표까지 셈여림 변화 추가</button>',
@@ -492,12 +498,17 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-split-tie').addEventListener('click',()=>void commit(doc=>splitVoiceNoteWithTie(doc,{
     ...selected(),firstType:$('v4-split-type').value,
   }),'음표 분할·붙임줄 연결'));
+  $('v4-crossbar-extend').addEventListener('click',()=>void commit(doc=>
+    extendVoiceAcrossBarline(doc,{...selected(),continuationType:$('v4-crossbar-type').value}),
+    '다음 마디로 음표 붙임줄 연장'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
   }),'8분음표 셋잇단음 변환'));
   const span=()=>({...selected(),endEventIndex:Number($('v4-pro-end').value)-1});
-  $('v4-pro-slur').addEventListener('click',()=>void commit(doc=>toggleSlur(doc,span()),'이음줄 추가·해제'));
+  $('v4-pro-slur').addEventListener('click',()=>void commit(doc=>
+    $('v4-slur-next-measure').value==='1'?
+      toggleSlurAcrossBarline(doc,span()):toggleSlur(doc,span()),'이음줄 추가·해제'));
   $('v4-pro-hairpin').addEventListener('click',()=>void commit(doc=>addHairpin(doc,{
     ...span(),kind:$('v4-pro-wedge').value,
   }),'셈여림 변화 기보'));
