@@ -523,6 +523,20 @@ try {
   assert.match(removedXml,/<step>G<\/step><octave>3<\/octave>/);
   assert.match(removedXml,/<backup><duration>192<\/duration><\/backup>/);
   console.log('BROWSER_STAGE=V4_POLYPHONIC_NOTE_TO_REST_SAFE');
+  await page.selectOption('#v4-pro-type','eighth');
+  await page.selectOption('#v4-pro-step','F');
+  await page.locator('#v4-timeline-insert').check();
+  assert.equal(await page.locator('#v4-timeline-move').isChecked(),false);
+  await page.locator('.v4-beat-lane').first().locator('.v4-beat-event.rest').last().click();
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('성부 시간표에서 음표 입력 완료'),null,{timeout:30000});
+  const insertedXmlDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const insertedXml=await fs.readFile(await (await insertedXmlDownload).path(),'utf8');
+  assert.match(insertedXml,/<step>F<\/step><octave>4<\/octave>/);
+  assert.match(insertedXml,/<backup><duration>192<\/duration><\/backup>/);
+  assert.match(insertedXml,/<step>G<\/step><octave>3<\/octave>/);
+  console.log('BROWSER_STAGE=V4_DIRECT_TIMELINE_NOTE_ENTRY');
+
 
 
 
