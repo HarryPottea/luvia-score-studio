@@ -6,6 +6,7 @@ import {createEditorHistory} from '../src/editor-history.js';
 import {transposeMeasurePassage} from '../src/studio-v4-passage-transpose.js';
 import {addIndependentVoice} from '../src/studio-v4-add-voice.js';
 import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
+import {transferVoicePhrase,inspectTransferableVoicePhrase} from '../src/studio-v4-voice-phrase.js';
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
@@ -597,4 +598,59 @@ test('transfer a second-beat quarter note into an interior of a whole-bar rest',
   assert.equal(result.change.nextEventIndex,4);
   assert.equal(first(rows(expanded)[0][0].children.filter(x=>x.localName==='note')[1],
     'pitch').textContent,'F4');
+});
+
+
+function phraseFixture(){
+  const score=fixture(2,2),bar=rows(score)[0][0],old=first(bar,'note'),
+    direction=first(bar,'direction');
+  bar.removeChild(old);
+  for(const [i,step] of ['C','D','E','F'].entries()){
+    const note=n('note',{},[
+      n('pitch',{},[leaf('step',step),leaf('octave',4)]),
+      leaf('duration',48),leaf('voice','1'),leaf('type','quarter'),
+      ...(i===1?[n('lyric',{number:'1'},[leaf('text','별빛')])]:[])
+    ]);
+    bar.insertBefore(note,direction);
+  }
+  bar.insertBefore(n('backup',{},[leaf('duration',192)]),direction);
+  bar.insertBefore(n('note',{},[
+    n('rest'),leaf('duration',192),leaf('voice','2'),leaf('type','whole')
+  ]),direction);
+  return score;
+}
+test('transfer all four quarter notes from voice 1 to voice 2 in one immutable action',()=>{
+  const source=phraseFixture();
+  const plan=inspectTransferableVoicePhrase(source,{partId:'P1',
+    measureIndex:0,startEventIndex:0,endEventIndex:3,targetVoice:'2'});
+  assert.deepEqual(plan.notes.map(n=>n.step),['C','D','E','F']);
+  const result=transferVoicePhrase(source,{partId:'P1',
+    measureIndex:0,startEventIndex:0,endEventIndex:3,targetVoice:'2'});
+  const notes=rows(result.doc)[0][0].children.filter(x=>x.localName==='note');
+  assert.equal(notes.length,8);
+  assert.deepEqual(notes.filter(n=>first(n,'voice').textContent==='1')
+    .map(n=>first(n,'rest')?.localName),['rest','rest','rest','rest']);
+  const voiced=notes.filter(n=>first(n,'voice').textContent==='2');
+  assert.deepEqual(voiced.map(n=>first(first(n,'pitch'),'step').textContent),
+    ['C','D','E','F']);
+  assert.deepEqual(voiced.map(n=>first(n,'duration').textContent),
+    ['48','48','48','48']);
+  assert.equal(first(voiced[1],'lyric').textContent,'별빛');
+  assert.equal(rows(result.doc)[0][0].children.filter(n=>n.localName==='backup').length,1);
+  assert.equal(result.change.movedNotes,4);
+  assert.equal(result.change.movedLyrics,1);
+  assert.equal(result.change.splitRestCount,3);
+  assert.equal(first(first(rows(source)[0][0],'note'),'pitch').textContent,'C4');
+  assert.equal(first(first(rows(result.doc)[1][0],'note'),'rest').localName,'rest');
+});
+test('voice phrase transfer refuses protected, incomplete, and occupied target lanes',()=>{
+  const source=phraseFixture(),bar=rows(source)[0][0],notes=bar.children.filter(n=>n.localName==='note');
+  const params={partId:'P1',measureIndex:0,startEventIndex:0,endEventIndex:3,targetVoice:'2'};
+  assert.throws(()=>transferVoicePhrase(source,{...params,endEventIndex:0}),/2~16개/);
+  notes[1].appendChild(n('notations',{},[n('slur',{number:'1',type:'start'})]));
+  assert.throws(()=>transferVoicePhrase(source,params),/복잡한 기보/);
+  notes[1].removeChild(first(notes[1],'notations'));
+  notes[4].replaceChild(n('pitch',{},[leaf('step','G'),leaf('octave',4)]),first(notes[4],'rest'));
+  assert.throws(()=>transferVoicePhrase(source,params),/빈 쉼표/);
+  assert.equal(first(notes[0],'pitch').textContent,'C4');
 });
