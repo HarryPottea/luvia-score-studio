@@ -193,5 +193,5 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     closeContext();clipboard=null;start=0;end=0;anchor=0;seenDoc=null;barCount=-1;render();
   }
   render();
-  return {render,reset,pick,openContext};
+  return {render,reset,pick,openContext,getRange:scope};
 }
