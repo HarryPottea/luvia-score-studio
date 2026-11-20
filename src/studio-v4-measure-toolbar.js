@@ -7,6 +7,7 @@ const direct=(n,tag)=>n?[...n.children].filter(c=>c.localName===tag):[];
 export function mountMeasureToolbar({state,v3,commit,setMessage}){
   const host=document.createElement('section');
   host.className='jwoo-measure-toolbar';
+  host.tabIndex=0;
   host.id='jwoo-measure-toolbar';
   host.setAttribute('aria-label','악보 마디 범위 편집');
   host.innerHTML=[
@@ -27,6 +28,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     '</div>',
     '<p class="jwoo-bar-hint">마디 번호를 누르거나 악보 음표를 클릭해 선택하세요. Shift+클릭은 여러 마디 선택,',
     ' 모바일에서는 시작·끝 번호로 범위를 지정합니다. 모든 파트에 동일하게 적용되며 실행 취소할 수 있습니다.',
+    ' 선택 바 안에서는 Ctrl/⌘+C 복사 · Ctrl/⌘+V 붙여넣기 · Ctrl/⌘+D 복제 · Delete 삭제를 사용할 수 있습니다.',
     ' 연결 기호나 조표·박자표 변경이 위험하면 편집을 차단합니다.</p>',
   ].join('');
   document.querySelector('.preview-toolbar').insertAdjacentElement('afterend',host);
@@ -172,6 +174,24 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     }catch(error){notify('마디 작업 불가: '+(error.message||'지원하지 않는 악보입니다.'),true);}
   }
   actionButtons.forEach(button=>button.addEventListener('click',()=>void execute(button.dataset.act)));
+  host.addEventListener('keydown',event=>{
+    const target=event.target;
+    if(target?.closest?.('input,textarea,select,[contenteditable="true"]')||
+      state.showBaseline||!currentInfo())return;
+    const key=event.key.toLowerCase();
+    let action=null;
+    if((event.ctrlKey||event.metaKey)&&!event.altKey){
+      if(key==='c')action='copy';
+      if(key==='v')action='paste';
+      if(key==='d')action='duplicate';
+    }else if(!event.ctrlKey&&!event.metaKey&&!event.altKey&&
+      (event.key==='Delete'||event.key==='Backspace')&&
+      target?.classList?.contains('jwoo-bar-chip'))
+      action='delete';
+    if(!action||action==='paste'&&!clipboard)return;
+    event.preventDefault();event.stopPropagation();
+    void execute(action);
+  });
   context.addEventListener('click',event=>{
     const button=event.target.closest?.('[data-context-act]');
     if(!button||button.disabled)return;
