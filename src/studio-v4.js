@@ -6,7 +6,7 @@ import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
-import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid} from './studio-v4-professional.js';
+import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote} from './studio-v4-professional.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
@@ -55,9 +55,13 @@ const panel=[
   '<button id="v4-pro-duration" type="button">선택 음표 길이 변경 (성부·박자 보존)</button>',
   '<label for="v4-grid-step">시작 위치 이동 간격</label><select id="v4-grid-step"><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select>',
   '<div class="v4-inline"><button id="v4-nudge-earlier" type="button">← 선택 음표를 앞 쉼표로 이동</button><button id="v4-nudge-later" type="button">선택 음표를 뒤 쉼표로 이동 →</button></div>',
-  '<p class="v4-tiny">음표와 인접한 같은 성부의 쉼표 사이에서 정확한 시작 위치를 옮깁니다. 다른 성부, 기존 화음·붙임줄·셋잇단음·빔은 변경하지 않습니다.</p>',
+  '<div class="v4-relocate-panel"><label for="v4-relocate-beat">선택 음표를 이동할 박자 위치 (1부터, 4분음표 기준)</label>',
+  '<div class="v4-inline"><input id="v4-relocate-beat" type="number" min="1" step="any" value="1" aria-describedby="v4-relocate-status" /><button id="v4-relocate-note" type="button">지정한 박자로 이동</button></div>',
+  '<p id="v4-relocate-status" class="v4-tiny" role="status" aria-live="polite">음표를 선택한 후 목표 박자를 입력하세요. 2.5는 두 번째 박자의 중간입니다.</p>',
+  '<label class="v4-timeline-move-check"><input id="v4-timeline-move" type="checkbox" /> 시간표에서 쉼표를 눌러 선택 음표 이동</label>',
+  '<p class="v4-tiny">같은 성부·보표의 연속된 쉼표 안에서 이동합니다. 다른 음표·마디·붙임줄·셋잇단음·빔은 넘지 않습니다. 변경은 실행 취소할 수 있습니다.</p></div>',
   '<p class="v4-subhead">현재 마디 성부 시간표</p>',
-  '<p class="v4-tiny">다성부·화음도 박자 위치별로 표시됩니다. 음표 블록을 눌러 선택하세요. Shift+←/→는 선택한 음표를 한 격자씩 이동합니다.</p>',
+  '<p class="v4-tiny">음표를 선택해 위치를 확인하세요. Shift+←/→로 한 격자씩 이동하거나, 위의 시간표 이동 기능을 켜고 빈 쉼표를 클릭하세요.</p>',
   '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치"></div>',
   '<button id="v4-pro-triplet" type="button">8분음표 두 개 → 셋잇단음 세 개로 변환</button>',
   '<p class="v4-tiny">정확히 분할 가능한 MusicXML divisions의 동일 성부·보표 8분음표 2개가 필요합니다.</p>',
@@ -364,6 +368,12 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     try{audit=inspectAdvancedMeasure(state.doc,pos.partId,pos.measureIndex);}
     catch(error){host.textContent='시간표 확인 실패: '+error.message;return;}
     if(audit.reason){host.textContent='이 마디는 보호된 기보입니다: '+audit.reason;return;}
+    const chosen=audit.events[pos.eventIndex];
+    if(chosen&&!chosen.rest&&Number.isInteger(audit.divisions)&&audit.divisions>0){
+      $('v4-relocate-beat').value=String(1+chosen.start/audit.divisions);
+      $('v4-relocate-status').textContent='현재 '+(1+chosen.start/audit.divisions)+
+        '박자 · '+chosen.voice+'성부 / '+chosen.staff+'보표 · 이동 격자: '+$('v4-grid-step').selectedOptions[0]?.textContent;
+    }
     if(!Number.isFinite(audit.max)||audit.max<=0){
       host.textContent='이 마디에서 시간축을 계산할 수 없습니다.';return;
     }
@@ -401,8 +411,21 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
           ' · 길이 '+e.duration+' · '+(e.chord?'화음':'음표');
         entry.setAttribute('aria-label',entry.title);
         entry.setAttribute('aria-pressed',String(e.eventIndex===pos.eventIndex));
-        entry.addEventListener('click',()=>v3.select({partId:pos.partId,
-          measureIndex:pos.measureIndex,eventIndex:e.eventIndex}));
+        entry.addEventListener('click',()=>{
+          if(e.rest&&$('v4-timeline-move').checked){
+            const current=selected(),chosen=audit.events[current.eventIndex];
+            if(!chosen||chosen.rest||chosen.voice!==e.voice||chosen.staff!==e.staff){
+              $('v4-relocate-status').textContent='먼저 같은 성부·보표의 이동할 음표를 선택해 주세요.';
+              return;
+            }
+            const targetBeat=1+e.start/audit.divisions;
+            $('v4-relocate-beat').value=String(targetBeat);
+            void commit(doc=>relocateVoiceNote(doc,{...current,targetBeat,
+              grid:$('v4-grid-step').value}),'시간표에서 음표 위치 이동');
+            return;
+          }
+          v3.select({partId:pos.partId,measureIndex:pos.measureIndex,eventIndex:e.eventIndex});
+        });
         entry.addEventListener('keydown',ev=>{
           if(!ev.shiftKey||!['ArrowLeft','ArrowRight'].includes(ev.key)||e.rest)return;
           ev.preventDefault();
@@ -432,6 +455,11 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       ...selected(),direction,grid:$('v4-grid-step').value,
     }),'성부 음표 시작 위치 이동'));
   }
+  $('v4-relocate-note').addEventListener('click',()=>{
+    const position=selected(),targetBeat=Number($('v4-relocate-beat').value);
+    void commit(doc=>relocateVoiceNote(doc,{...position,targetBeat,
+      grid:$('v4-grid-step').value}),'음표를 지정한 박자로 이동');
+  });
   $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
     ...selected(),mode:'duration',type:$('v4-pro-type').value,
   }),'성부별 음표 길이 변경'));
