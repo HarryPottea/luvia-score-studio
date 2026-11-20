@@ -67,6 +67,8 @@ export function inspectEditableTuplet(source,{partId,measureIndex,eventIndex}={}
       open={number:m[0].number,start:i,indices:[],lane:null,ratio:null};
     }
     if(open){
+      if(!first(note,'time-modification'))
+        fail('잇단음 종료 기호가 누락되거나 연결이 끊겼습니다.');
       const e=audit.events[i],ratio=ratioOf(note);
       const lane=e.voice+'@'+e.staff;
       if(e.rest||e.chord||first(note,'tie')||children(first(note,'notations'),'tied').length||
