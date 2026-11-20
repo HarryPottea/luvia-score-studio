@@ -6,7 +6,7 @@ import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
-import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote} from './studio-v4-professional.js';
+import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest} from './studio-v4-professional.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
@@ -52,7 +52,8 @@ const panel=[
   '<div class="v4-inline"><div><label for="v4-pro-step">음이름</label><select id="v4-pro-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div><div><label for="v4-pro-octave">옥타브</label><select id="v4-pro-octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div></div>',
   '<label for="v4-pro-alter">변화표</label><select id="v4-pro-alter"><option value="-2">𝄫</option><option value="-1">♭</option><option value="0" selected>♮</option><option value="1">♯</option><option value="2">𝄪</option></select>',
   '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select>',
-  '<button id="v4-pro-duration" type="button">선택 음표 길이 변경 (성부·박자 보존)</button>',
+  '<div class="v4-inline"><button id="v4-pro-duration" type="button">선택 음표 길이 변경</button><button id="v4-pro-to-rest" type="button">선택 음표 → 쉼표</button></div>',
+  '<p class="v4-tiny">다성부에서도 성부·보표를 유지합니다. 가사·붙임줄·화음·셋잇단음 등 복합 기보는 보호됩니다.</p>',
   '<label for="v4-grid-step">시작 위치 이동 간격</label><select id="v4-grid-step"><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select>',
   '<div class="v4-inline"><button id="v4-nudge-earlier" type="button">← 선택 음표를 앞 쉼표로 이동</button><button id="v4-nudge-later" type="button">선택 음표를 뒤 쉼표로 이동 →</button></div>',
   '<div class="v4-relocate-panel"><label for="v4-relocate-beat">선택 음표를 이동할 박자 위치 (1부터, 4분음표 기준)</label>',
@@ -463,6 +464,9 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
     ...selected(),mode:'duration',type:$('v4-pro-type').value,
   }),'성부별 음표 길이 변경'));
+  $('v4-pro-to-rest').addEventListener('click',()=>void commit(doc=>replaceVoiceNoteWithRest(doc,{
+    ...selected(),
+  }),'다성부 음표를 쉼표로 대체'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
