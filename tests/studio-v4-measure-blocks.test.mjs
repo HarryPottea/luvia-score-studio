@@ -8,6 +8,7 @@ import {addIndependentVoice} from '../src/studio-v4-add-voice.js';
 import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
 import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMeasures} from '../src/studio-v4-voice-phrase.js';
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
+import {toggleAdvancedArticulation} from '../src/studio-v4-articulations.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
 const xmlOwner={
@@ -709,4 +710,57 @@ test('cross-bar voice transfer is refused atomically if a later bar has no targe
     sourceVoice:'1',targetVoice:'2',staff:'1'}),/빈 쉼표/);
   assert.equal(first(first(rows(source)[0][0],'note'),'pitch').textContent,'C4');
   assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'G4');
+});
+
+
+test('polyphonic cross-measure tied note supports articulation without changing slur or lyric',()=>{
+  const source=connectedBars();
+  const originalNote=first(rows(source)[0][1],'note');
+  originalNote.appendChild(n('lyric',{number:'1'},[leaf('text','반짝이는')]));
+  const result=toggleAdvancedArticulation(source,{
+    partId:'P1',measureIndex:1,eventIndex:0,kind:'staccato'
+  });
+  const n1=first(rows(result.doc)[0][1],'note'),
+    n2=first(rows(result.doc)[0][2],'note'),
+    untouched=first(rows(result.doc)[1][1],'note');
+  assert.equal(first(first(first(n1,'notations'),'articulations'),'staccato').localName,'staccato');
+  assert.equal(first(n1,'tie').getAttribute('type'),'start');
+  assert.equal(first(first(n1,'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(first(first(n1,'notations'),'slur').getAttribute('type'),'start');
+  assert.equal(first(n2,'tie').getAttribute('type'),'stop');
+  assert.equal(first(n1,'lyric').textContent,'반짝이는');
+  assert.equal(first(n1,'duration').textContent,'192');
+  assert.equal(first(untouched,'notations')?.children.some(x=>x.localName==='articulations'),false);
+  assert.equal(first(originalNote,'notations').children.some(x=>x.localName==='articulations'),false);
+  assert.equal(result.change.enabled,true);
+  const cleared=toggleAdvancedArticulation(result.doc,{
+    partId:'P1',measureIndex:1,eventIndex:0,kind:'staccato'
+  });
+  assert.equal(first(first(rows(cleared.doc)[0][1],'note'),'notations').children
+    .some(x=>x.localName==='articulations'),false);
+  assert.equal(cleared.change.enabled,false);
+});
+test('articulation can be toggled on note with two independent written voices',()=>{
+  const base=fixture(2,1),bar=rows(base)[0][0];
+  pitched(first(bar,'note'),'D',4);
+  const poly=addIndependentVoice(base,{partId:'P1',voice:'2',staff:1}).doc;
+  const result=toggleAdvancedArticulation(poly,{
+    partId:'P1',measureIndex:0,eventIndex:0,kind:'tenuto'
+  });
+  const notes=rows(result.doc)[0][0].children.filter(x=>x.localName==='note');
+  assert.equal(first(first(first(notes[0],'notations'),'articulations'),'tenuto').localName,'tenuto');
+  assert.equal(first(notes[1],'rest').localName,'rest');
+  assert.equal(first(notes[1],'duration').textContent,'192');
+  assert.equal(first(first(rows(poly)[0][0],'note'),'notations'),undefined);
+});
+test('unsupported articulation input and rests cannot change original score',()=>{
+  const score=fixture(1,1),note=first(rows(score)[0][0],'note');
+  assert.throws(()=>toggleAdvancedArticulation(score,{
+    partId:'P1',measureIndex:0,eventIndex:0,kind:'accent'
+  }),/일반 음표/);
+  pitched(note,'C',4);
+  assert.throws(()=>toggleAdvancedArticulation(score,{
+    partId:'P1',measureIndex:0,eventIndex:0,kind:'unknown'
+  }),/종류/);
+  assert.equal(first(note,'notations'),undefined);
 });
