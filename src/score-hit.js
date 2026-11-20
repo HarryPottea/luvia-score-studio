@@ -49,21 +49,33 @@ const signature=e=>{
   return e.step&&Number.isInteger(e.alter)&&Number.isInteger(e.octave)
     ?['note',e.start,e.duration,e.step,e.alter,e.octave].join('/') : null;
 };
-// Do not infer voice identities from sequence order: duplicated identities stay read-only.
+// Match OSMD's explicit voice identity when available. Unresolved unisons stay read-only.
+const laneSignature=e=>{
+  const base=signature(e),voice=e?.voice,staff=e?.staff;
+  return base!==null&&voice!==undefined&&voice!==null&&String(voice)!==''&&
+    staff!==undefined&&staff!==null&&String(staff)!==''
+    ?base+'@voice='+String(voice)+'@staff='+String(staff):null;
+};
 export function matchScoreEvents(events,graphics) {
-  const source=new Map(),visual=new Map();
-  for(const [list,store] of [[events,source],[graphics,visual]]) {
-    for(const e of list) {
-      const key=signature(e);
-      if(key){const items=store.get(key)||[];items.push(e);store.set(key,items);}
+  const pairs=[],usedEvents=new Set(),usedGraphics=new Set();
+  for(const identify of [laneSignature,signature]){
+    const source=new Map(),visual=new Map();
+    for(const [list,store,used] of [[events,source,usedEvents],[graphics,visual,usedGraphics]]){
+      for(const e of list){
+        if(used.has(e))continue;
+        const key=identify(e);
+        if(key===null)continue;
+        const bucket=store.get(key)||[];bucket.push(e);store.set(key,bucket);
+      }
+    }
+    for(const [key,matches] of source){
+      const drawn=visual.get(key)||[];
+      if(matches.length!==1||drawn.length!==1)continue;
+      const event=matches[0],graphic=drawn[0];
+      pairs.push({event,graphic});usedEvents.add(event);usedGraphics.add(graphic);
     }
   }
-  const matches=[];
-  for(const [key,items] of source) {
-    const seen=visual.get(key)||[];
-    if(items.length===1&&seen.length===1)matches.push({event:items[0],graphic:seen[0]});
-  }
-  return matches;
+  return pairs;
 }
 function sourcePitch(source) {
   // OSMD Pitch.ts uses octXmlDiff=3; serialized MusicXML octaves are 3 higher.
@@ -121,7 +133,7 @@ export function graphicalTargets(osmd,doc,visibleParts,host) {
         const staffEntries=row[location.offset+staff-1]?.staffEntries;
         if(!Array.isArray(staffEntries))continue;
         const expected=measure.events.filter(e=>Number(e.staff)===staff&&
-          !e.protectedMarkup&&(e.editablePitch||e.rest));
+          e.duration>0&&(e.rest||!!e.step));
         const drawn=[];
         for(const entry of staffEntries)for(const voice of entry.graphicalVoiceEntries||[])for(const gn of voice.notes||[]) {
           const src=gn?.sourceNote;
@@ -132,7 +144,10 @@ export function graphicalTargets(osmd,doc,visibleParts,host) {
           if(!rest&&!pitch||!Number.isFinite(time)||!Number.isFinite(duration))continue;
           const start=Math.round(time*measure.divisions*4),length=Math.round(duration*measure.divisions*4);
           if(!close(start/(measure.divisions*4),time)||!close(length/(measure.divisions*4),duration))continue;
-          drawn.push({...pitch,start,duration:length,rest,gn});
+          const rawVoice=src.ParentVoiceEntry?.ParentVoice?.VoiceId;
+           const voice=(typeof rawVoice==='number'||typeof rawVoice==='string')&&
+             String(rawVoice)!==''?String(rawVoice):undefined;
+           drawn.push({...pitch,start,duration:length,rest,gn,voice,staff:String(staff)});
         }
         for(const pair of matchScoreEvents(expected,drawn)) {
           const rest=pair.event.rest===true;
@@ -161,7 +176,7 @@ function addHitArea(element) {
 // OSMD autoResize replaces SVG nodes. Rebind after a DOM replacement instead of
 // assuming one-off graphical objects survive responsive re-rendering.
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce,
-  isLyricMode=()=>false,editLyric=()=>false,onMeasurePointer=()=>{}}) {
+  isLyricMode=()=>false,editLyric=()=>false,onMeasurePointer=()=>{},onDirectEdit=()=>false}) {
   const host=document.getElementById('score-container');
   let targets=[],cleanups=[],selected=null,drag=null,disposed=false;
   const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
@@ -213,8 +228,14 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     addHitArea(el);
     el.setAttribute('aria-pressed','false');
     function key(event) {
-      if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
+      if(!['Enter',' ','ArrowUp','ArrowDown','Delete','Backspace'].includes(event.key))return;
       event.preventDefault();selected=item;onMeasurePointer(item.measureIndex,!!event.shiftKey);select(item);highlight();
+      if((event.key==='Delete'||event.key==='Backspace')&&!item.rest){
+        onDirectEdit(item,'delete');return;
+      }
+      if(item.rest&&(event.key==='Enter'||event.key===' ')&&!isLyricMode()){
+        onDirectEdit(item,'insert');return;
+      }
       if(!item.rest&&isLyricMode()&&(event.key==='Enter'||event.key===' ')){
         editLyric(item,el);return;
       }
