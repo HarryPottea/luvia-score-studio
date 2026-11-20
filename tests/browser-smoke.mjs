@@ -1392,6 +1392,47 @@ try {
   assert.match(await page.locator('#score-info').textContent(),/3개 마디/);
   console.log('BROWSER_STAGE=V4_WRITTEN_NOTES_REBARRED_INTO_3_4');
 
+  const chordRebarScore='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list><score-part id="P1">'+
+    '<part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><time><beats>4</beats>'+
+    '<beat-type>4</beat-type></time><clef><sign>G</sign>'+
+    '<line>2</line></clef></attributes>'+
+    ['C','E','G'].map((step,i)=>'<note>'+
+      (i?'<chord/>':'')+'<pitch><step>'+step+
+      '</step><octave>4</octave></pitch><duration>192</duration>'+
+      '<type>whole</type>'+
+      (!i?'<lyric number="1"><text>반짝이는</text></lyric>':'')+
+      '</note>').join('')+
+    '</measure><measure number="2">'+
+    ['D','F'].map((step,i)=>'<note>'+(i?'<chord/>':'')+
+      '<pitch><step>'+step+'</step><octave>4</octave></pitch>'+
+      '<duration>48</duration><type>quarter</type></note>').join('')+
+    '<note><rest/><duration>96</duration><type>half</type></note>'+
+    '<note><rest/><duration>48</duration><type>quarter</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'chord-rebar.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(chordRebarScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),
+    null,{timeout:30000});
+  await page.selectOption('#v4-rebar-meter','3/4');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-rebar-written');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('작성된 악보 전체 리바링 완료'),
+    null,{timeout:30000});
+  const chordRebarDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const chordRebarXml=await fs.readFile(await (await chordRebarDownload).path(),'utf8');
+  assert.equal((chordRebarXml.match(/<measure number="/g)||[]).length,3);
+  assert.equal((chordRebarXml.match(/<chord\s*\/>/g)||[]).length,5);
+  assert.equal((chordRebarXml.match(/<tie type="start"\s*\/>/g)||[]).length,3);
+  assert.equal((chordRebarXml.match(/<tie type="stop"\s*\/>/g)||[]).length,3);
+  assert.match(chordRebarXml,/<text>반짝이는<\/text>/);
+  assert.match(chordRebarXml,/<beats>3<\/beats><beat-type>4<\/beat-type>/);
+  console.log('BROWSER_STAGE=V4_SIMULTANEOUS_CHORD_TONES_REBARRED_WITH_INDEPENDENT_TIES');
+
+
   const fiveToFour='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
     '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
     '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
