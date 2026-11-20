@@ -463,7 +463,10 @@ try {
     mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(polyphonicRhythm)});
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'));
   await page.locator('#v3-events .v3-event').first().click();
-  assert.equal(await page.locator('#v3-length').isDisabled(),true,'Legacy input is locked for polyphonic notation');
+  assert.equal(await page.locator('#v3-duration').isDisabled(),true,
+    'Legacy simple duration operation is protected for polyphony');
+  assert.equal(await page.locator('#v3-pitch').isEnabled(),true,
+    'Stage1 graphical pitch editing is enabled for supported polyphonic notes');
   await page.selectOption('#v4-pro-type','half');
   await page.click('#v4-pro-duration');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부별 음표 길이 변경 완료'));
@@ -2344,6 +2347,13 @@ try {
   const s1Final=await fs.readFile(await (await s1FinalDownload).path(),'utf8');
   assert.equal((s1Final.match(/<voice>2<\/voice>/g)||[]).length,4);
   assert.ok(s1Final.includes(s1NewTail),'undo must restore original second-voice rest');
+  await page.locator('#file-input').setInputFiles({
+    name:'stage1-roundtrip.musicxml',mimeType:'application/xml',buffer:Buffer.from(s1Final)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===11,
+    null,{timeout:30000});
+  assert.ok((await page.locator('#v3-events .v3-event').last().textContent()).includes('𝄽'),
+    'exported score re-import retains second-voice rest');
   console.log('BROWSER_STAGE=STAGE1_SVG_DELETE_UNDO_AND_XML_ROUNDTRIP');
 
   assert.deepEqual(errors,[]);
