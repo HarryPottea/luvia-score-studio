@@ -1763,6 +1763,34 @@ try {
     {accepted:true,refusedPitch:true,refusedLyric:true});
   console.log('BROWSER_STAGE=V4_MUSICXML_EXPORT_ROUNDTRIP_GUARD');
 
+
+  // Existing-score instrument management (not just a new-score template).
+  await page.fill('#v4-new-title','파트 생성 통합 검증');
+  await page.selectOption('#v4-new-template','melody');
+  await page.selectOption('#v4-new-measures','4');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-part option').length===1,
+    null,{timeout:30000});
+  await page.fill('#v4-add-part-name','피아노 양손');
+  await page.selectOption('#v4-add-part-type','piano');
+  await page.click('#v4-add-part');
+  await page.waitForFunction(()=>document.querySelector('#v4-add-part-status')?.textContent?.includes('파트 추가 완료'),
+    null,{timeout:30000});
+  assert.equal(await page.locator('#v3-part option').count(),2);
+  assert.equal(await page.locator('#export-part option').count(),2);
+  assert.equal(await page.locator('#parts-list input[data-part-id="P2"]').count(),1);
+  const newPartXmlEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const newPartXml=await fs.readFile(await (await newPartXmlEvent).path(),'utf8');
+  assert.equal((newPartXml.match(/<part id="P[0-9]+">/g)||[]).length,2);
+  assert.match(newPartXml,/<staves>2<\/staves>/);
+  assert.equal((newPartXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,4);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-part option').length===1&&
+    document.querySelectorAll('#export-part option').length===1,null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_ADD_PIANO_PART_AND_UNDO_WITH_SELECTOR_SYNC');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
