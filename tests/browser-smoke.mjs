@@ -1941,6 +1941,45 @@ try {
   assert.equal((secondBeatXml.match(/<backup>/g)||[]).length,1);
   console.log('BROWSER_STAGE=V4_TRANSFER_MIDMEASURE_NOTE_INTO_SURROUNDING_RESTS');
 
+  const fourNotePhrase='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list><score-part id="P1">'+
+    '<part-name>Vocal</part-name></score-part></part-list><part id="P1">'+
+    '<measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    ['C','D','E','F'].map((step,i)=>'<note><pitch><step>'+step+
+      '</step><octave>4</octave></pitch><duration>48</duration>'+
+      '<voice>1</voice><type>quarter</type>'+
+      (i===1?'<lyric number="1"><text>별빛</text></lyric>':'')+
+      '</note>').join('')+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>192</duration><voice>2</voice><type>whole</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'four-note-phrase.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(fourNotePhrase)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===5,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-transfer-voice','2');
+  await page.fill('#v4-transfer-phrase-end','4');
+  await page.click('#v4-transfer-phrase');
+  await page.waitForFunction(()=>document.querySelector('#v4-transfer-phrase-status')?.textContent?.includes('이동 완료'),
+    null,{timeout:30000});
+  const phraseDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const phraseXML=await fs.readFile(await (await phraseDownload).path(),'utf8');
+  assert.equal((phraseXML.match(/<voice>1<\/voice><type>quarter<\/type>/g)||[]).length,4);
+  assert.equal((phraseXML.match(/<voice>2<\/voice><type>quarter<\/type>/g)||[]).length,4);
+  for(const step of ['C','D','E','F'])
+    assert.match(phraseXML,new RegExp('<step>'+step+'<\\/step><octave>4<\\/octave>'));
+  assert.match(phraseXML,/<text>별빛<\/text>/);
+  assert.equal((phraseXML.match(/<backup>/g)||[]).length,1);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_FOUR_NOTE_PHRASE_TRANSFERS_BETWEEN_VOICES_ATOMICALLY');
+
+
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
