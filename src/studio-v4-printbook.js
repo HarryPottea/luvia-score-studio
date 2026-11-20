@@ -35,6 +35,8 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
   for(const [index,p] of parts.entries()){
     if(!p||typeof p.id!=='string'||!p.id)throw new Error('인쇄 파트를 선택해 주세요.');
     const partDoc=partOnlyDocument(doc,p.id);
+    const expectedLyrics=[...partDoc.querySelectorAll('note > lyric > text')]
+      .filter(n=>String(n.textContent||'').trim()).length;
     const holder=document.createElement('div');
     const profile=fixedA4Profile(partDoc,pageFormat);
     holder.style.cssText='position:fixed;left:-100000px;top:0;visibility:hidden;pointer-events:none;'+
@@ -50,8 +52,12 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
       applyFixedA4Profile(osmd,partDoc,pageFormat);
       applyLayoutPreset(osmd,layout,partDoc);
       osmd.render();
-      const lyricAudit=await adaptLyricRendering(osmd,holder,{maxAttempts:2});
-      lyricAudits.push({...lyricAudit,partId:p.id});
+      const measured=await adaptLyricRendering(osmd,holder,{maxAttempts:2});
+      const lyricAudit={...measured,partId:p.id,expectedLyrics,
+        coverageSufficient:measured.lyricElements>=expectedLyrics&&measured.complete};
+      if(!lyricAudit.coverageSufficient)
+        lyricAudit.status='LYRIC_MEASUREMENT_INCOMPLETE';
+      lyricAudits.push(lyricAudit);
       const rendered=[...holder.querySelectorAll('svg')];
       if(rendered.length<1||rendered.length>MAX_PART_PAGES)
         throw new Error('파트별 페이지가 없거나 너무 많아 벡터 출력이 중단됐습니다.');
@@ -68,13 +74,17 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
     const last=lyricAudits.at(-1);
     onProgress((index+1)+'/'+parts.length+' · '+p.name+' 렌더링 완료'+
       (last?.attempts?' · 간격 자동 보정 '+last.attempts+'회':'')+
-      (last?.remaining?' · 가사 겹침 의심 '+last.remaining+'건':'') );
+      (last?.remaining?' · 가사 겹침 의심 '+last.remaining+'건':'')+
+      (!last?.coverageSufficient?' · 가사 위치 검사 미완료 ('+
+        last?.lyricElements+'/'+last?.expectedLyrics+')':'') );
   }
   output.lyricAudit={parts:lyricAudits.length,
     initial:lyricAudits.reduce((n,a)=>n+a.initial,0),
     remaining:lyricAudits.reduce((n,a)=>n+a.remaining,0),
     attempts:lyricAudits.reduce((n,a)=>n+a.attempts,0),
-    complete:lyricAudits.every(a=>a.complete),
+    complete:lyricAudits.every(a=>a.coverageSufficient),
+    expectedLyrics:lyricAudits.reduce((n,a)=>n+a.expectedLyrics,0),
+    measuredLyrics:lyricAudits.reduce((n,a)=>n+a.lyricElements,0),
     collisionFreeCertified:false};
   return output;
 }
