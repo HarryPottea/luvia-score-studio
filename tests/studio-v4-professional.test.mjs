@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
+import {extendVoiceAcrossBarline,toggleSlurAcrossBarline} from '../src/studio-v4-crossbar.js';
 import {
   editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie
 } from '../src/studio-v4-professional.js';
@@ -340,4 +341,72 @@ test('professional: unrepresentable or protected note splits are blocked',()=>{
   notes(marked)[6].appendChild(E('tie',[],{type:'start'}));
   assert.throws(()=>splitVoiceNoteWithTie(marked,{...params(6),firstType:'quarter'}),/보호|복합/);
   assert.equal(serialize(original),serial);
+});
+
+
+function crossbarFixture(){
+  const doc=fixture();
+  part(doc).appendChild(E('measure',[
+    voiceRest(192,'whole','1','1'),
+    E('backup',[T('duration',192)]),
+    voiceRest(96,'half','2','2'),
+    voiceNote('A',3,96,'half','2','2'),
+  ],{number:'2'}));
+  return doc;
+}
+const secondMeasure=doc=>children(part(doc),'measure')[1];
+const secondAudit=doc=>inspectAdvancedMeasure(doc,'P1',1);
+
+test('crossbar: continue last piano voice note into next bar while preserving the other staff',()=>{
+  const source=crossbarFixture(),original=serialize(source),b=secondAudit(source);
+  assert.equal(b.reason,null);
+  const result=extendVoiceAcrossBarline(source,{...params(6),continuationType:'quarter'});
+  assert.equal(serialize(source),original);
+  assert.deepEqual(values(result.doc).events.filter(e=>e.voice==='1'),values(source).events.filter(e=>e.voice==='1'));
+  assert.deepEqual(secondAudit(result.doc).events.filter(e=>e.voice==='1'),b.events.filter(e=>e.voice==='1'));
+  const events=secondAudit(result.doc).events.filter(e=>e.voice==='2');
+  assert.deepEqual(events.map(e=>[e.start,e.duration,e.rest,e.step]),[
+    [0,48,false,'G'],[48,48,true,''],[96,96,false,'A']
+  ]);
+  assert.equal(first(children(measure(result.doc),'backup')[0],'duration').textContent,'192');
+  assert.equal(first(children(secondMeasure(result.doc),'backup')[0],'duration').textContent,'192');
+  const firstBar=children(measure(result.doc),'note')[6];
+  const continuation=children(secondMeasure(result.doc),'note')[1];
+  assert.equal(first(firstBar,'tie').getAttribute('type'),'start');
+  assert.equal(first(continuation,'tie').getAttribute('type'),'stop');
+  assert.equal(first(first(firstBar,'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(first(first(continuation,'notations'),'tied').getAttribute('type'),'stop');
+});
+test('crossbar: disallow overwriting written music, unsupported timing, or existing ties',()=>{
+  const source=crossbarFixture(),original=serialize(source);
+  assert.throws(()=>extendVoiceAcrossBarline(source,{...params(5),continuationType:'quarter'}),/마디 끝/);
+  assert.throws(()=>extendVoiceAcrossBarline(source,{...params(6),continuationType:'whole'}),/쉼표보다 긴/);
+  assert.throws(()=>extendVoiceAcrossBarline(source,{...params(6),continuationType:'invalid'}),/길이/);
+  const noRest=crossbarFixture();
+  secondMeasure(noRest).replaceChild(voiceNote('F',3,96,'half','2','2'),children(secondMeasure(noRest),'note')[1]);
+  assert.throws(()=>extendVoiceAcrossBarline(noRest,{...params(6),continuationType:'quarter'}),/첫 박자|쉼표/);
+  const marked=crossbarFixture();
+  children(measure(marked),'note')[6].appendChild(E('tie',[],{type:'start'}));
+  assert.throws(()=>extendVoiceAcrossBarline(marked,{...params(6),continuationType:'quarter'}),/보호/);
+  assert.equal(serialize(source),original);
+});
+test('crossbar: cross-measure slurs are reversible and leave voice timing unchanged',()=>{
+  const source=crossbarFixture(),original=serialize(source);
+  const opts={...params(6),endEventIndex:2};
+  const attached=toggleSlurAcrossBarline(source,opts).doc;
+  assert.equal(serialize(source),original);
+  const from=children(measure(attached),'note')[6],to=children(secondMeasure(attached),'note')[2];
+  assert.equal(first(first(from,'notations'),'slur').getAttribute('type'),'start');
+  assert.equal(first(first(to,'notations'),'slur').getAttribute('type'),'stop');
+  assert.deepEqual(secondAudit(attached).events.map(e=>[e.start,e.duration,e.voice,e.staff]),
+    secondAudit(source).events.map(e=>[e.start,e.duration,e.voice,e.staff]));
+  const detached=toggleSlurAcrossBarline(attached,opts).doc;
+  assert.equal(serialize(detached),original);
+});
+test('crossbar: slurs cannot silently cross voices or missing measures',()=>{
+  const source=crossbarFixture();
+  assert.throws(()=>toggleSlurAcrossBarline(source,{...params(6),endEventIndex:0}),/같은 성부/);
+  assert.throws(()=>toggleSlurAcrossBarline(source,{...params(6),endEventIndex:99}),/위치/);
+  const single=fixture();
+  assert.throws(()=>extendVoiceAcrossBarline(single,{...params(6)}),/다음 마디/);
 });
