@@ -152,7 +152,7 @@ test('protect structural meter edits and irregular score measurements',()=>{
   rows(a)[0][2].insertBefore(n('attributes',{},[n('time',{},[leaf('beats',3)])]),
     rows(a)[0][2].firstChild);
   assert.throws(()=>captureMeasureRange(a,{start:1,end:2}),/조표·박자표/);
-  const b=fixture(); rows(b)[1].pop();
+  const b=fixture(); b.documentElement.children[1].removeChild(rows(b)[1].at(-1));
   assert.throws(()=>captureMeasureRange(b,{start:0,end:0}),/파트별 마디 수/);
 });
 test('cannot delete all bars or exceed 16 selected bars',()=>{
