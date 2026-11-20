@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {
-  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid
+  editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote
 } from '../src/studio-v4-professional.js';
 
 // Deterministic DOM supporting the exact MusicXML tree operations used by the
@@ -199,4 +199,45 @@ test('professional: protect existing notes when no adjacent rest, no precise sub
   assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(1),direction:'later',grid:'64th'}),/올바르지/);
   assert.throws(()=>nudgeVoiceNoteOnGrid(original,{...params(4),direction:'earlier',grid:'16th'}),/쉼표|복잡한/);
   assert.equal(serialize(original),before);
+});
+
+
+test('professional: exact beat placement crosses multiple consecutive rests without touching voice 2',()=>{
+  const original=fixture(),unchanged=serialize(original),second=secondVoice(original);
+  const result=relocateVoiceNote(original,{...params(1),targetBeat:3,grid:'16th'});
+  assert.equal(serialize(original),unchanged);
+  assert.deepEqual(secondVoice(result.doc),second);
+  const moved=values(result.doc).events.filter(e=>e.voice==='1');
+  assert.deepEqual(moved.map(e=>[e.start,e.duration,e.rest,e.step]),[
+    [0,24,false,'C'],[24,48,true,''],[72,24,true,''],
+    [96,24,false,'E'],[120,48,true,''],[168,24,true,''],
+  ]);
+  assert.equal(result.change.nextEventIndex,3);
+  assert.equal(result.change.fromTick,24);
+  assert.equal(result.change.toTick,96);
+  assert.equal(first(children(measure(result.doc),'backup')[0],'duration').textContent,'192');
+});
+test('professional: move left across rest islands, preserving source, original note and beat total',()=>{
+  const original=fixture();
+  measure(original).replaceChild(voiceRest(24,'eighth','1','1'),notes(original)[0]);
+  const serialized=serialize(original);
+  const next=relocateVoiceNote(original,{...params(1),targetBeat:1.25,grid:'16th'});
+  assert.equal(serialize(original),serialized);
+  const events=values(next.doc).events;
+  const moved=events.find(e=>e.step==='E');
+  assert.equal(moved.start,12);assert.equal(moved.duration,24);
+  assert.equal(events.filter(e=>e.voice==='1'&&!e.chord).reduce((sum,e)=>sum+e.duration,0),192);
+  assert.deepEqual(secondVoice(next.doc),secondVoice(original));
+});
+test('professional: reject non-grid targets, occupied notes, crossing backup and protected markup',()=>{
+  const original=fixture(),serial=serialize(original);
+  assert.throws(()=>relocateVoiceNote(original,{...params(1),targetBeat:1,grid:'16th'}),/연속된 빈 쉼표/);
+  assert.throws(()=>relocateVoiceNote(original,{...params(1),targetBeat:2.1,grid:'16th'}),/격자/);
+  assert.throws(()=>relocateVoiceNote(original,{...params(1),targetBeat:8,grid:'16th'}),/격자/);
+  assert.throws(()=>relocateVoiceNote(original,{...params(1),targetBeat:1.5,grid:'16th'}),/해당 박자/);
+  assert.throws(()=>relocateVoiceNote(original,{...params(4),targetBeat:2,grid:'16th'}),/연속된 빈 쉼표/);
+  const protectedDoc=fixture();
+  notes(protectedDoc)[1].appendChild(E('tie',[],{type:'start'}));
+  assert.throws(()=>relocateVoiceNote(protectedDoc,{...params(1),targetBeat:3,grid:'16th'}),/붙임줄|복잡한/);
+  assert.equal(serialize(original),serial);
 });
