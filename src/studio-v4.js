@@ -19,6 +19,7 @@ import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
 import {editConnectedPitch} from './studio-v4-connected-pitch.js';
 import {toggleAdvancedArticulation} from './studio-v4-articulations.js';
+import {toggleMusicXmlOrnament} from './studio-v4-ornaments.js';
 import {insertGraceNote,removeGraceNote,editGraceNote} from './studio-v4-grace-notes.js';
 import {authorTupletGroup} from './studio-v4-tuplet-groups.js';
 import {editTupletPitches,inspectEditableTuplet} from './studio-v4-tuplet-pitch-edit.js';
@@ -126,6 +127,12 @@ const panel=[
   '<option value="detached-legato">포르타토</option><option value="spiccato">스피카토</option></select>',
   '<button id="v4-articulation-toggle" type="button">선택 음표에 표현 기호 추가 / 해제</button></div>',
   '<p class="v4-tiny">다성부·붙임줄·잇단음·가사·화음 첫 음표에서도 박자를 변경하지 않고 표현 기호만 수정합니다. 실행 취소가 가능합니다.</p>',
+  '<div class="v4-inline"><label for="v4-ornament-kind">장식 기호</label>',
+  '<select id="v4-ornament-kind"><option value="trill-mark">트릴</option>',
+  '<option value="turn">턴</option><option value="inverted-turn">역턴</option>',
+  '<option value="mordent">모르덴트</option><option value="inverted-mordent">역모르덴트</option></select>',
+  '<button id="v4-ornament-toggle" type="button">선택 음표에 장식 기호 추가 / 해제</button></div>',
+  '<p class="v4-tiny">기존 음표의 박자·가사·붙임줄·이음줄을 보존한 채 장식 기호만 변경합니다.</p>',
   '<div class="v4-inline"><label class="v4-timeline-move-check"><input id="v4-grace-slash" type="checkbox" checked /> 짧은 꾸밈음 (빗금 표시)</label>',
   '<button id="v4-grace-insert" type="button">선택 음표 앞에 꾸밈음 삽입</button>',
   '<button id="v4-grace-remove" type="button">선택한 꾸밈음 삭제</button></div>',
@@ -884,6 +891,10 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     octave:Number($('v4-pro-octave').value),slash:$('v4-grace-slash').checked,
     type:$('v4-grace-type').value
   }),'기존 꾸밈음 음정·기호 수정'));
+  $('v4-ornament-toggle').addEventListener('click',()=>void commit(
+    doc=>toggleMusicXmlOrnament(doc,{...selected(),kind:$('v4-ornament-kind').value}),
+    '음악 장식 기호 추가 / 해제'
+  ));
   $('v4-articulation-toggle').addEventListener('click',()=>void commit(
     doc=>toggleAdvancedArticulation(doc,{...selected(),
       kind:$('v4-articulation-kind').value}),
