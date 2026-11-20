@@ -98,7 +98,7 @@ export function mountSettingsAccordions(){
     ['출력','#v4-print-book'],
   ];
   for(const [name,selector] of shortcuts){
-    const target=host.querySelector(selector);
+    const target=document.querySelector(selector);
     if(!target)continue;
     const link=document.createElement('button');
     link.type='button';link.className='jwoo-quick-link';
@@ -106,7 +106,7 @@ export function mountSettingsAccordions(){
     link.setAttribute('aria-label',name+' 설정으로 이동');
     link.addEventListener('click',()=>{
       const ancestors=[];
-      for(let node=target.parentElement;node&&node!==host;node=node.parentElement){
+      for(let node=target.parentElement;node&&node!==host&&node!==document.body;node=node.parentElement){
         if(node.classList?.contains('jwoo-fold-body'))ancestors.push(node);
       }
       for(const body of ancestors.reverse()){
