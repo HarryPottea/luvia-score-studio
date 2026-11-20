@@ -1,4 +1,5 @@
 // MusicXML-aware automatic system/page break planner.
+import {assertScopedScoreMutation} from './studio-v4-structural-guard.js';
 //
 // This is a spacing heuristic, not a collision-free engraver. All markup is
 // preserved except explicitly computed print new-system/new-page flags.
@@ -119,6 +120,8 @@ export function applyDensityLayout(source,options={}){
       if(!print.attributes.length&&!print.children.length)bar.removeChild(print);
     }
   }
+  assertScopedScoreMutation(source,doc,{partIds:all(doc.documentElement,'part')
+    .map(p=>p.getAttribute('id')),start:0,end:plan.totalMeasures-1,kind:'layout'});
   return {doc,change:{action:'density-automatic-layout',systems:plan.systems,
     pagesEstimated:plan.pages,staves:plan.totalStaves,
     collisionVerified:false}};
@@ -169,6 +172,8 @@ export function applyIndependentPartLayout(source,options={}){
       if(!print.attributes.length&&!print.children.length)bar.removeChild(print);
     }
   }
+  assertScopedScoreMutation(source,doc,{partIds:plan.partPlans.map(p=>p.partId),
+    start:0,end:Math.max(...plan.partPlans.map(p=>p.totalMeasures))-1,kind:'layout'});
   return {doc,change:{action:'independent-part-density-layout',parts:plan.parts,
     systems:plan.systems,pagesEstimated:plan.pagesEstimated,collisionVerified:false}};
 }
