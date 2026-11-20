@@ -20,7 +20,7 @@ function hasUnsupported(node){
 }
 function eventsAtMeasure(measure){
   const events=[];
-  for(const node of measure.children){
+  for(const [order,node] of [...measure.children].entries()){
     if(node.localName==='note'){
       const voice=val(node,'voice')||'1';
       const staff=val(node,'staff')||'1';
@@ -30,18 +30,18 @@ function eventsAtMeasure(measure){
       const sound=all(node,'tie'),written=all(first(node,'notations'),'tied');
       if((sound.length||written.length)&&(!pitch||!val(pitch,'step')||!val(pitch,'octave')))
         reject('붙임줄의 음정을 확인할 수 없습니다.');
-      for(const link of sound)events.push({family:'sound-tie',key:noteKey,type:link.getAttribute('type')});
-      for(const link of written)events.push({family:'written-tie',key:noteKey,type:link.getAttribute('type')});
+      for(const link of sound)events.push({order,family:'sound-tie',key:noteKey,type:link.getAttribute('type')});
+      for(const link of written)events.push({order,family:'written-tie',key:noteKey,type:link.getAttribute('type')});
       for(const link of all(first(node,'notations'),'slur'))
-        events.push({family:'slur',key:voice+'|'+staff+'|'+(link.getAttribute('number')||'1'),
+        events.push({order,family:'slur',key:voice+'|'+staff+'|'+(link.getAttribute('number')||'1'),
           type:link.getAttribute('type')});
       for(const link of all(first(node,'notations'),'tuplet'))
-        events.push({family:'tuplet',key:voice+'|'+staff+'|'+(link.getAttribute('number')||'1'),
+        events.push({order,family:'tuplet',key:voice+'|'+staff+'|'+(link.getAttribute('number')||'1'),
           type:link.getAttribute('type')});
     }
     if(node.localName==='direction'){
       for(const directionType of all(node,'direction-type'))for(const wedge of all(directionType,'wedge'))
-        events.push({family:'wedge',key:wedge.getAttribute('number')||'1',type:wedge.getAttribute('type')});
+        events.push({order,family:'wedge',key:wedge.getAttribute('number')||'1',type:wedge.getAttribute('type')});
     }
   }
   return events;
@@ -49,9 +49,9 @@ function eventsAtMeasure(measure){
 function eventRank(e){return e.type==='stop'?0:e.type==='start'?1:2;}
 function consume(open,events){
   // A single note can close a previous tie and start its continuation.
-  for(const e of events.slice().sort((a,b)=>eventRank(a)-eventRank(b))){
+  for(const e of events.slice().sort((a,b)=>a.order-b.order||eventRank(a)-eventRank(b))){
     if(!['start','stop','continue'].includes(e.type)||
-      e.type==='continue'&&e.family!=='wedge')
+      e.type==='continue'&&(e.family==='sound-tie'||e.family==='written-tie'))
       reject('알 수 없는 악상 연결 표기를 자동 편집하지 않습니다.');
     const key=e.family+':'+e.key;
     if(e.type==='start'){
