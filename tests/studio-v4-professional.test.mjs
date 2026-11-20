@@ -263,3 +263,48 @@ test('professional: protect lyric-bearing, chord and tupletted notes against imp
     T('actual-notes',3),T('normal-notes',2)]));
   assert.throws(()=>replaceVoiceNoteWithRest(tuple,params(1)),/보호|기보|시간/);
 });
+
+test('professional: quarter-note pair becomes a three-note 3:2 quarter triplet',()=>{
+  const original=fixture(),measureNode=measure(original);
+  for(const note of notes(original).slice(0,2)){
+    first(note,'duration').textContent='48';
+    first(note,'type').textContent='quarter';
+  }
+  first(notes(original)[3],'duration').textContent='48';
+  first(notes(original)[3],'type').textContent='quarter';
+  assert.equal(values(original).reason,null);
+  const other=secondVoice(original),before=serialize(original);
+  const converted=createEighthTriplet(original,{...params(),step:'F',octave:4}).doc;
+  assert.equal(serialize(original),before);
+  assert.deepEqual(secondVoice(converted),other);
+  assert.deepEqual(values(converted).events.slice(0,3).map(e=>[
+    e.start,e.duration,e.type,e.tuplet]),[
+    [0,32,'quarter',true],[32,32,'quarter',true],[64,32,'quarter',true]
+  ]);
+  assert.equal(first(first(notes(converted)[1],'time-modification'),'normal-type').textContent,'quarter');
+});
+test('professional: sixteenth pair creates precise 3:2 rhythm and preserves backing voice',()=>{
+  const original=fixture();
+  for(const note of notes(original).slice(0,2)){
+    first(note,'duration').textContent='12';
+    first(note,'type').textContent='16th';
+  }
+  measure(original).insertBefore(voiceRest(24,'eighth','1','1'),notes(original)[2]);
+  assert.equal(values(original).reason,null);
+  const other=secondVoice(original),before=serialize(original);
+  const converted=createEighthTriplet(original,{...params(),step:'D',octave:4}).doc;
+  assert.equal(serialize(original),before);
+  assert.deepEqual(secondVoice(converted),other);
+  assert.deepEqual(values(converted).events.slice(0,3).map(e=>[
+    e.start,e.duration,e.type,e.tuplet]),[
+    [0,8,'16th',true],[8,8,'16th',true],[16,8,'16th',true]
+  ]);
+  assert.equal(first(first(notes(converted)[1],'time-modification'),'normal-type').textContent,'16th');
+});
+test('professional: protect the second note lyric when converting into tuplets',()=>{
+  const doc=fixture();
+  notes(doc)[1].appendChild(E('lyric',[T('text','소중한')]));
+  const before=serialize(doc);
+  assert.throws(()=>createEighthTriplet(doc,{...params(),step:'G'}),/가사/);
+  assert.equal(serialize(doc),before);
+});
