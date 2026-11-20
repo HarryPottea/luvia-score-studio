@@ -15,6 +15,7 @@ import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
 import {planBatchLyrics,applyBatchLyrics} from './studio-v4-lyrics-batch.js';
+import {mountInlineLyricEditor} from './studio-v4-lyrics-floating.js';
 import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
@@ -247,12 +248,14 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     if(copy)void saveSnapshot(copy);
   }
   function beforeOpen(){
+    inlineLyrics.close();
     flushPending();
     player.stop();
     skipRendered=true;
     currentRenderedDoc=null;
   }
   function onRendered(){
+    inlineLyrics.onRendered();
     syncCurrentMeasureCount();
     renderVoiceGrid();
     syncChordSelection();
@@ -271,7 +274,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){syncCurrentMeasureCount();syncChordSelection();void refreshDrafts();}
+  function onLoaded(){inlineLyrics.onLoaded();syncCurrentMeasureCount();syncChordSelection();void refreshDrafts();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{
@@ -364,6 +367,10 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     await v3.commitExternal(transform,label);
   }
   function selected(){return v3.getSelection();}
+  const inlineLyrics=mountInlineLyricEditor({
+    state,v3,commit,setMessage,lyricVerseInput:$('v4-lyric-verse'),
+    getNoteRect:position=>state.graphicBridge?.rectFor?.(position),
+  });
 
   function syncChordSelection(){
     const where=$('v4-chord-location'),input=$('v4-chord-input');
@@ -820,5 +827,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }
   });
   void refreshDrafts();
-  return {beforeOpen,onRendered,onLoaded,onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();},stop:()=>player.stop()};
+  return {beforeOpen,onRendered,onLoaded,onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();},
+    lyricMode:()=>inlineLyrics.isMode(),
+    openLyricFromScore:(position,element)=>inlineLyrics.openFromScore(position,element),
+    stop:()=>player.stop()};
 }
