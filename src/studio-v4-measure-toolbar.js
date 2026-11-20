@@ -1,6 +1,7 @@
 // Compact bar-range editing in the score preview; all mutations use V3 history.
 import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from './studio-v4-measure-blocks.js';
+import {transposeMeasurePassage} from './studio-v4-passage-transpose.js';
 import './studio-v4-measure-toolbar.css';
 
 const direct=(n,tag)=>n?[...n.children].filter(c=>c.localName===tag):[];
@@ -26,6 +27,11 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     '<button type="button" data-act="insert">앞에 빈 마디</button>',
     '<button type="button" data-act="delete" class="jwoo-danger">선택 마디 삭제</button>',
     '</div>',
+    '<div class="jwoo-transpose-controls">',
+    '<label>반음 이동 <input type="number" id="jwoo-transpose-semitones" min="-12" max="12" value="2" step="1" /></label>',
+    '<label>임시표 <select id="jwoo-transpose-spelling"><option value="sharp">샤프 우선</option><option value="flat">플랫 우선</option></select></label>',
+    '<button type="button" data-act="transpose">선택 구간 음정 일괄 이조</button>',
+    '</div>',
     '<p class="jwoo-bar-hint">마디 번호를 누르거나 악보 음표를 클릭해 선택하세요. Shift+클릭은 여러 마디 선택,',
     ' 모바일에서는 시작·끝 번호로 범위를 지정합니다. 모든 파트에 동일하게 적용되며 실행 취소할 수 있습니다.',
     ' 선택 바 안에서는 Ctrl/⌘+C 복사 · Ctrl/⌘+V 붙여넣기 · Ctrl/⌘+D 복제 · Delete 삭제를 사용할 수 있습니다.',
@@ -43,6 +49,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     '<button type="button" data-context-act="duplicate">선택 마디 뒤에 복제</button>',
     '<button type="button" data-context-act="insert">앞에 빈 마디 추가</button>',
     '<button type="button" data-context-act="delete">선택 마디 삭제</button>',
+    '<button type="button" data-context-act="transpose">선택 구간 음정 일괄 이조</button>',
   ].join('');
   host.appendChild(context);
   const $=id=>document.getElementById(id);
@@ -156,6 +163,18 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
   async function execute(action){
     try{
       const region=scope();
+      if(action==='transpose'){
+        const semitones=Number($('jwoo-transpose-semitones').value);
+        const spelling=$('jwoo-transpose-spelling').value;
+        if(!Number.isSafeInteger(semitones)||semitones===0||
+           semitones<-12||semitones>12||!['sharp','flat'].includes(spelling))
+          throw new Error('이조 반음은 -12~+12의 0이 아닌 정수여야 합니다.');
+        const before=state.doc;
+        await commit(doc=>transposeMeasurePassage(doc,{...region,semitones,spelling}),
+          '선택 구간 '+(semitones>0?'+':'')+semitones+'반음 이조');
+        if(before!==state.doc){render();}
+        return;
+      }
       if(action==='copy'){
         clipboard=captureMeasureRange(state.doc,region);
         render();notify(clipboard.count+'마디를 복사했습니다. 붙여넣을 위치를 선택해 주세요.');
