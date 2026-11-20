@@ -454,3 +454,30 @@ export function relocateVoiceNote(source,{partId,measureIndex,eventIndex,
   return {doc,change:{action:'voice-note-relocate',partId,measureIndex,eventIndex,
     nextEventIndex:nextIndex,fromTick:event.start,toTick:targetTick,grid}};
 }
+
+
+/**
+ * Remove an unadorned single note from any supported voice/staff without
+ * deleting its time slot: replace it with an equal-length same-lane rest.
+ * Lyric-bearing notes must be edited deliberately before removing the pitch.
+ */
+export function replaceVoiceNoteWithRest(source,{partId,measureIndex,eventIndex}={}){
+  const {doc,loc}=start(source,{partId,measureIndex,eventIndex});
+  const {note,measure,audit,event}=loc;
+  if(!event||event.rest||event.chord||event.tuplet||event.protectedMarkup)
+    fail('붙임줄·화음·셋잇단음 등 보호된 음표는 쉼표로 바꾸지 않습니다.');
+  guardNote(note);
+  if(all(note,'lyric').length)fail('가사가 있는 음표는 가사를 먼저 삭제해 주세요.');
+  if(!TYPES.some(([type])=>type===event.type)||
+    durationFor(event.type,audit.divisions)!==event.duration)
+    fail('원래 음표 길이를 일반 쉼표로 안전하게 표현할 수 없습니다.');
+  const replacement=makeRest(measure,note,event.duration,event.type);
+  measure.replaceChild(replacement,note);
+  const after=validateChange(doc,{...loc,measure:loc.sourceMeasure,part:loc.sourcePart},
+    partId,measureIndex,new Set([identity(event)]));
+  const changed=after.events[eventIndex];
+  if(!changed?.rest||changed.duration!==event.duration||changed.start!==event.start||
+    changed.voice!==event.voice||changed.staff!==event.staff)
+    fail('음표 삭제 후 쉼표 위치가 일치하지 않습니다.');
+  return {doc,change:{action:'voice-note-to-rest',partId,measureIndex,eventIndex}};
+}
