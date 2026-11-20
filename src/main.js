@@ -259,6 +259,8 @@ function attachScoreInteractions(osmd){
     osmd, doc:state.doc, visibleParts:[...state.visible],
     select:position=>v3.select(position),
     movePitch:(position,steps)=>v3.movePitch(position,steps),
+    isLyricMode:()=>v4?.lyricMode?.()===true,
+    editLyric:(position,element)=>v4?.openLyricFromScore?.(position,element),
     announce:count=>{ const el=document.getElementById('v3-graphic-hint');
       if (el) el.textContent = count ? `악보 화면에서 음표 ${count}개를 직접 선택할 수 있습니다. 음표를 위아래로 움직이거나 ↑↓ 키를 사용하세요.` : '악보에서 안전하게 연결된 음표가 없습니다. 보호된 붙임줄·중복 성부·숨겨진 음표는 편집하지 않습니다.';
     },
