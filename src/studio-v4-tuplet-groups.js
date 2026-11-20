@@ -167,8 +167,8 @@ export function authorTupletGroup(source,{partId,measureIndex,eventIndex,
   const free=[1,2,3,4,5,6].find(n=>!numbers.has(n));
   if(!free)reject('악보의 기존 셋잇단음 연결 번호가 모두 사용 중입니다.');
   notation(candidates[0],'start');notation(last,'stop');
-  one(candidates[0],'notations').children.at(-1).setAttribute('number',String(free));
-  one(last,'notations').children.at(-1).setAttribute('number',String(free));
+  [...one(candidates[0],'notations').children].at(-1).setAttribute('number',String(free));
+  [...one(last,'notations').children].at(-1).setAttribute('number',String(free));
   const group=beforeAfter(source,doc,partId,measureIndex,eventIndex,normal,factor,spec);
   if(group.some(e=>e.duration!==tick)||group[0].start!==clock*factor)
     reject('셋잇단음 시작 위치·길이 확인에 실패했습니다.');
