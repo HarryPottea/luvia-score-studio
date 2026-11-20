@@ -1,4 +1,5 @@
 // J-WOO 4.0 Composer notation actions.
+import {assertNotationMutation,insertOrderedNotation} from './studio-v4-notation-guard.js';
 // Pure immutable MusicXML edit operations. No external I/O.
 const kids=(n,t)=>n?[...n.children].filter(x=>x.localName===t):[];
 const child=(n,t)=>kids(n,t)[0]||null;
@@ -80,6 +81,9 @@ export function setNoteVerse(source,{partId,measureIndex,eventIndex,verse=1,
     note.insertBefore(lyric,next||null);
   }
   checkBeforeAfter(source,cloned);
+  assertNotationMutation(source,cloned,{partId,targets:[{
+    measureIndex,eventIndex,allowed:[{name:'lyric',number}]
+  }]});
   return {doc:cloned,change:{action:'verse-lyric',partId,measureIndex,eventIndex,verse:Number(number),mode}};
 }
 function ordinalCandidates(part,from,to){
@@ -112,7 +116,7 @@ function insertTie(note,kind){
   }
   const tied=el(notations,'tied');
   tied.setAttribute('type',kind);
-  notations.appendChild(tied);
+  insertOrderedNotation(notations,tied);
 }
 export function toggleSoundingTie(source,{partId,measureIndex,eventIndex,
   endMeasureIndex=measureIndex,endEventIndex}={}){
@@ -148,6 +152,11 @@ export function toggleSoundingTie(source,{partId,measureIndex,eventIndex,
     for(const [n,type] of nodes)insertTie(n,type);
   }
   checkBeforeAfter(source,cloned);
+  assertNotationMutation(source,cloned,{partId,targets:[
+    {measureIndex,eventIndex,allowed:[{name:'tie',type:'start'},{name:'tied',type:'start'}]},
+    {measureIndex:endMeasureIndex,eventIndex:endEventIndex,
+      allowed:[{name:'tie',type:'stop'},{name:'tied',type:'stop'}]}
+  ]});
   return {doc:cloned,change:{action:has[0]?'tie-remove':'tie-add',partId,measureIndex,eventIndex,
     endMeasureIndex,endEventIndex}};
 }
