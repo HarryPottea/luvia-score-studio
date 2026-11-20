@@ -516,6 +516,9 @@ export function splitVoiceNoteWithTie(source,{partId,measureIndex,eventIndex,
     fail('두 개의 일반 음표로 정확히 나눌 수 없는 길이입니다.');
   const old=event.duration,continuation=note.cloneNode(true);
   for(const lyric of all(continuation,'lyric'))continuation.removeChild(lyric);
+  // The continuation shares the same sounding pitch; an explicit accidental
+  // belongs to the first attack, not duplicated as a second printed symbol.
+  for(const accidental of all(continuation,'accidental'))continuation.removeChild(accidental);
   const setLength=(node,length,type)=>{
     direct(node,'duration').textContent=String(length);
     direct(node,'type').textContent=type;
