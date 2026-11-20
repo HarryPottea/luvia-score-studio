@@ -4,9 +4,10 @@ import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,app
 import {buildPlaybackTimeline,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
+import {createPartSvgZip} from './studio-v4-part-svg.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
-import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid} from './studio-v4-professional.js';
+import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
@@ -52,15 +53,24 @@ const panel=[
   '<div class="v4-inline"><div><label for="v4-pro-step">음이름</label><select id="v4-pro-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div><div><label for="v4-pro-octave">옥타브</label><select id="v4-pro-octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div></div>',
   '<label for="v4-pro-alter">변화표</label><select id="v4-pro-alter"><option value="-2">𝄫</option><option value="-1">♭</option><option value="0" selected>♮</option><option value="1">♯</option><option value="2">𝄪</option></select>',
   '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select>',
-  '<button id="v4-pro-duration" type="button">선택 음표 길이 변경 (성부·박자 보존)</button>',
+  '<div class="v4-inline"><button id="v4-pro-duration" type="button">선택 음표 길이 변경</button><button id="v4-pro-to-rest" type="button">선택 음표 → 쉼표</button></div>',
+  '<p class="v4-tiny">다성부에서도 성부·보표를 유지합니다. 가사·붙임줄·화음·셋잇단음 등 복합 기보는 보호됩니다.</p>',
+  '<div class="v4-inline"><div><label for="v4-split-type">붙임줄로 나눌 첫 음표 길이</label><select id="v4-split-type"><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select></div><button id="v4-split-tie" type="button">선택 음표 분할·붙임줄 연결</button></div>',
+  '<p class="v4-tiny">선택 음표를 정확한 길이의 두 음표로 나누고 재생·기보용 붙임줄을 함께 만듭니다. 가사는 첫 음표에 보존합니다. 분할 가능한 길이만 적용됩니다.</p>',
   '<label for="v4-grid-step">시작 위치 이동 간격</label><select id="v4-grid-step"><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select>',
   '<div class="v4-inline"><button id="v4-nudge-earlier" type="button">← 선택 음표를 앞 쉼표로 이동</button><button id="v4-nudge-later" type="button">선택 음표를 뒤 쉼표로 이동 →</button></div>',
-  '<p class="v4-tiny">음표와 인접한 같은 성부의 쉼표 사이에서 정확한 시작 위치를 옮깁니다. 다른 성부, 기존 화음·붙임줄·셋잇단음·빔은 변경하지 않습니다.</p>',
+  '<div class="v4-relocate-panel"><label for="v4-relocate-beat">선택 음표를 이동할 박자 위치 (1부터, 4분음표 기준)</label>',
+  '<div class="v4-inline"><input id="v4-relocate-beat" type="number" min="1" step="any" value="1" aria-describedby="v4-relocate-status" /><button id="v4-relocate-note" type="button">지정한 박자로 이동</button></div>',
+  '<p id="v4-relocate-status" class="v4-tiny" role="status" aria-live="polite">음표를 선택한 후 목표 박자를 입력하세요. 2.5는 두 번째 박자의 중간입니다.</p>',
+  '<label class="v4-timeline-move-check"><input id="v4-timeline-move" type="checkbox" /> 시간표에서 쉼표를 눌러 선택 음표 이동</label>',
+  '<label class="v4-timeline-move-check"><input id="v4-timeline-insert" type="checkbox" /> 시간표에서 쉼표를 눌러 새 음표 입력</label>',
+  '<p class="v4-tiny">새 음표 입력은 위 음이름·변화표·옥타브·길이 설정을 사용합니다. 두 모드 중 하나만 선택할 수 있습니다.</p>',
+  '<p class="v4-tiny">같은 성부·보표의 연속된 쉼표 안에서 이동합니다. 다른 음표·마디·붙임줄·셋잇단음·빔은 넘지 않습니다. 변경은 실행 취소할 수 있습니다.</p></div>',
   '<p class="v4-subhead">현재 마디 성부 시간표</p>',
-  '<p class="v4-tiny">다성부·화음도 박자 위치별로 표시됩니다. 음표 블록을 눌러 선택하세요. Shift+←/→는 선택한 음표를 한 격자씩 이동합니다.</p>',
+  '<p class="v4-tiny">음표를 선택해 위치를 확인하세요. Shift+←/→로 한 격자씩 이동하거나, 위에서 이동·입력 모드를 선택하고 빈 쉼표를 클릭하세요.</p>',
   '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치"></div>',
-  '<button id="v4-pro-triplet" type="button">8분음표 두 개 → 셋잇단음 세 개로 변환</button>',
-  '<p class="v4-tiny">정확히 분할 가능한 MusicXML divisions의 동일 성부·보표 8분음표 2개가 필요합니다.</p>',
+  '<button id="v4-pro-triplet" type="button">4·8·16분음표 두 개 → 셋잇단음 세 개</button>',
+  '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
   '<input id="v4-pro-end" type="number" min="2" max="9999" step="1" value="2" />',
   '<button id="v4-pro-slur" type="button">선택 음표부터 끝 음표까지 이음줄 추가 / 해제</button>',
@@ -105,7 +115,9 @@ const panel=[
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
   '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
   '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
-  '<button id="v4-vector-zip" type="button">벡터 SVG 페이지 ZIP 저장</button>',
+  '<button id="v4-part-svg-zip" type="button">모든 파트 SVG ZIP 저장 (벡터)</button>',
+  '<p class="v4-tiny">각 악기 파트의 모든 SVG 페이지를 각각 이름 붙여 압축합니다. 이미지로 변환하지 않지만 PDF 파일은 아닙니다.</p>',
+  '<button id="v4-vector-zip" type="button">현재 미리보기 SVG ZIP 저장</button>',
   '<p class="v4-tiny">벡터 PDF는 미리보기 상단 ‘인쇄 · PDF 저장’을 이용하세요. 08 / 파트별 PDF ZIP은 이미지 기반 출력입니다.</p>',
   '<p class="v4-subhead">05 / 간이 청음</p>',
   '<div class="v4-inline"><button id="v4-play" type="button">▶ 악보 재생</button><button id="v4-stop" type="button" disabled>■ 정지</button></div>',
@@ -364,6 +376,12 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     try{audit=inspectAdvancedMeasure(state.doc,pos.partId,pos.measureIndex);}
     catch(error){host.textContent='시간표 확인 실패: '+error.message;return;}
     if(audit.reason){host.textContent='이 마디는 보호된 기보입니다: '+audit.reason;return;}
+    const chosen=audit.events[pos.eventIndex];
+    if(chosen&&!chosen.rest&&Number.isInteger(audit.divisions)&&audit.divisions>0){
+      $('v4-relocate-beat').value=String(1+chosen.start/audit.divisions);
+      $('v4-relocate-status').textContent='현재 '+(1+chosen.start/audit.divisions)+
+        '박자 · '+chosen.voice+'성부 / '+chosen.staff+'보표 · 이동 격자: '+$('v4-grid-step').selectedOptions[0]?.textContent;
+    }
     if(!Number.isFinite(audit.max)||audit.max<=0){
       host.textContent='이 마디에서 시간축을 계산할 수 없습니다.';return;
     }
@@ -401,8 +419,29 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
           ' · 길이 '+e.duration+' · '+(e.chord?'화음':'음표');
         entry.setAttribute('aria-label',entry.title);
         entry.setAttribute('aria-pressed',String(e.eventIndex===pos.eventIndex));
-        entry.addEventListener('click',()=>v3.select({partId:pos.partId,
-          measureIndex:pos.measureIndex,eventIndex:e.eventIndex}));
+        entry.addEventListener('click',()=>{
+          if(e.rest&&$('v4-timeline-insert').checked){
+            v3.select({partId:pos.partId,measureIndex:pos.measureIndex,eventIndex:e.eventIndex});
+            void commit(doc=>editVoiceRhythm(doc,{...selected(),mode:'insert',
+              type:$('v4-pro-type').value,step:$('v4-pro-step').value,
+              alter:Number($('v4-pro-alter').value),octave:Number($('v4-pro-octave').value),
+            }),'성부 시간표에서 음표 입력');
+            return;
+          }
+          if(e.rest&&$('v4-timeline-move').checked){
+            const current=selected(),chosen=audit.events[current.eventIndex];
+            if(!chosen||chosen.rest||chosen.voice!==e.voice||chosen.staff!==e.staff){
+              $('v4-relocate-status').textContent='먼저 같은 성부·보표의 이동할 음표를 선택해 주세요.';
+              return;
+            }
+            const targetBeat=1+e.start/audit.divisions;
+            $('v4-relocate-beat').value=String(targetBeat);
+            void commit(doc=>relocateVoiceNote(doc,{...current,targetBeat,
+              grid:$('v4-grid-step').value}),'시간표에서 음표 위치 이동');
+            return;
+          }
+          v3.select({partId:pos.partId,measureIndex:pos.measureIndex,eventIndex:e.eventIndex});
+        });
         entry.addEventListener('keydown',ev=>{
           if(!ev.shiftKey||!['ArrowLeft','ArrowRight'].includes(ev.key)||e.rest)return;
           ev.preventDefault();
@@ -415,6 +454,13 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       }
       scroll.append(canvas);line.append(title,scroll);host.append(line);
     }
+  }
+
+  for(const [id,other] of [['v4-timeline-move','v4-timeline-insert'],
+    ['v4-timeline-insert','v4-timeline-move']]){
+    $(id).addEventListener('change',()=>{
+      if($(id).checked)$(other).checked=false;
+    });
   }
 
   // Keep backward compatibility with 4.0's original simple-score controls,
@@ -432,9 +478,20 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       ...selected(),direction,grid:$('v4-grid-step').value,
     }),'성부 음표 시작 위치 이동'));
   }
+  $('v4-relocate-note').addEventListener('click',()=>{
+    const position=selected(),targetBeat=Number($('v4-relocate-beat').value);
+    void commit(doc=>relocateVoiceNote(doc,{...position,targetBeat,
+      grid:$('v4-grid-step').value}),'음표를 지정한 박자로 이동');
+  });
   $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
     ...selected(),mode:'duration',type:$('v4-pro-type').value,
   }),'성부별 음표 길이 변경'));
+  $('v4-pro-to-rest').addEventListener('click',()=>void commit(doc=>replaceVoiceNoteWithRest(doc,{
+    ...selected(),
+  }),'다성부 음표를 쉼표로 대체'));
+  $('v4-split-tie').addEventListener('click',()=>void commit(doc=>splitVoiceNoteWithTie(doc,{
+    ...selected(),firstType:$('v4-split-type').value,
+  }),'음표 분할·붙임줄 연결'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
@@ -564,6 +621,27 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       if(!win.closed)win.document.body.textContent='벡터 파트보 생성 실패: '+error.message;
       setMessage('벡터 파트보를 만들지 못했습니다: '+error.message,true);
     }finally{button.disabled=false;}
+  });
+  $('v4-part-svg-zip').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    const button=$('v4-part-svg-zip');button.disabled=true;
+    try{
+      const names=new Map([...state.doc.querySelectorAll('part-list > score-part')].map(p=>[
+        p.getAttribute('id'),p.querySelector('part-name')?.textContent||p.getAttribute('id'),
+      ]));
+      const parts=[...state.doc.documentElement.children].filter(n=>n.localName==='part')
+        .map(p=>({id:p.getAttribute('id'),name:names.get(p.getAttribute('id'))||p.getAttribute('id')}));
+      const pages=await renderPartSvgPages({doc:state.doc,parts,
+        pageFormat:$('page-orientation').value,measureNumbers:$('measure-numbers').checked,
+        onProgress:detail=>setMessage('파트별 벡터 파일 준비: '+detail)});
+      const result=await createPartSvgZip({pages,filename:state.filename});
+      const url=URL.createObjectURL(result.blob),anchor=document.createElement('a');
+      anchor.href=url;anchor.download=result.filename;anchor.click();
+      setTimeout(()=>URL.revokeObjectURL(url),10000);
+      setMessage('파트별 SVG '+result.parts+'개 파트 · '+result.pages+
+        '페이지 ZIP 저장 완료 · SVG는 벡터이지만 PDF 파일은 아닙니다.');
+    }catch(error){setMessage('파트별 벡터 ZIP 생성 실패: '+error.message,true);}
+    finally{button.disabled=false;}
   });
   $('v4-vector-zip').addEventListener('click',async()=>{
     if(!state.doc)return;

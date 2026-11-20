@@ -219,7 +219,14 @@ export function editVoiceRhythm(source,{partId,measureIndex,eventIndex,type,mode
   if(oldSpan!==newSpan)fail('해당 성부의 총 길이가 달라져 작업을 취소했습니다.');
   return {doc,change:{action:mode==='insert'?'voice-note-insert':'voice-duration',partId,measureIndex,eventIndex,type}};
 }
-export function createEighthTriplet(source,{partId,measureIndex,eventIndex,
+/**
+ * Convert two adjacent equal-length straight notes into a 3:2 triplet,
+ * preserving the original endpoints and adding the specified middle note.
+ * 4th, 8th and 16th notes share the same exact MusicXML time model.
+ * Existing irregular beams, lyrics on the second note, ties and articulations
+ * are guarded to avoid silently discarding musical meaning.
+ */
+export function createTimedTriplet(source,{partId,measureIndex,eventIndex,
   step='G',alter=0,octave=4}={}){
   if(!STEPS.includes(step)||step.length!==1||!int(alter,-2,2)||!int(octave,1,8))
     fail('셋잇단음 가운데 음정이 올바르지 않습니다.');
@@ -227,39 +234,43 @@ export function createEighthTriplet(source,{partId,measureIndex,eventIndex,
   const {note,measure,audit,event,part}=loc;
   const following=note.nextSibling,other=audit.events[eventIndex+1];
   if(!following||following.localName!=='note'||!other||
-     event.rest||other.rest||event.chord||other.chord||event.tuplet||other.tuplet||
-     !sameLaneNote(note,following)||event.voice!==other.voice||event.staff!==other.staff)
-    fail('같은 성부·보표의 인접한 일반 8분음표 2개를 선택하세요.');
-  const div=audit.divisions;
-  if(div%6!==0||!int(div,6,65536))fail('이 악보 divisions에서는 정확한 셋잇단음 분할이 불가능합니다.');
-  if(event.type!=='eighth'||other.type!=='eighth'||
-     event.duration!==div/2||other.duration!==div/2||
-     event.start%div!==0)
-    fail('한 박자에 들어 있는 동일한 8분음표 2개만 셋잇단음으로 바꿉니다.');
+    event.rest||other.rest||event.chord||other.chord||event.tuplet||other.tuplet||
+    !sameLaneNote(note,following)||event.voice!==other.voice||event.staff!==other.staff)
+    fail('같은 성부·보표의 인접한 일반 음표 두 개를 선택하세요.');
+  const div=audit.divisions,type=event.type;
+  if(!['quarter','eighth','16th'].includes(type)||other.type!==type)
+    fail('같은 길이의 4분·8분·16분음표 두 개만 셋잇단음으로 바꿀 수 있습니다.');
+  const unit=durationFor(type,div),tupleTicks=unit*2/3;
+  if(!int(tupleTicks,1,262144))
+    fail('이 MusicXML divisions에서는 정확한 셋잇단음 박자를 표현할 수 없습니다.');
+  if(event.duration!==unit||other.duration!==unit||
+    other.start!==event.start+unit||event.start%(unit*2)!==0)
+    fail('동일 길이의 인접 음표 두 개가 정상 박자 경계에 있어야 합니다.');
   guardNote(note,{beam:true});guardNote(following,{beam:true});
+  if(all(following,'lyric').length)
+    fail('두 번째 음표의 가사를 보존할 수 없어 셋잇단음 변환을 차단했습니다.');
   const firstBeam=all(note,'beam'),lastBeam=all(following,'beam');
-  const isBeamed=firstBeam.length===1&&lastBeam.length===1&&
-     firstBeam[0].getAttribute('number')==='1'&&lastBeam[0].getAttribute('number')==='1'&&
-     firstBeam[0].textContent.trim()==='begin'&&lastBeam[0].textContent.trim()==='end';
-  if((firstBeam.length||lastBeam.length)&&!isBeamed)fail('다른 음표까지 이어진 빔은 자동으로 재구성하지 않습니다.');
+  const isBeamed=type==='eighth'&&firstBeam.length===1&&lastBeam.length===1&&
+    firstBeam[0].getAttribute('number')==='1'&&lastBeam[0].getAttribute('number')==='1'&&
+    firstBeam[0].textContent.trim()==='begin'&&lastBeam[0].textContent.trim()==='end';
+  if((firstBeam.length||lastBeam.length)&&!isBeamed)
+    fail('기존 빔 구조는 안전하게 재구성할 수 없어 변환하지 않습니다.');
   const number=chooseMarkupNumber(part,'tuplet');
   const middle=note.cloneNode(true);
   for(const rem of all(middle,'lyric'))middle.removeChild(rem);
   for(const rem of all(middle,'accidental'))middle.removeChild(rem);
   const pitch=direct(middle,'pitch');
   if(!pitch)fail('가운데 음을 구성할 수 없습니다.');
-  pitch.replaceChildren?.();
-  // replaceChildren is not available in the lightweight test DOM
   for(const child of [...pitch.children])pitch.removeChild(child);
   pitch.appendChild(make(pitch,'step',step));
   if(alter)pitch.appendChild(make(pitch,'alter',alter));
   pitch.appendChild(make(pitch,'octave',octave));
   for(const item of [note,middle,following]){
-    direct(item,'duration').textContent=String(div/3);
+    direct(item,'duration').textContent=String(tupleTicks);
     const tm=make(item,'time-modification');
     tm.appendChild(make(tm,'actual-notes',3));
     tm.appendChild(make(tm,'normal-notes',2));
-    tm.appendChild(make(tm,'normal-type','eighth'));
+    tm.appendChild(make(tm,'normal-type',type));
     item.insertBefore(tm,direct(item,'type').nextSibling);
     const stem=direct(item,'stem');if(stem)item.removeChild(stem);
   }
@@ -267,14 +278,16 @@ export function createEighthTriplet(source,{partId,measureIndex,eventIndex,
   addNotation(note,'tuplet',{number,type:'start',bracket:isBeamed?'no':'yes'});
   addNotation(following,'tuplet',{number,type:'stop'});
   measure.insertBefore(middle,following);
-  post(source,doc,loc,new Set([identity(event)]),'eighth-triplet');
+  post(source,doc,loc,new Set([identity(event)]),type+'-triplet');
   const newState=inspectAdvancedMeasure(doc,partId,measureIndex);
   const events=newState.events.filter(e=>identity(e)===identity(event)&&e.tuplet&&
-     e.start>=event.start&&e.start<event.start+div);
-  if(events.length!==3||events.some(e=>e.duration!==div/3))
+    e.start>=event.start&&e.start<event.start+unit*2);
+  if(events.length!==3||events.some(e=>e.duration!==tupleTicks))
     fail('셋잇단음 분할 후 구조 검증에 실패했습니다.');
-  return {doc,change:{action:'eighth-triplet',partId,measureIndex,eventIndex}};
+  return {doc,change:{action:type+'-triplet',partId,measureIndex,eventIndex}};
 }
+// Preserve the old exported API for regression clients.
+export const createEighthTriplet=createTimedTriplet;
 function endpoints(source,params){
   const {doc,loc}=start(source,params);
   const to=Number(params.endEventIndex);
@@ -373,5 +386,168 @@ export function nudgeVoiceNoteOnGrid(source,{partId,measureIndex,eventIndex,
     .reduce((sum,e)=>sum+e.duration,0);
   if(oldSpan!==newSpan)fail('편집 성부의 총 박자 길이가 달라졌습니다.');
   return {doc,change:{action:'voice-grid-nudge',partId,measureIndex,eventIndex,
-    direction,grid,shift}};
+    nextEventIndex:newIndex,direction,grid,shift}};
+}
+
+
+/**
+ * Reposition an ordinary note anywhere in its contiguous, same-voice/staff
+ * rest island. Unlike a one-grid nudge this supports multiple consecutive
+ * rests and precise beat selection without changing voice backups or other
+ * instruments. The selected note is moved, not copied.
+ *
+ * targetBeat is 1-based quarter-note position: beat 1 -> tick 0, beat 2.5
+ * -> divisions * 1.5. Grid denotes an exact binary subdivision of a quarter.
+ * Unsupported decorative, chord, tuplets or intervening event nodes fail
+ * closed on an immutable source.
+ */
+export function relocateVoiceNote(source,{partId,measureIndex,eventIndex,
+  targetBeat,grid='16th'}={}){
+  if(!['eighth','16th','32nd'].includes(grid))fail('이동 격자를 선택해 주세요.');
+  const {doc,loc}=start(source,{partId,measureIndex,eventIndex});
+  const {note,measure,audit,event}=loc;
+  if(!event||event.rest||event.chord||event.tuplet||!audit.divisions)
+    fail('일반 성부의 단일 음표를 선택해 주세요.');
+  guardNote(note);
+  const quantum=durationFor(grid,audit.divisions);
+  const beat=Number(targetBeat);
+  if(!Number.isFinite(beat)||beat<1)
+    fail('이동할 시작 박자를 1 이상의 숫자로 입력해 주세요.');
+  const targetTick=(beat-1)*audit.divisions;
+  if(!int(targetTick,0,audit.max-1)||targetTick%quantum!==0)
+    fail('선택한 격자와 일치하는 정확한 시작 박자를 입력해 주세요.');
+  if(targetTick===event.start)fail('이미 해당 박자에 놓여 있습니다.');
+
+  const children=[...measure.children],notePosition=children.indexOf(note);
+  let first=notePosition,last=notePosition;
+  const eligibleRest=n=>n?.localName==='note'&&!!direct(n,'rest')&&
+    sameLaneNote(note,n);
+  while(first>0&&eligibleRest(children[first-1])){
+    guardNote(children[first-1],{rest:true});first--;
+  }
+  while(last+1<children.length&&eligibleRest(children[last+1])){
+    guardNote(children[last+1],{rest:true});last++;
+  }
+  const before=children.slice(first,notePosition);
+  const after=children.slice(notePosition+1,last+1);
+  const restTotal=items=>items.reduce((sum,item)=>{
+    const n=Number(value(item,'duration'));
+    if(!int(n,1,262144))fail('인접한 쉼표의 길이가 올바르지 않습니다.');
+    return sum+n;
+  },0);
+  const startTick=event.start-restTotal(before);
+  const endTick=event.start+event.duration+restTotal(after);
+  if(startTick<0||endTick>audit.max)fail('선택 성부가 마디 범위를 벗어났습니다.');
+  if(targetTick<startTick||targetTick+event.duration>endTick)
+    fail('선택 위치까지 같은 성부의 연속된 빈 쉼표가 필요합니다. 다른 음표는 넘을 수 없습니다.');
+  const preceding=decomposeRest(targetTick-startTick,audit.divisions);
+  const following=decomposeRest(endTick-targetTick-event.duration,audit.divisions);
+  // The original node may contain safe lyrics: move them with the pitch,
+  // but do not mutate those contents. Any foreign markup failed guardNote.
+  const anchor=children[last].nextSibling;
+  for(const item of children.slice(first,last+1))measure.removeChild(item);
+  const insert=(node)=>measure.insertBefore(node,anchor);
+  for(const part of preceding)insert(makeRest(measure,note,part.duration,part.type));
+  insert(note);
+  for(const part of following)insert(makeRest(measure,note,part.duration,part.type));
+
+  const checked=validateChange(doc,{...loc,measure:loc.sourceMeasure,part:loc.sourcePart},
+    partId,measureIndex,new Set([identity(event)]));
+  const nextIndex=all(measure,'note').indexOf(note);
+  const moved=checked.events[nextIndex];
+  if(!moved||moved.start!==targetTick||moved.duration!==event.duration||
+    moved.step!==event.step||moved.alter!==event.alter||moved.octave!==event.octave||
+    moved.voice!==event.voice||moved.staff!==event.staff)
+    fail('선택 음표의 박자 위치 또는 음정 보존 검사에 실패했습니다.');
+  const expectedLane=checked.events.filter(e=>identity(e)===identity(event)&&!e.chord)
+    .reduce((sum,e)=>sum+e.duration,0);
+  const originalLane=audit.events.filter(e=>identity(e)===identity(event)&&!e.chord)
+    .reduce((sum,e)=>sum+e.duration,0);
+  if(originalLane!==expectedLane)fail('편집 성부의 박자 합계가 달라졌습니다.');
+  return {doc,change:{action:'voice-note-relocate',partId,measureIndex,eventIndex,
+    nextEventIndex:nextIndex,fromTick:event.start,toTick:targetTick,grid}};
+}
+
+
+/**
+ * Remove an unadorned single note from any supported voice/staff without
+ * deleting its time slot: replace it with an equal-length same-lane rest.
+ * Lyric-bearing notes must be edited deliberately before removing the pitch.
+ */
+export function replaceVoiceNoteWithRest(source,{partId,measureIndex,eventIndex}={}){
+  const {doc,loc}=start(source,{partId,measureIndex,eventIndex});
+  const {note,measure,audit,event}=loc;
+  if(!event||event.rest||event.chord||event.tuplet||event.protectedMarkup)
+    fail('붙임줄·화음·셋잇단음 등 보호된 음표는 쉼표로 바꾸지 않습니다.');
+  guardNote(note);
+  if(all(note,'lyric').length)fail('가사가 있는 음표는 가사를 먼저 삭제해 주세요.');
+  if(!TYPES.some(([type])=>type===event.type)||
+    durationFor(event.type,audit.divisions)!==event.duration)
+    fail('원래 음표 길이를 일반 쉼표로 안전하게 표현할 수 없습니다.');
+  const replacement=makeRest(measure,note,event.duration,event.type);
+  measure.replaceChild(replacement,note);
+  const after=validateChange(doc,{...loc,measure:loc.sourceMeasure,part:loc.sourcePart},
+    partId,measureIndex,new Set([identity(event)]));
+  const changed=after.events[eventIndex];
+  if(!changed?.rest||changed.duration!==event.duration||changed.start!==event.start||
+    changed.voice!==event.voice||changed.staff!==event.staff)
+    fail('음표 삭제 후 쉼표 위치가 일치하지 않습니다.');
+  return {doc,change:{action:'voice-note-to-rest',partId,measureIndex,eventIndex}};
+}
+
+
+/**
+ * Split one plain note into two equal-pitch notes joined by sounding AND
+ * engraved ties. Only two exactly representable, plain note lengths are
+ * accepted; dots, tuplets, existing ties, chords, and beams remain protected.
+ * The first segment keeps all original lyrics and the continuation has none.
+ */
+export function splitVoiceNoteWithTie(source,{partId,measureIndex,eventIndex,
+  firstType='quarter'}={}){
+  const {doc,loc}=start(source,{partId,measureIndex,eventIndex});
+  const {note,measure,audit,event}=loc;
+  if(!event||event.rest||event.chord||event.tuplet||event.protectedMarkup)
+    fail('복합 기보·쉼표·화음은 붙임줄 분할 대상이 아닙니다.');
+  guardNote(note);
+  const duration=durationFor(firstType,audit.divisions);
+  const remaining=event.duration-duration;
+  const second=TYPES.find(([type])=>durationFor(type,audit.divisions)===remaining);
+  if(duration<=0||!second)
+    fail('두 개의 일반 음표로 정확히 나눌 수 없는 길이입니다.');
+  const old=event.duration,continuation=note.cloneNode(true);
+  for(const lyric of all(continuation,'lyric'))continuation.removeChild(lyric);
+  // The continuation shares the same sounding pitch; an explicit accidental
+  // belongs to the first attack, not duplicated as a second printed symbol.
+  for(const accidental of all(continuation,'accidental'))continuation.removeChild(accidental);
+  const setLength=(node,length,type)=>{
+    direct(node,'duration').textContent=String(length);
+    direct(node,'type').textContent=type;
+    const stem=direct(node,'stem');if(stem)node.removeChild(stem);
+  };
+  setLength(note,duration,firstType);
+  setLength(continuation,remaining,second[0]);
+  const tie=(node,kind)=>{
+    const sound=make(node,'tie');sound.setAttribute('type',kind);
+    node.insertBefore(sound,direct(node,'voice')||direct(node,'type'));
+    const notations=make(node,'notations');
+    const tied=make(notations,'tied');tied.setAttribute('type',kind);
+    notations.appendChild(tied);
+    node.insertBefore(notations,direct(node,'lyric')||null);
+  };
+  tie(note,'start');tie(continuation,'stop');
+  measure.insertBefore(continuation,note.nextSibling);
+  const updated=validateChange(doc,{...loc,measure:loc.sourceMeasure,part:loc.sourcePart},
+    partId,measureIndex,new Set([identity(event)]));
+  const firstIndex=all(measure,'note').indexOf(note);
+  const first=updated.events[firstIndex],next=updated.events[firstIndex+1];
+  if(!first||!next||first.start!==event.start||first.duration!==duration||
+    next.start!==event.start+duration||next.duration!==remaining||
+    first.step!==event.step||next.step!==event.step||
+    next.alter!==event.alter||next.octave!==event.octave||
+    first.voice!==event.voice||next.voice!==event.voice||
+    first.staff!==event.staff||next.staff!==event.staff||
+    old!==first.duration+next.duration)
+    fail('붙임줄 분할 후 음악 시간 또는 음정 보존 검사에 실패했습니다.');
+  return {doc,change:{action:'voice-note-tied-split',partId,measureIndex,eventIndex,
+    nextEventIndex:firstIndex,firstType,secondType:second[0]}};
 }
