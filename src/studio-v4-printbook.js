@@ -5,6 +5,7 @@ import {OpenSheetMusicDisplay} from 'opensheetmusicdisplay';
 import {editableScoreRenderOptions} from './osmd-render-policy.js';
 import {applyLayoutPreset} from './layout-profile.js';
 import {applyFixedA4Profile,fixedA4Profile} from './a4-engraving.js';
+import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 
 const FORMATS={A4_P:{w:'210mm',h:'297mm'},A4_L:{w:'297mm',h:'210mm'}};
 const MAX_PARTS=12,MAX_PAGES=80,MAX_PART_PAGES=24;
@@ -24,20 +25,7 @@ export function partOnlyDocument(source,partId){
   }
   return document;
 }
-export function inspectPrintableSvg(svg){
-  if(!svg||svg.localName!=='svg')throw new Error('악보 SVG 페이지가 유효하지 않습니다.');
-  if(svg.querySelector('script, foreignObject, iframe, image'))
-    throw new Error('원격 이미지나 실행 요소가 포함된 SVG는 인쇄하지 않습니다.');
-  for(const node of [svg,...svg.querySelectorAll('*')]){
-    for(const attr of [...node.attributes]){
-      if(/^on/i.test(attr.name))throw new Error('악보 SVG에 이벤트 실행 속성이 있습니다.');
-      if(['href','xlink:href','src'].includes(attr.name.toLowerCase())&&
-        /^(?:https?:|\/\/|data:|javascript:)/i.test(attr.value.trim()))
-        throw new Error('외부 리소스가 참조된 악보 SVG는 인쇄하지 않습니다.');
-    }
-  }
-  return true;
-}
+export {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='auto',measureNumbers=true,
   onProgress=()=>{}}={}){
   if(!FORMATS[pageFormat]||!Array.isArray(parts)||parts.length<1||parts.length>MAX_PARTS)
