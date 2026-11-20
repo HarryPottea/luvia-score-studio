@@ -4,7 +4,7 @@ import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from '../src/studio-v4-measure-blocks.js';
 import {createEditorHistory} from '../src/editor-history.js';
 import {transposeMeasurePassage} from '../src/studio-v4-passage-transpose.js';
-import {transposeWrittenVoice} from '../src/studio-v4-voice-transpose.js';
+import {transposeWrittenVoice,respellWrittenVoice} from '../src/studio-v4-voice-transpose.js';
 import {addIndependentVoice} from '../src/studio-v4-add-voice.js';
 import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
 import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMeasures} from '../src/studio-v4-voice-phrase.js';
@@ -953,4 +953,46 @@ test('batch articulation rejects unsupported note as a whole without source muta
     partId:'P1',voice:'1',start:1,end:2,kind:'staccato',mode:'add'}),/복합 기보/);
   assert.equal(first(a,'notations'),undefined);
   assert.equal(first(b,'notations').children.length,0);
+});
+
+
+test('enharmonic voice-only respelling changes C sharp to D flat without transposing',()=>{
+  const source=fixture(3,2),note=pitched(first(rows(source)[0][1],'note'),'C',4);
+  const pitch=first(note,'pitch');
+  pitch.insertBefore(leaf('alter',1),first(pitch,'octave'));
+  note.appendChild(n('lyric',{number:'1'},[leaf('text','고요한')]));
+  const changed=respellWrittenVoice(source,{partId:'P1',
+    voice:'1',start:1,end:1,spelling:'flat'});
+  const newNote=first(rows(changed.doc)[0][1],'note'),
+    newPitch=first(newNote,'pitch');
+  assert.equal(newPitch.textContent,'D-14');
+  assert.equal(first(newNote,'accidental').textContent,'flat');
+  assert.equal(first(newNote,'lyric').textContent,'고요한');
+  assert.equal(changed.change.action,'respell-written-voice');
+  assert.equal(changed.change.semitones,0);
+  assert.equal(changed.change.notes,1);
+  assert.equal(first(first(rows(changed.doc)[1][1],'note'),'rest').localName,'rest');
+  assert.equal(pitch.textContent,'C14');
+  assert.throws(()=>respellWrittenVoice(changed.doc,{
+    partId:'P1',voice:'1',start:1,end:1,spelling:'flat'}),/이명동음/);
+});
+test('enharmonic respell consistently changes a crossbar B-sharp tie to C natural in a new octave',()=>{
+  const source=fixture(4,1);
+  for(const i of [1,2]){
+    const note=pitched(first(rows(source)[0][i],'note'),'B',4);
+    const p=first(note,'pitch');
+    p.insertBefore(leaf('alter',1),first(p,'octave'));
+    addLink(note,'tie',i===1?'start':'stop');
+  }
+  assert.throws(()=>respellWrittenVoice(source,{
+    partId:'P1',voice:'1',start:1,end:1,spelling:'sharp'}),/범위 밖/);
+  const changed=respellWrittenVoice(source,{
+    partId:'P1',voice:'1',start:1,end:2,spelling:'sharp'});
+  assert.equal(changed.change.notes,2);
+  for(const i of [1,2]){
+    const note=first(rows(changed.doc)[0][i],'note');
+    assert.equal(first(note,'pitch').textContent,'C5');
+    assert.equal(first(note,'tie').getAttribute('type'),i===1?'start':'stop');
+  }
+  assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'B14');
 });
