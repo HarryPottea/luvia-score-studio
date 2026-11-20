@@ -78,3 +78,56 @@ test('bounded retries retain an explicit unresolved-collision warning',async()=>
   assert.equal(r.remaining,1);
   assert.equal(calls,2);
 });
+
+
+const svgWithHeads=(lyrics,heads)=>({localName:'svg',querySelectorAll(query){
+  return query==='.vf-notehead'?heads:lyrics;
+}});
+const head=(left,top,width=16,height=12)=>({
+  localName:'g',getBoundingClientRect(){return {left,top,width,height};}
+});
+test('engraving measures actual lyric-to-notehead collisions, not only lyric-to-lyric',()=>{
+  const r=inspectSvgLyricSpacing([svgWithHeads(
+    [text('반짝이는',10,40,74,15)],[head(57,44,18,13)]
+  )]);
+  assert.equal(r.measured,1);
+  assert.equal(r.measuredNoteheads,1);
+  assert.equal(r.lyricNoteheadCollisions,1);
+  assert.equal(r.collisions,1);
+  assert.equal(r.details[0].b,'음표 머리');
+  assert.equal(r.complete,true);
+});
+test('multiple staves or voices with nonintersecting text are not false positives',()=>{
+  const r=inspectSvgLyricSpacing([svgWithHeads(
+    [text('하늘',12,60,50,12),text('바다',15,85,50,12)],
+    [head(25,10,18,12),head(27,135,18,12)]
+  )]);
+  assert.equal(r.measured,2);
+  assert.equal(r.measuredNoteheads,2);
+  assert.equal(r.lyricNoteheadCollisions,0);
+  assert.equal(r.collisions,0);
+});
+test('unmeasurable notehead glyphs prevent a false completed-collision-check claim',()=>{
+  const broken={localName:'g',getBoundingClientRect(){throw Error('geometry');}};
+  const r=inspectSvgLyricSpacing([svgWithHeads([text('별빛',3,4,27)], [broken])]);
+  assert.equal(r.unknownNoteheads,1);
+  assert.equal(r.complete,false);
+  assert.equal(r.status,'PARTIALLY_MEASURED');
+});
+test('bounded adaptive reflow also handles a lyric-versus-notehead overlap',async()=>{
+  let headLeft=35,calls=0;
+  const glyph={localName:'g',getBoundingClientRect(){
+    return {left:headLeft,top:40,width:18,height:12};
+  }};
+  const holder={querySelectorAll(){return [svgWithHeads(
+    [text('반짝이는',0,40,70,14)],[glyph]
+  )];}};
+  const osmd={EngravingRules:{BetweenSyllableMinimumDistance:1,
+    VerticalBetweenLyricsDistance:1},render(){calls++;headLeft=90;}};
+  const r=await adaptLyricRendering(osmd,holder,{maxAttempts:2});
+  assert.equal(r.initial,1);
+  assert.equal(r.remaining,0);
+  assert.equal(r.noteheadCollisions,0);
+  assert.equal(r.attempts,1);
+  assert.equal(calls,1);
+});
