@@ -1,15 +1,12 @@
 // J-WOO 4.0 measure-range operations; synchronous, immutable, and multi-part.
 // Clipboard values hold only copied MusicXML DOM fragments in browser memory.
 import {appendBlankMeasures} from './studio-v4-core.js';
-import {deleteScoreMeasure} from './studio-v4-measure-delete.js';
+import {assertClosedMeasureBoundary,assertClosedMeasureRange} from './studio-v4-measure-links.js';
 
 const all=(node,tag)=>node?[...node.children].filter(n=>n.localName===tag):[];
 const first=(node,tag)=>all(node,tag)[0]||null;
 const fail=message=>{throw new Error(message);};
 const safeInt=(n,min,max)=>Number.isSafeInteger(n)&&n>=min&&n<=max;
-const sensitive=new Set(['tie','tied','slur','wedge','pedal','octave-shift',
-  'dashes','glissando','slide','bracket','ending','repeat','segno',
-  'coda','dalsegno','dacapo','fine']);
 const attributeKeys=new Set(['divisions','key','time','staves','clef',
   'transpose','staff-details']);
 
@@ -67,17 +64,11 @@ function range(info,start,end){
   if(end-start+1>16)fail('한 번에 최대 16마디까지만 편집할 수 있습니다.');
 }
 function safeSeam(info,index){
-  // Conservatively protect all cross-bar links in either neighbor.
-  for(const row of info.bars){
-    if((index>0&&hasSensitive(row[index-1]))||
-       (index<info.length&&hasSensitive(row[index])))
-      fail('삽입·삭제 경계에 연결 기호나 반복 기호가 있어 원본을 보호합니다.');
-  }
+  assertClosedMeasureBoundary(info.parts,index);
 }
 function safeFragment(bar,barIndex){
   if(bar.hasAttribute('implicit')||bar.hasAttribute('non-controlling'))
     fail('불완전 마디는 복제하지 않습니다.');
-  if(hasSensitive(bar))fail('연결·반복 기호가 있는 마디는 해당 범위 복사를 보호합니다.');
   if(all(bar,'barline').length)fail('종지선·반복선이 있는 마디는 복제하지 않습니다.');
   if(barIndex>0&&all(bar,'attributes').length)
     fail('범위 안에 조표·박자표·보표 변경이 있어 복제를 보호합니다.');
@@ -117,6 +108,7 @@ function canInsert(info,index,count){
 export function captureMeasureRange(source,{start,end}={}){
   const info=scoreInfo(source);
   range(info,start,end);
+  assertClosedMeasureRange(info.parts,start,end);
   const fragments=[],contexts=[];
   for(let p=0;p<info.parts.length;p++){
     const part=info.parts[p],row=info.bars[p];
@@ -172,11 +164,40 @@ export function duplicateMeasureRange(source,{start,end}={}){
 export function deleteMeasureRange(source,{start,end}={}){
   const info=scoreInfo(source);range(info,start,end);
   if(info.length-(end-start+1)<1)fail('악보는 최소 1마디가 남아야 합니다.');
-  safeSeam(info,start);safeSeam(info,end+1);
-  let doc=source;
-  // Deleting backwards leaves previous indices stable. Each step is immutable.
-  for(let index=end;index>=start;index--){
-    doc=deleteScoreMeasure(doc,{measureIndex:index}).doc;
+  assertClosedMeasureRange(info.parts,start,end);
+  for(const row of info.bars){
+    for(let i=start;i<=end;i++){
+      if(i>0&&all(row[i],'attributes').length)
+        fail('삭제 구간에 곡 중간 박자표·조표 변경이 있어 보호합니다.');
+    }
+    if(start===0){
+      if(all(row[0],'attributes').length>1||
+         all(row[end+1],'attributes').length)
+        fail('첫 마디의 박자표·조표를 새 첫 마디로 옮길 수 없습니다.');
+    }
+    if(end===info.length-1){
+      const last=all(row[end],'barline').filter(b=>b.getAttribute('location')!=='left');
+      const previous=all(row[start-1],'barline').filter(b=>b.getAttribute('location')!=='left');
+      if(last.length>1||(last.length&&previous.length))
+        fail('마지막 마디의 종지선이 중복될 수 있어 삭제하지 않습니다.');
+    }
+  }
+  const doc=source.cloneNode(true);
+  for(const part of all(doc.documentElement,'part')){
+    const row=all(part,'measure');
+    const initial=start===0?first(row[0],'attributes')?.cloneNode(true):null;
+    const ending=end===info.length-1?
+      all(row[end],'barline').filter(b=>b.getAttribute('location')!=='left')
+        .map(b=>b.cloneNode(true)):[];
+    for(let i=end;i>=start;i--)part.removeChild(row[i]);
+    const remaining=all(part,'measure');
+    if(initial){
+      const firstBar=remaining[0];
+      const before=[...firstBar.children].find(c=>c.localName!=='print')||null;
+      firstBar.insertBefore(initial,before);
+    }
+    if(ending.length)for(const barline of ending)remaining.at(-1).appendChild(barline);
+    renumber(part,info.number);
   }
   return {doc,change:{action:'delete-measure-range',start,count:end-start+1,
     nextMeasureIndex:Math.min(start,info.length-(end-start+1)-1),nextEventIndex:0}};
