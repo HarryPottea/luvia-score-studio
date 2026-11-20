@@ -1012,6 +1012,78 @@ try {
   assert.ok((await page.locator('#score-container svg').count())>0);
   console.log('BROWSER_STAGE=V4_SMART_KOREAN_LYRICS_UNDO_REDO_XML_REIMPORT');
 
+  // The composer can edit the lyric directly on a mapped score notehead.
+  // Single-click is opt-in so pitch dragging stays safe in normal mode.
+  const scoreHeads=page.locator('#score-container .jwoo-note-target');
+  assert.ok(await scoreHeads.count()>=4,'Mapped noteheads must be available for direct lyric editing');
+  await page.click('#v4-lyric-mode-button');
+  assert.equal(await page.locator('#v4-lyric-mode-button').getAttribute('aria-pressed'),'true');
+  await scoreHeads.first().click();
+  await page.locator('#v4-inline-lyric-editor:visible').waitFor();
+  assert.equal(await page.locator('#v4-inline-input').inputValue(),'우');
+  assert.equal(await page.locator('#v4-inline-verse').inputValue(),'2',
+    'Current verse follows the active global lyric verse, initially last used 2');
+  await page.selectOption('#v4-inline-verse','1');
+  assert.equal(await page.locator('#v4-inline-input').inputValue(),'우');
+  await page.fill('#v4-inline-input','아');
+  await page.click('#v4-inline-save');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보 위 가사 직접 수정 완료'),null,{timeout:30000});
+  const directFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const directXml=await fs.readFile(await (await directFile).path(),'utf8');
+  assert.match(directXml,/<lyric number="1"><syllabic>begin<\/syllabic><text>아<\/text><\/lyric>/);
+  assert.match(directXml,/<lyric number="2">/);
+  console.log('BROWSER_STAGE=V4_DIRECT_NOTEHEAD_LYRIC_EDIT');
+
+  // A full Korean sentence becomes syllable-aligned verse 3 in one transaction.
+  await page.locator('#score-container .jwoo-note-target').first().click();
+  await page.selectOption('#v4-inline-verse','3');
+  await page.fill('#v4-inline-input','우리 함께');
+  assert.match(await page.locator('#v4-inline-preview').textContent(),/4개 위치로 스마트 배치/);
+  await page.locator('#v4-inline-input').press('Control+Enter');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보 위 스마트 문장 가사 배치 완료'),null,{timeout:30000});
+  const sentenceFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const sentenceXml=await fs.readFile(await (await sentenceFile).path(),'utf8');
+  assert.equal((sentenceXml.match(/<lyric number="3">/g)||[]).length,4);
+  for(const syllable of ['우','리','함','께'])
+    assert.match(sentenceXml,new RegExp('<text>'+syllable+'</text>'));
+  assert.equal((sentenceXml.match(/<lyric number="1">/g)||[]).length,4);
+  assert.equal((sentenceXml.match(/<lyric number="2">/g)||[]).length,4);
+  console.log('BROWSER_STAGE=V4_SCORE_ANCHORED_SMART_SENTENCE_BATCH');
+
+  // Press Enter to insert one syllable and advance inside the same voice.
+  await page.locator('#score-container .jwoo-note-target').first().click();
+  await page.selectOption('#v4-inline-verse','4');
+  await page.fill('#v4-inline-input','별');
+  await page.locator('#v4-inline-input').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보 위 가사 직접 수정 완료'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-inline-location').textContent(),/2번째 음표/);
+  assert.equal(await page.locator('#v4-inline-input').inputValue(),'');
+  await page.fill('#v4-inline-input','빛');
+  await page.locator('#v4-inline-input').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#v4-inline-location')?.textContent?.includes('3번째 음표'),null,{timeout:30000});
+  const continuousFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const continuousXml=await fs.readFile(await (await continuousFile).path(),'utf8');
+  assert.match(continuousXml,/<lyric number="4"><syllabic>single<\/syllabic><text>별<\/text><\/lyric>/);
+  assert.match(continuousXml,/<lyric number="4"><syllabic>single<\/syllabic><text>빛<\/text><\/lyric>/);
+  assert.equal((continuousXml.match(/<lyric number="4">/g)||[]).length,2);
+  console.log('BROWSER_STAGE=V4_ENTER_TO_NEXT_NOTE_LYRIC_FLOW');
+
+  // Cancel popover and disable mode: the normal pitch-edit interaction returns.
+  await page.locator('#v4-inline-input').press('Escape');
+  assert.equal(await page.locator('#v4-inline-lyric-editor').isVisible(),false);
+  await page.click('#v4-lyric-mode-button');
+  assert.equal(await page.locator('#v4-lyric-mode-button').getAttribute('aria-pressed'),'false');
+  const reselect=page.locator('#score-container .jwoo-note-target').nth(1);
+  await reselect.dblclick();
+  await page.locator('#v4-inline-lyric-editor:visible').waitFor();
+  assert.equal(await page.locator('#v4-inline-input').inputValue(),'빛');
+  await page.click('#v4-inline-close');
+  console.log('BROWSER_STAGE=V4_DOUBLE_CLICK_SCORE_LYRIC_EDIT_WITH_MODE_OFF');
+
+
   // Sticky score follows the long inspector instead of scrolling away.
   // A4 SVG dimensions must be stable, and the score viewport remains scrollable.
   await page.evaluate(()=>document.querySelector('#v4-lyrics-batch-text')
