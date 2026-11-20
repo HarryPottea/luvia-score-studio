@@ -386,7 +386,7 @@ export function nudgeVoiceNoteOnGrid(source,{partId,measureIndex,eventIndex,
     .reduce((sum,e)=>sum+e.duration,0);
   if(oldSpan!==newSpan)fail('편집 성부의 총 박자 길이가 달라졌습니다.');
   return {doc,change:{action:'voice-grid-nudge',partId,measureIndex,eventIndex,
-    direction,grid,shift}};
+    nextEventIndex:newIndex,direction,grid,shift}};
 }
 
 
