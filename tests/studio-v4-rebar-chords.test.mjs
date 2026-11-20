@@ -24,11 +24,12 @@ class N {
     this.children.splice(at<0?this.children.length:at,0,node);node.parentNode=this;return node;
   }
   removeChild(node){const i=this.children.indexOf(node);if(i===-1)throw Error('not child');this.children.splice(i,1);node.parentNode=null;return node;}
+  replaceChild(next,prev){this.insertBefore(next,prev);this.removeChild(prev);return prev;}
   cloneNode(deep=false){return new N(this.localName,this._attrs,deep?this.children.map(x=>x.cloneNode(true)):[],this._value);}
 }
 const n=(tag,kids=[],attrs={},value='')=>new N(tag,attrs,kids,value);
 const t=(tag,value)=>n(tag,[],{},value);
-const all=(node,tag)=>node.children.filter(x=>x.localName===tag);
+const all=(node,tag)=>node?[...node.children].filter(x=>x.localName===tag):[];
 const first=(node,tag)=>all(node,tag)[0];
 const val=(node,tag)=>first(node,tag)?.textContent||'';
 const pitch=(step,octave=4)=>n('pitch',[t('step',step),t('octave',octave)]);
