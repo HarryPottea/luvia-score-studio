@@ -1455,6 +1455,59 @@ try {
   assert.doesNotMatch(polyRebarText,/<backup><duration>192<\/duration><\/backup>/);
   console.log('BROWSER_STAGE=V4_MULTIVOICE_GRANDSTAFF_WRITTEN_REBAR');
 
+
+  // New J-WOO 4.0 bar-block UI: actual Chromium click/serialize roundtrip.
+  // This synthetic authored score is not real Logic certification.
+  const fourBarScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1">'+['C','D','E','F'].map((step,i)=>
+      '<measure number="'+(i+1)+'">'+(i===0?
+      '<attributes><divisions>48</divisions><key><fifths>0</fifths></key>'+
+      '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+      '<clef><sign>G</sign><line>2</line></clef></attributes>':'')+
+      '<note><pitch><step>'+step+'</step><octave>4</octave></pitch>'+
+      '<duration>192</duration><type>whole</type></note></measure>').join('')+
+    '</part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'jwoo-block-actual-ui.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(fourBarScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
+    null,{timeout:30000});
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip').count(),4);
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
+  await page.locator('#jwoo-measure-toolbar [data-act="copy"]').click();
+  assert.match(await page.locator('#jwoo-block-status').textContent(),/복사했습니다/);
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(3).click();
+  await page.locator('#jwoo-measure-toolbar [data-act="paste"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===5,
+    null,{timeout:30000});
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip').count(),5);
+  console.log('BROWSER_STAGE=V4_DIRECT_MEASURE_COPY_PASTE');
+  await page.locator('#jwoo-measure-toolbar [data-act="duplicate"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===6,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','2');
+  await page.fill('#jwoo-range-to','3');
+  await page.click('#jwoo-range-apply');
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip.is-selected').count(),2);
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#jwoo-measure-toolbar [data-act="delete"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_MEASURE_RANGE_DUPLICATE_DELETE');
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
+  await page.locator('#v4-play-range').click();
+  await page.waitForFunction(()=>document.querySelector('#v4-play-status')?.textContent?.includes('선택 마디'),
+    null,{timeout:15000});
+  await page.locator('#v4-stop').click();
+  console.log('BROWSER_STAGE=V4_SELECTED_MEASURE_AUDITION');
+  const rangeSave=page.waitForEvent('download');
+  await page.locator('#download-xml').click();
+  const rangeXml=await fs.readFile(await (await rangeSave).path(),'utf8');
+  assert.equal((rangeXml.match(/<measure number="/g)||[]).length,4);
+  assert.equal((rangeXml.match(/<part id="P1">/g)||[]).length,1);
+  assert.match(rangeXml,/<step>F<\/step>/);
+  console.log('BROWSER_STAGE=V4_BLOCK_EDIT_MUSIC_XML_SAVE');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
