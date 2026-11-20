@@ -290,7 +290,8 @@ test('reject partial tied phrases, harmony symbols, and unsupported inputs witho
   const a=fixture();
   pitched(first(rows(a)[0][1],'note'),'C',4);
   rows(a)[0][1].appendChild(n('harmony',{},[leaf('kind','major')]));
-  assert.throws(()=>transposeMeasurePassage(a,{start:1,end:1}),/코드 기호/);
+  assert.throws(()=>transposeMeasurePassage(a,{start:1,end:1}),/루트가 없거나/);
+  assert.throws(()=>transposeMeasurePassage(a,{start:1,end:1,transposeChordSymbols:false}),/코드 기호/);
   assert.equal(first(first(rows(a)[0][1],'note'),'pitch').textContent,'C4');
   assert.throws(()=>transposeMeasurePassage(a,{start:1,end:1,semitones:0}),/반음 이동/);
 });
@@ -316,4 +317,53 @@ test('reject duplicate part IDs and missing pitch octave during passage transpos
   oct.textContent='';
   assert.throws(()=>transposeMeasurePassage(second,{start:1,end:1}),/옥타브/);
   assert.equal(first(first(note,'pitch'),'step').textContent,'C');
+});
+
+
+function harmonyFixture(){
+  const source=fixture();
+  const firstPart=rows(source)[0][1];
+  const pitchedNote=pitched(first(firstPart,'note'),'C',4);
+  const chord=n('harmony',{},[
+    n('root',{},[leaf('root-step','C')]),
+    n('kind',{text:'maj7'},[], 'major-seventh'),
+    n('bass',{},[leaf('bass-step','G')])
+  ]);
+  firstPart.insertBefore(chord,pitchedNote);
+  return {source,chord};
+}
+test('transpose chord roots and slash bass simultaneously with written notes',()=>{
+  const {source,chord}=harmonyFixture();
+  const before=[first(first(chord,'root'),'root-step').textContent,
+    first(first(chord,'bass'),'bass-step').textContent];
+  const result=transposeMeasurePassage(source,{start:1,end:1,semitones:2});
+  const bar=rows(result.doc)[0][1],newChord=first(bar,'harmony');
+  assert.equal(first(first(newChord,'root'),'root-step').textContent,'D');
+  assert.equal(first(first(newChord,'bass'),'bass-step').textContent,'A');
+  assert.equal(first(newChord,'kind').textContent,'major-seventh');
+  assert.equal(first(first(bar,'note'),'pitch').textContent,'D4');
+  assert.equal(result.change.notes,1);
+  assert.equal(result.change.chords,1);
+  assert.deepEqual([
+    first(first(chord,'root'),'root-step').textContent,
+    first(first(chord,'bass'),'bass-step').textContent
+  ],before);
+});
+test('flat preference transposes chord root and preserves quality and lyric',()=>{
+  const {source}=harmonyFixture();
+  first(rows(source)[0][1],'note').appendChild(n('lyric',{},[leaf('text','하늘')]));
+  const result=transposeMeasurePassage(source,{start:1,end:1,semitones:1,spelling:'flat'});
+  const bar=rows(result.doc)[0][1],chord=first(bar,'harmony');
+  assert.equal(first(first(chord,'root'),'root-step').textContent,'D');
+  assert.equal(first(first(chord,'root'),'root-alter').textContent,'-1');
+  assert.equal(first(first(chord,'bass'),'bass-step').textContent,'A');
+  assert.equal(first(first(chord,'bass'),'bass-alter').textContent,'-1');
+  assert.equal(first(first(bar,'note'),'lyric').textContent,'하늘');
+});
+test('complex chord spellings fail before mutating source',()=>{
+  const {source,chord}=harmonyFixture();
+  chord.appendChild(n('function',{},[],'VI'));
+  assert.throws(()=>transposeMeasurePassage(source,{start:1,end:1,semitones:3}),/복잡한 코드/);
+  assert.equal(first(first(chord,'root'),'root-step').textContent,'C');
+  assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'C4');
 });
