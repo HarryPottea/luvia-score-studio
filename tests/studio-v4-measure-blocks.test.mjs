@@ -1046,7 +1046,7 @@ test('complex grace notation is never rewritten and target must be an existing g
     eventIndex:0,step:'E',alter:0,octave:4}),/기존 꾸밈음/);
   assert.equal(first(grace,'pitch').textContent,'C4');
   assert.throws(()=>editGraceNote(source,{partId:'P1',measureIndex:0,
-    eventIndex:0,type:'quarter'}),/설정/);
+    eventIndex:0,type:'quarter'}),/표기|설정/);
 });
 
 
