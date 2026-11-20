@@ -1951,6 +1951,24 @@ try {
   assert.match(graceXml,/<text>반짝<\/text>/);
   assert.match(graceXml,/<tie type="start"/);
   await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-pro-step','G');
+  await page.selectOption('#v4-pro-alter','-1');
+  await page.selectOption('#v4-pro-octave','4');
+  await page.uncheck('#v4-grace-slash');
+  await page.selectOption('#v4-grace-type','16th');
+  await page.click('#v4-grace-edit');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('기존 꾸밈음 음정·기호 수정 완료'),null,{timeout:30000});
+  const graceEditedEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const graceEditedXml=await fs.readFile(await (await graceEditedEvent).path(),'utf8');
+  assert.match(graceEditedXml,/<grace slash="no"\s*\/>/);
+  assert.match(graceEditedXml,/<pitch><step>G<\/step><alter>-1<\/alter><octave>4<\/octave><\/pitch>/);
+  assert.match(graceEditedXml,/<type>16th<\/type><accidental>flat<\/accidental>/);
+  assert.match(graceEditedXml,/<text>반짝<\/text>/);
+  assert.match(graceEditedXml,/<tie type="start"/);
+  console.log('BROWSER_STAGE=V4_REEDIT_EXISTING_GRACE_PITCH_SLASH_TYPE_NO_TIME_SHIFT');
+  await page.locator('#v3-events .v3-event').nth(1).click();
   await page.click('#v4-grace-remove');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('꾸밈음 삭제 완료'),
     null,{timeout:30000});
