@@ -549,6 +549,19 @@ try {
   assert.match(insertedXml,/<backup><duration>192<\/duration><\/backup>/);
   assert.match(insertedXml,/<step>G<\/step><octave>3<\/octave>/);
   console.log('BROWSER_STAGE=V4_DIRECT_TIMELINE_NOTE_ENTRY');
+  await page.locator('#v4-timeline-insert').uncheck();
+  await page.locator('.v4-beat-lane').first().locator('.v4-beat-event.rest').first().click();
+  assert.match(await page.locator('#v3-selection').textContent(),/쉼표/);
+  await page.locator('#v4-keys-enabled').check();
+  await page.locator('#v4-beat-grid').focus();
+  await page.keyboard.press('n');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('키보드 음표 입력 완료'),null,{timeout:30000});
+  await page.locator('#v4-beat-grid').focus();
+  await page.keyboard.press('r');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('키보드 음표를 쉼표로 변경 완료'),null,{timeout:30000});
+  await page.locator('#v4-keys-enabled').uncheck();
+  console.log('BROWSER_STAGE=V4_OPT_IN_KEYBOARD_NOTE_COMPOSING');
+
   const crossbarScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
     '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
     '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
