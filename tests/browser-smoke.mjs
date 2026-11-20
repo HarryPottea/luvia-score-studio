@@ -457,6 +457,19 @@ try {
   assert.match(polyText,/<backup><duration>192<\/duration><\/backup>/);
   assert.match(polyText,/<step>G<\/step><octave>3<\/octave><\/pitch><duration>96<\/duration>/);
   console.log('BROWSER_STAGE=V4_POLYPHONIC_RHYTHM_EDIT');
+  await page.selectOption('#v4-split-type','quarter');
+  await page.click('#v4-split-tie');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('음표 분할·붙임줄 연결 완료'),null,{timeout:30000});
+  const splitXmlDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const splitXml=await fs.readFile(await (await splitXmlDownload).path(),'utf8');
+  assert.match(splitXml,/<tie type="start"\s*\/>/);
+  assert.match(splitXml,/<tie type="stop"\s*\/>/);
+  assert.match(splitXml,/<tied type="start"\s*\/>/);
+  assert.match(splitXml,/<tied type="stop"\s*\/>/);
+  assert.match(splitXml,/<backup><duration>192<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_SPLIT_POLYPHONIC_NOTE_WITH_SOUNDING_TIE');
+
 
   // Multi-staff direct beat-grid onset editing, while preserving an independent voice.
   const nudgeXml='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
