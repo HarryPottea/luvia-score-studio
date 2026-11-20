@@ -611,6 +611,22 @@ try {
 
 
 
+
+  await page.selectOption('#v4-new-template','melody');
+  await page.fill('#v4-new-title','점음표 전문 입력');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.locator('#v3-events .v3-event').first().waitFor();
+  await page.selectOption('#v4-pro-step','A');
+  await page.selectOption('#v4-pro-type','quarter-dotted');
+  await page.click('#v4-pro-insert');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('전문 음표 입력 완료'),null,{timeout:30000});
+  const dottedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const dottedXml=await fs.readFile(await (await dottedDownload).path(),'utf8');
+  assert.match(dottedXml,/<duration>72<\/duration><type>quarter<\/type><dot\s*\/>/);
+  console.log('BROWSER_STAGE=V4_EXACT_DOTTED_NOTE_COMPOSED_AND_EXPORTED');
+
   await page.fill('#v4-new-title','셋잇단음 편집 검증');
   page.once('dialog',dialog=>dialog.accept());
   await page.click('#v4-new');
