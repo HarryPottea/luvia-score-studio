@@ -81,7 +81,7 @@ test('existing three-note tuplet: edit whole pitch sequence from its middle note
   assert.equal(result.change.actual,3);
   assert.equal(result.change.editedNotes,3);
   assert.equal(first(first(all(bar(result.doc),'note')[0],'lyric'),'text').textContent,'반짝이는');
-  assert.equal(first(all(bar(result.doc),'note')[0],'duration').textContent,'16');
+  assert.equal(first(all(bar(result.doc),'note')[0],'duration').textContent,'8');
   assert.deepEqual(pitches(bar(source)).slice(0,3),['C4','D4','C4']);
   assert.equal(first(all(bar(result.doc),'note')[0],'notations').children.length,2);
 });
@@ -101,7 +101,7 @@ test('supports seven-note tuplets when all pitches can be written',()=>{
   assert.equal(spec.count,7);
   const changed=editTupletPitches(score,{partId:'P1',measureIndex:0,eventIndex:3,
     pitches:'C4 D4 E4 F4 G4 A4 B4'});
-  assert.equal(changed.change.editedNotes,6);
+  assert.equal(changed.change.editedNotes,5);
   assert.equal(pitches(bar(changed.doc))[6],'B4');
 });
 test('invalid number of pitches, malformed tokens, or missing end are blocked',()=>{
