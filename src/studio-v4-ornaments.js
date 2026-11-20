@@ -2,6 +2,7 @@
 // notes, independent voices and lyrics. Only one specified empty MusicXML
 // ornament element is added or removed. Every rhythm and pitch remains fixed.
 import {inspectAdvancedMeasure} from './advanced-score.js';
+import {assertNotationMutation} from './studio-v4-notation-guard.js';
 
 const all=(node,tag)=>node?[...node.children].filter(n=>n.localName===tag):[];
 const first=(node,tag)=>all(node,tag)[0]||null;
@@ -69,6 +70,8 @@ export function toggleMusicXmlOrnament(source,{
   const actual=first(first(first(copyNote,'notations'),'ornaments'),kind);
   if(!!actual===existed)
     fail('장식 기호 추가·제거 결과를 확인할 수 없습니다.');
+  assertNotationMutation(source,doc,{partId,targets:[{measureIndex,eventIndex,
+    allowed:[{name:'ornaments',kind}]}]});
   return {doc,change:{action:'toggle-ornament',partId,measureIndex,eventIndex,
     kind,enabled:!existed,nextMeasureIndex:measureIndex,nextEventIndex:eventIndex}};
 }
