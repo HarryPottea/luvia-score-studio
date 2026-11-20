@@ -6,6 +6,7 @@ import {mountMeasureToolbar} from './studio-v4-measure-toolbar.js';
 import {buildPlaybackTimeline,clipPlaybackToMeasures,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {saveLocalCheckpoint,listLocalCheckpoints,loadLocalCheckpoint,removeLocalCheckpoint} from './studio-v4-checkpoints.js';
+import {createPortableScoreProject,readPortableScoreProject} from './studio-v4-project-archive.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {createPartSvgZip} from './studio-v4-part-svg.js';
 import {createVectorPartPdfZip} from './studio-v4-vector-pdf.js';
@@ -56,6 +57,12 @@ const intro=[
   '<p id="v4-checkpoint-status" class="v4-tiny" role="status">각 시점은 별도 저장되며 자동 저장에 덮어써지지 않습니다.</p>',
   '<p class="v4-tiny">최대 20개 · 총 32MiB. 삭제는 직접 확인해야 합니다. 이 브라우저의 저장소에만 보관됩니다.',
   ' 기기 초기화·브라우저 데이터 삭제에 대비해 MusicXML 파일도 별도 저장하세요.</p></div>',
+  '<div class="v4-draft-area"><strong>프로젝트 파일로 전체 백업·복원</strong>',
+  '<div class="v4-inline"><button id="v4-project-export" type="button" disabled>현재 악보 + 복원 시점 ZIP 백업</button>',
+  '<button id="v4-project-import" type="button">프로젝트 ZIP 불러오기</button></div>',
+  '<input id="v4-project-file" type="file" accept=".jwoo,.zip" hidden />',
+  '<p id="v4-project-status" class="v4-tiny" role="status" aria-live="polite">.jwoo 프로젝트 파일은 MusicXML과 각 복원 시점의 SHA-256 검증 정보를 함께 보관합니다.</p>',
+  '<p class="v4-tiny">브라우저 저장 데이터가 지워져도 별도로 보관한 프로젝트 파일에서 복원할 수 있습니다. 기존 악보를 교체하기 전 확인을 요청합니다.</p></div>',
   '</section>',
 ].join('');
 const panel=[
@@ -227,6 +234,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   let measureToolbar=null;
   let savingCheckpoint=false;
   let checkpointNotice=null;
+  let projectBusy=false;
   const player=createAuditionPlayer({
     onState:playing=>{
       $('v4-play').disabled=playing;
@@ -326,6 +334,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     syncCurrentMeasureCount();
     syncMeasureDelete();
     $('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;
+    $('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;
     measureToolbar?.render();
     renderVoiceGrid();
     syncChordSelection();
@@ -344,7 +353,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;void refreshDrafts();void refreshCheckpoints();}
+  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;$('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;void refreshDrafts();void refreshCheckpoints();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{
@@ -484,6 +493,60 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       checkpointNotice='선택한 복원 시점을 삭제했습니다. 다른 복원 시점은 유지됩니다.';
       checkpointStatus(checkpointNotice);
     }catch(error){checkpointStatus('복원 시점 삭제 실패: '+(error.message||'저장소 제한'));}
+  });
+  const projectStatus=message=>{$('v4-project-status').textContent=message;};
+  function projectButtons(){
+    $('v4-project-export').disabled=projectBusy||!state.doc||state.showBaseline;
+    $('v4-project-import').disabled=projectBusy;
+  }
+  $('v4-project-export').addEventListener('click',async()=>{
+    if(projectBusy||!state.doc||state.showBaseline)return;
+    projectBusy=true;projectButtons();
+    try{
+      const filename=state.filename||'score.musicxml';
+      const xml=new XMLSerializer().serializeToString(state.doc);
+      const entries=(await listLocalCheckpoints()).filter(x=>x.filename===filename);
+      const snapshots=[];
+      for(const item of entries){
+        const saved=await loadLocalCheckpoint(item.id);
+        snapshots.push({filename:saved.filename,xml:saved.xml,label:saved.label});
+      }
+      const output=await createPortableScoreProject({xml,filename,snapshots});
+      const url=URL.createObjectURL(output.blob),anchor=document.createElement('a');
+      anchor.href=url;anchor.download=output.filename;anchor.click();
+      setTimeout(()=>URL.revokeObjectURL(url),10000);
+      projectStatus('프로젝트 파일 생성 완료 · '+output.snapshots+
+        '개 복원 시점 포함 · '+output.bytes+'바이트 · SHA-256 보호 · 다운로드 파일은 별도로 보관하세요.');
+    }catch(error){projectStatus('프로젝트 백업 실패: '+(error.message||'파일을 저장할 수 없습니다.'));}
+    finally{projectBusy=false;projectButtons();}
+  });
+  $('v4-project-import').addEventListener('click',()=>{
+    if(projectBusy)return;
+    $('v4-project-file').click();
+  });
+  $('v4-project-file').addEventListener('change',async()=>{
+    const file=$('v4-project-file').files?.[0];
+    $('v4-project-file').value='';
+    if(!file||projectBusy)return;
+    if(state.doc&&!confirm('프로젝트를 불러오면 현재 악보 화면이 교체됩니다. 먼저 현재 악보를 저장했나요?'))return;
+    projectBusy=true;projectButtons();
+    try{
+      const restored=await readPortableScoreProject(file);
+      const loaded=await openScore(restored.xml,restored.filename);
+      if(!loaded)throw new Error('백업 악보가 렌더링되지 않았습니다. 기존 프로젝트 파일은 변경되지 않았습니다.');
+      let savedCount=0,reason='';
+      for(const item of restored.snapshots){
+        try{
+          await saveLocalCheckpoint({filename:item.filename,xml:item.xml,label:item.label});
+          savedCount++;
+        }catch(error){reason=error.message||'저장소 용량 제한';break;}
+      }
+      await refreshCheckpoints();
+      projectStatus('검증된 프로젝트 복원 완료 · SHA-256 일치 · '+restored.snapshots.length+
+        '개 중 '+savedCount+'개 복원 시점 보관'+
+        (reason?' · 나머지 미보관: '+reason+' · 원본 ZIP은 계속 보관하세요.':''));
+    }catch(error){projectStatus('프로젝트 복원 차단: '+(error.message||'파일의 무결성 검사가 실패했습니다.'));}
+    finally{projectBusy=false;projectButtons();}
   });
   async function commit(transform,label){
     if(!state.doc){setMessage('먼저 악보를 열어 주세요.',true);return;}
