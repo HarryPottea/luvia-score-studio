@@ -27,7 +27,7 @@ import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printboo
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
 import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
-import {planDensityLayout,applyDensityLayout} from './studio-v4-auto-layout.js';
+import {planDensityLayout,applyDensityLayout,planIndependentPartLayout,applyIndependentPartLayout} from './studio-v4-auto-layout.js';
 import {changeSingleEmptyMeasureMeter} from './studio-v4-meter-single.js';
 import './studio-v4.css';
 
@@ -189,6 +189,8 @@ const panel=[
   '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">모든 파트의 마디 수가 같아야 합니다. 기존 수동 나눔은 기본적으로 보호됩니다.</p>',
   '<button id="v4-auto-layout" type="button">곡 밀도 기반 자동 줄·페이지 나눔</button>',
   '<p id="v4-auto-layout-status" class="v4-tiny" role="status" aria-live="polite">음표·가사·화음 밀도에 따라 모든 파트의 줄과 페이지 시작을 자동 제안합니다.</p>',
+  '<button id="v4-part-layout" type="button">악기별 파트보 개별 자동 조판</button>',
+  '<p id="v4-part-layout-status" class="v4-tiny" role="status" aria-live="polite">보컬과 피아노 등의 밀도가 다르면 각 악기의 줄바꿈과 페이지 나눔을 독립적으로 계산합니다. 기존 수동 지시는 보호됩니다.</p>',
   '<p class="v4-tiny">이 기능은 MusicXML 줄·페이지 나눔을 한꺼번에 작성합니다. 음표·가사 충돌을 자동 해소하는 조판 엔진은 아닙니다.</p></div>',
   '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
   '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 미리보기의 조판 간격 선택도 파트보에 적용됩니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
@@ -940,6 +942,21 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       '자동 배치 적용 · '+plan.totalMeasures+'마디 · '+plan.systems+'줄 · 예상 '+plan.pages+
       '페이지 · 모든 '+plan.parts+'파트 동기화 · 시각적 겹침은 인쇄 전에 확인해 주세요.':
       '자동 배치를 적용하지 못했습니다. 이전 악보를 보존했습니다.';
+  });
+  $('v4-part-layout').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    const options={pageFormat:$('page-orientation').value,
+      replaceExisting:$('v4-cadence-replace').checked};
+    const status=$('v4-part-layout-status');
+    let plan;
+    try{plan=planIndependentPartLayout(state.doc,options);}
+    catch(error){status.textContent='개별 파트보 조판 차단: '+(error.message||'설정 오류');setMessage(status.textContent,true);return;}
+    const before=state.doc;
+    await commit(doc=>applyIndependentPartLayout(doc,options),'악기별 독립 줄·페이지 나눔');
+    status.textContent=state.doc!==before?
+      '악기 '+plan.parts+'파트 · 파트별 합계 '+plan.systems+'줄 · 예상 '+plan.pagesEstimated+
+      '페이지 · 각 악기별 페이지를 별도 검수하세요.':
+      '개별 조판을 적용하지 못했습니다. 기존 악보와 수동 지시를 보존했습니다.';
   });
   $('v4-play').addEventListener('click',async()=>{
     if(!state.doc)return;
