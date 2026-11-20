@@ -108,3 +108,29 @@
   .v4-crossbar,.v4-cadence-panel{padding:10px}
   .v4-editor .v4-crossbar .v4-inline button{font-size:11px;line-height:1.3}
 }
+
+/* 4.0 advanced authoring: frequent operations stay grouped and readable. */
+.v4-common-tuplets,.v4-written-rebar,.v4-chord-transpose{
+  margin:14px 0 17px;padding:13px;
+  background:linear-gradient(120deg,#263420,#202b1e);
+  border:1px solid #66805c;border-radius:5px
+}
+.v4-common-tuplets .v4-subhead,.v4-written-rebar .v4-subhead,
+.v4-chord-transpose .v4-subhead{margin:0 0 10px;border:0;padding:0;color:#eaf4e3}
+.v4-common-tuplets .v4-inline,.v4-written-rebar .v4-inline,
+.v4-chord-transpose .v4-inline{gap:12px;align-items:end}
+.v4-common-tuplets .v4-inline>div,.v4-written-rebar .v4-inline>div,
+.v4-chord-transpose .v4-inline>div{min-width:0;flex:1}
+.v4-common-tuplets button,.v4-written-rebar button,.v4-chord-transpose button{
+  background:#d9ff7a;color:#192012;border:1px solid #d9ff7a;
+  min-height:41px;font-weight:800
+}
+.v4-common-tuplets button:hover:not(:disabled),.v4-written-rebar button:hover:not(:disabled),
+.v4-chord-transpose button:hover:not(:disabled){background:#eefdbc;border-color:#eefdbc}
+.v4-common-tuplets p,.v4-written-rebar p,.v4-chord-transpose p{line-height:1.62}
+@media(max-width:670px){
+  .v4-common-tuplets,.v4-written-rebar,.v4-chord-transpose{padding:10px}
+  .v4-common-tuplets button,.v4-written-rebar button,.v4-chord-transpose button{
+    font-size:12px;line-height:1.35
+  }
+}
