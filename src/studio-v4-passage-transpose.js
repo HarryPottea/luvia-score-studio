@@ -2,6 +2,7 @@
 // Preserves voice/staff timing, tuplets, sounding/written ties, lyrics, and
 // non-selected parts. Chord symbols and transposing instruments fail closed.
 import {assertClosedMeasureRange} from './studio-v4-measure-links.js';
+import {transposeHarmonyMarkup} from './studio-v4-harmony-transpose.js';
 
 const all=(node,tag)=>node?[...node.children].filter(n=>n.localName===tag):[];
 const first=(node,tag)=>all(node,tag)[0]||null;
@@ -62,11 +63,12 @@ function replacePitch(note,midi,spelling){
 }
 function measureList(part){return all(part,'measure');}
 export function transposeMeasurePassage(source,{
-  start,end,semitones=2,spelling='sharp',partId=null
+  start,end,semitones=2,spelling='sharp',partId=null,transposeChordSymbols=true
 }={}){
   if(source?.documentElement?.localName!=='score-partwise')
     fail('MusicXML partwise 악보만 이조할 수 있습니다.');
   if(!integer(semitones,-12,12)||semitones===0||!['sharp','flat'].includes(spelling)||
+     typeof transposeChordSymbols!=='boolean'||
      (partId!==null&&(typeof partId!=='string'||!partId)))
     fail('반음 이동 범위(-12~+12), 변화표 또는 파트 설정을 확인해 주세요.');
   const parts=all(source.documentElement,'part');
@@ -91,8 +93,8 @@ export function transposeMeasurePassage(source,{
     const pid=p.getAttribute('id');
     for(let index=start;index<=end;index++){
       const bar=measureList(p)[index];
-      if(all(bar,'harmony').length)
-        fail('선택 범위에 코드 기호가 있습니다. 코드와 음표의 불일치를 피하기 위해 이조를 보호합니다.');
+      if(all(bar,'harmony').length&&!transposeChordSymbols)
+        fail('선택 범위에 코드 기호가 있어 코드 동시 이조를 선택해야 합니다.');
       if(bar.getAttribute('implicit')==='yes'||bar.getAttribute('non-controlling')==='yes')
         fail('못갖춘마디·특수 마디 번호의 이조는 별도 확인이 필요합니다.');
       const notes=all(bar,'note');
@@ -115,6 +117,18 @@ export function transposeMeasurePassage(source,{
   if(!changes.length)fail('선택한 구간에 이조할 음표가 없습니다.');
   const doc=source.cloneNode(true);
   const copyParts=new Map(all(doc.documentElement,'part').map(p=>[p.getAttribute('id'),p]));
+  let chords=0;
+  // Chords and notes are edited in one immutable transaction. If an advanced
+  // harmony cannot be safely rewritten, no changes escape from the clone.
+  for(const sourcePart of selected){
+    const copyPart=copyParts.get(sourcePart.getAttribute('id'));
+    for(let i=start;i<=end;i++){
+      for(const harmony of all(measureList(copyPart)[i],'harmony')){
+        transposeHarmonyMarkup(harmony,{semitones,spelling});
+        chords++;
+      }
+    }
+  }
   for(const change of changes){
     const n=all(measureList(copyParts.get(change.pid))[change.index],'note')[change.eventIndex];
     replacePitch(n,change.midi,spelling);
@@ -122,5 +136,5 @@ export function transposeMeasurePassage(source,{
       fail('이조한 음표의 음정 확인에 실패했습니다.');
   }
   return {doc,change:{action:'transpose-measure-passage',partId,start,end,semitones,
-    spelling,notes:changes.length,nextMeasureIndex:start,nextEventIndex:0}};
+    spelling,notes:changes.length,chords,nextMeasureIndex:start,nextEventIndex:0}};
 }
