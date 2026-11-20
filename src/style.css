@@ -208,3 +208,114 @@
 @media print{
   .preview-column.is-refreshing #score-container{opacity:1!important;pointer-events:auto!important}
 }
+
+
+/* J-WOO 4.0 workspace refinement: clearer hierarchy, less landing-page overhead,
+   and compact settings navigation. These styles do not change MusicXML. */
+.site-shell.has-active-score .intro{padding-top:20px}
+.site-shell.has-active-score .intro-eyebrow{margin-bottom:13px}
+.site-shell.has-active-score .intro h1{
+  font-size:clamp(52px,7.1vw,104px);line-height:.87
+}
+.site-shell.has-active-score .intro-bottom{margin:18px 0 22px}
+.site-shell.has-active-score .process-line{padding:10px 0 11px}
+.controls h2{font-size:clamp(28px,3vw,45px)}
+.workspace-description{max-width:360px}
+.editor-controls{margin-top:22px}
+.editor-controls>.control-group{
+  padding:16px 10px 14px;margin:0 -10px;
+  border-top:1px solid rgba(168,190,157,.26);
+  border-bottom:1px solid rgba(168,190,157,.1);
+  border-radius:3px;
+}
+.editor-controls>.control-group:has(>.jwoo-panel-body[hidden]){
+  padding-bottom:11px
+}
+.editor-controls .control-heading{
+  margin-bottom:12px;letter-spacing:-.018em;line-height:1.5;color:#f1f7ec
+}
+.editor-controls .control-heading>span:nth-child(2){
+  font-size:10px;color:#98a996;font-weight:700;letter-spacing:.05em
+}
+.editor-controls .control-group label{line-height:1.5}
+.editor-controls .control-hint{
+  color:#b7c5b3;line-height:1.65;font-size:11px;word-break:keep-all
+}
+.editor-controls :is(input:not([type=checkbox]):not([type=range]),select,textarea){
+  min-height:38px;border-radius:4px
+}
+.editor-controls button:not(.jwoo-fold-toggle):not(.jwoo-quick-link){
+  border-radius:4px
+}
+.editor-controls .v4-tiny{font-size:11px;line-height:1.65;color:#b4c3ad}
+.editor-controls .jwoo-v4-section{
+  padding-bottom:12px;margin-top:4px
+}
+.jwoo-quick-links{
+  display:flex;align-items:center;gap:6px;overflow-x:auto;
+  margin:0 0 13px;padding:0 0 12px;
+  scrollbar-width:thin;scrollbar-color:#566d4d transparent;
+  border-bottom:1px solid rgba(162,185,144,.25);
+  -webkit-overflow-scrolling:touch
+}
+.jwoo-quick-links>span{
+  color:#aebda5;font-size:10px;font-weight:800;
+  flex:none;margin-right:4px;white-space:nowrap
+}
+.jwoo-quick-link{
+  flex:none;min-height:30px;padding:6px 10px;
+  border:1px solid rgba(160,194,136,.4);border-radius:20px;
+  color:#e4f3d8;background:#273525;
+  font-size:10px;font-weight:750;line-height:1.4;
+  transition:background-color .15s,border-color .15s
+}
+.jwoo-quick-link:hover{background:#405737;border-color:var(--lime)}
+.jwoo-quick-link:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+#editor-controls :is(#v4-new,#parts-list,#v3-events,#v4-lyrics-batch-text,#v4-chord-input,#v4-print-book){
+  scroll-margin-top:24px
+}
+.preview-toolbar{gap:14px}
+.preview-toolbar .output-actions button{border-radius:4px;min-height:34px}
+.site-footer{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;row-gap:7px;column-gap:22px
+}
+.site-footer .footer-brand{
+  color:#454b3d;font-weight:900;letter-spacing:.08em
+}
+.site-footer .footer-credit{
+  color:#262d24;font-size:11px;font-weight:800;
+  letter-spacing:.03em;white-space:nowrap
+}
+.site-footer .footer-note{
+  grid-column:1/-1;color:#7b8273;font-size:9px;
+  font-weight:650;letter-spacing:.06em
+}
+@media(max-width:920px){
+  .site-shell.has-active-score .intro h1{font-size:clamp(48px,8.4vw,82px)}
+}
+@media(max-width:670px){
+  .site-shell.has-active-score .intro{padding-top:15px}
+  .site-shell.has-active-score .intro h1{font-size:clamp(43px,13vw,68px)}
+  .site-shell.has-active-score .intro-bottom{margin:14px 0 18px}
+  .site-shell.has-active-score .intro-eyebrow{margin-bottom:9px}
+  .editor-controls>.control-group{padding:14px 7px;margin:0 -7px}
+  .editor-controls .control-hint,.editor-controls .v4-tiny{font-size:11px}
+  .jwoo-quick-links{gap:6px;overscroll-behavior-x:contain}
+  .jwoo-quick-link{min-height:35px;font-size:11px}
+  #editor-controls :is(#v4-new,#parts-list,#v3-events,#v4-lyrics-batch-text,#v4-chord-input,#v4-print-book){
+    scroll-margin-top:325px
+  }
+  .site-footer{display:flex;align-items:flex-start;gap:5px}
+  .site-footer .footer-credit{font-size:11px;white-space:normal}
+  .site-footer .footer-note{font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){
+  .jwoo-quick-link{transition:none!important}
+}
+@media print{.jwoo-quick-links{display:none!important}}
+
+/* The create-score panel sits above #editor-controls; give its quick link the
+   same safe scroll offset as inspector inputs under the mobile sticky preview. */
+#v4-new{scroll-margin-top:24px}
+@media(max-width:670px){#v4-new{scroll-margin-top:325px}}

@@ -4,21 +4,21 @@ import { createPartPdfZip } from './pdf-batch.js';
 import { baseScoreName } from './part-export.js';
 
 const section = `
-<div class="control-group v2-group"><div class="control-heading"><span>음표 기보 정리</span><span>06</span></div>
-<p class="control-hint">Logic MusicXML의 연주 길이(duration)와 음표 모양(type)이 다를 때만 정리 후보를 제안합니다. MIDI 자동 퀀타이즈가 아니며, 사용자가 후보를 선택해 적용합니다.</p>
+<div class="control-group v2-group"><div class="control-heading"><span>음표 표기 검사·수정</span><span>06</span></div>
+<p class="control-hint">MusicXML에 기록된 음 길이와 표기값이 일치하지 않는 음표를 찾아 제안합니다. 자동 퀀타이즈가 아니며, 선택한 후보에만 적용됩니다.</p>
 <div id="v2-candidates" class="v2-inspector" aria-live="polite"></div>
 <div class="v2-actions"><button id="v2-rescan" type="button">후보 다시 검사</button><button id="v2-apply" type="button" disabled>선택된 기보 수정 적용</button><button id="v2-undo" type="button" disabled>음표 수정 되돌리기</button></div>
 </div>
-<div class="control-group v2-group"><div class="control-heading"><span>원본·수정본 비교</span><span>07</span></div>
+<div class="control-group v2-group"><div class="control-heading"><span>원본과 편집본 비교</span><span>07</span></div>
 <div class="v2-actions"><button id="v2-view-original" type="button">원본 미리보기</button><button id="v2-view-current" type="button">현재 미리보기</button></div>
 <div id="v2-diff" class="v2-inspector" aria-live="polite"></div>
 <p class="control-hint">변경된 마디와 음표 표기의 개수를 확인할 수 있습니다. 모든 음악적 차이를 분석하는 기능은 아닙니다.</p>
 </div>
-<div class="control-group v2-group"><div class="control-heading"><span>레이아웃·파트 PDF</span><span>08</span></div>
+<div class="control-group v2-group"><div class="control-heading"><span>조판·파트별 PDF</span><span>08</span></div>
 <label for="v2-layout">악보 보표 간격</label><select id="v2-layout"><option value="auto">자동 추천</option><option value="standard">표준</option><option value="comfortable">여유 있게 (가사·보컬)</option><option value="compact">조밀하게 (합주)</option></select>
 <p id="v2-layout-hint" class="control-hint"></p>
-<button id="v2-batch-pdf" class="part-export-button part-export-batch" type="button">전체 파트 PDF ZIP 저장</button>
-<p class="control-hint">브라우저에서 A4 PDF를 생성합니다. 파트 최대 12개, 파트당 최대 14페이지, 전체 최대 80페이지입니다. 결과는 원본과 비교해 인쇄 품질을 확인하세요.</p>
+<button id="v2-batch-pdf" class="part-export-button part-export-batch" type="button">전체 파트 PDF ZIP 저장 (이미지 기반)</button>
+<p class="control-hint">각 파트의 악보를 이미지 기반 A4 PDF로 묶습니다(최대 12파트·파트당 14쪽·전체 80쪽). 선명한 벡터 인쇄는 11 / 악보 구성의 ‘파트별 인쇄’를 사용하세요.</p>
 </div>
 `;
 

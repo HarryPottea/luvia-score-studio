@@ -952,6 +952,61 @@ try {
   await page.screenshot({path:output+'/fast-part-visibility.png'});
   console.log('BROWSER_STAGE=MEASURE_VISIBILITY_COALESCED');
 
+
+  // UI copy/layout polish: copyright name is exactly the intended English mark,
+  // onboarding accurately describes creation/import/editing, and shortcuts
+  // expand only the accordions needed to reach existing functional controls.
+  assert.equal((await page.locator('.footer-credit').textContent()).trim(),
+    '© 2026 PARKJAEWOO. All rights reserved.');
+  assert.match(await page.locator('.intro-bottom').textContent(),/MusicXML·MIDI/);
+  assert.match(await page.locator('#guide').textContent(),/음표·가사·코드 편집/);
+  assert.match(await page.locator('.workspace-heading').textContent(),/SCORE PREVIEW · A4/);
+  const heroBefore=await page.evaluate(()=>({
+    active:document.querySelector('.site-shell').classList.contains('has-active-score'),
+    fontSize:parseFloat(getComputedStyle(document.querySelector('.intro h1')).fontSize),
+  }));
+  assert.equal(heroBefore.active,true);
+  assert.ok(heroBefore.fontSize<=105,'Loaded workspace uses a compact hero instead of landing-sized type');
+  const shortcuts=page.locator('.jwoo-quick-link');
+  assert.deepEqual(await shortcuts.allTextContents(),['새 악보','파트','음표','가사','코드','출력']);
+  const unchangedRevision=Number(await page.locator('#score-container').getAttribute('data-render-revision'));
+  await page.getByRole('button',{name:'모두 접기'}).click();
+  assert.equal(await page.locator('#v4-lyrics-batch-text').isVisible(),false);
+  await page.getByRole('button',{name:'가사 설정으로 이동'}).click();
+  assert.equal(await page.locator('#v4-lyrics-batch-text').isVisible(),true);
+  assert.equal(await page.locator('#v4-chord-input').isVisible(),false);
+  await page.getByRole('button',{name:'코드 설정으로 이동'}).click();
+  assert.equal(await page.locator('#v4-chord-input').isVisible(),true);
+  await page.getByRole('button',{name:'출력 설정으로 이동'}).click();
+  assert.equal(await page.locator('#v4-print-book').isVisible(),true);
+  await page.getByRole('button',{name:'파트 설정으로 이동'}).click();
+  assert.equal(await page.locator('#parts-list').isVisible(),true);
+  assert.equal(Number(await page.locator('#score-container').getAttribute('data-render-revision')),
+    unchangedRevision,'Inspector shortcuts never rewrite or re-render the score');
+  await page.screenshot({path:output+'/ui-refinement-desktop.png'});
+  console.log('BROWSER_STAGE=POLISHED_INSPECTOR_QUICK_ACCESS_AND_COPYRIGHT');
+
+  await page.setViewportSize({width:390,height:844});
+  const mobileUi=await page.evaluate(()=>{
+    const quick=document.querySelector('.jwoo-quick-links');
+    const copyright=document.querySelector('.footer-credit');
+    return {quickWidth:quick.getBoundingClientRect().width,
+      quickScrollWidth:quick.scrollWidth,
+      copyright:getComputedStyle(copyright).fontSize,
+      pageWidth:document.documentElement.clientWidth};
+  });
+  assert.ok(mobileUi.quickWidth<=mobileUi.pageWidth,'Shortcut bar fits the mobile layout');
+  assert.ok(mobileUi.quickScrollWidth>=mobileUi.quickWidth,'Shortcut bar can scroll horizontally');
+  assert.equal(await page.locator('.footer-credit').textContent(),'© 2026 PARKJAEWOO. All rights reserved.');
+  await page.getByRole('button',{name:'새 악보 설정으로 이동'}).click();
+  assert.equal(await page.locator('#v4-new').isVisible(),true);
+  const newScoreScrollMargin=await page.locator('#v4-new')
+    .evaluate(el=>parseFloat(getComputedStyle(el).scrollMarginTop));
+  assert.ok(newScoreScrollMargin>=300,'The new-score shortcut must account for the mobile sticky preview');
+  await page.screenshot({path:output+'/ui-refinement-mobile.png'});
+  await page.setViewportSize({width:1440,height:1000});
+  console.log('BROWSER_STAGE=POLISHED_MOBILE_NAVIGATION_AND_ENGLISH_CREDIT');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));

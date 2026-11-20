@@ -3,13 +3,13 @@ import { createEditorHistory } from './editor-history.js';
 import { inspectAdvancedMeasure, editAdvancedScore } from './advanced-score.js';
 const TEMPLATE = [
   '<section class="control-group v3-editor" aria-label="악보 직접 편집">',
-  '<div class="control-heading"><span>J-WOO 3.0 악보 편집</span><span>09</span></div>',
-  '<p class="control-hint">음표를 선택해 음정·길이·가사를 편집합니다. 삭제는 같은 길이의 쉼표로 바꿔 박자를 보존합니다. 다성부 음정은 기보를 보존하는 범위에서 편집 가능하며, 복잡한 리듬과 붙임줄은 보호됩니다.</p>',
+  '<div class="control-heading"><span>음표·쉼표 직접 편집</span><span>09</span></div>',
+  '<p class="control-hint">악보에서 음표를 선택하거나 아래 목록에서 고르세요. 음정·길이·가사를 수정할 수 있으며, ‘쉼표로 바꾸기’는 박자를 보존합니다. 변경 불가능한 복합 기보는 보호됩니다.</p>',
   '<label for="v3-part">악기</label><select id="v3-part"></select>',
   '<label for="v3-measure">마디</label><select id="v3-measure"></select>',
   '<div id="v3-meter" class="v3-meter" aria-live="polite">악보를 열면 마디가 표시됩니다.</div>',
   '<div id="v3-events" class="v3-events" role="group" aria-label="마디의 음표·쉼표 목록"></div>',
-  '<p id="v3-graphic-hint" class="control-hint" aria-live="polite">악보에서 음표를 클릭하거나 위아래로 드래그하세요. 기보가 모호하거나 보호된 음표는 비활성화됩니다.</p>',
+  '<p id="v3-graphic-hint" class="control-hint" aria-live="polite">음표를 클릭해 선택하거나 위아래로 드래그해 음정을 변경하세요. 연결을 확인할 수 없는 음표는 편집되지 않습니다.</p>',
   '<p id="v3-selection" class="control-hint" aria-live="polite"></p>',
   '<div class="v3-note-tools">',
   '<div><label for="v3-step">음이름</label><select id="v3-step">',
@@ -21,15 +21,15 @@ const TEMPLATE = [
   '<div><label for="v3-length">길이</label><select id="v3-length">',
   '<option value="whole">온음표</option><option value="half">2분</option><option value="quarter">4분</option>',
   '<option value="eighth">8분</option><option value="16th">16분</option><option value="32nd">32분</option></select></div></div>',
-  '<div class="v3-actions"><button id="v3-pitch" type="button">음정 변경 / 음표 넣기</button>',
-  '<button id="v3-duration" type="button">길이 변경</button><button id="v3-delete" type="button">음표 → 쉼표</button>',
-  '<button id="v3-tie" type="button">다음 음표와 붙임줄 연결/해제</button></div>',
+  '<div class="v3-actions"><button id="v3-pitch" type="button">음정 변경 · 쉼표에 음표 넣기</button>',
+  '<button id="v3-duration" type="button">길이 변경</button><button id="v3-delete" type="button">선택 음표를 쉼표로 바꾸기</button>',
+  '<button id="v3-tie" type="button">인접 음표 붙임줄 연결·해제</button></div>',
   '<label for="v3-lyric">선택 음표의 가사</label><input id="v3-lyric" type="text" maxlength="80" placeholder="가사 한 음절" />',
   '<button id="v3-lyric-save" class="v3-save-lyric" type="button">가사 수정</button>',
   '<div class="v3-actions v3-history-actions"><button id="v3-undo" type="button" disabled>↶ 되돌리기</button>',
   '<button id="v3-redo" type="button" disabled>↷ 다시 실행</button></div>',
   '<p id="v3-history" class="control-hint"></p>',
-  '<p class="control-hint">편집 기록은 브라우저 메모리에만 보존됩니다. 기존 1·2차 편집 기능을 사용하면 3.0 실행 취소 기록은 초기화됩니다.</p>',
+  '<p class="control-hint">실행 취소 기록은 이 탭에서만 유지됩니다. 다른 편집 방식으로 변경하면 일부 기록이 초기화될 수 있으니 작업 중 MusicXML을 저장해 주세요.</p>',
   '</section>'
 ].join('');
 const $ = id => document.getElementById(id);
