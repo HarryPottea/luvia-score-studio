@@ -132,7 +132,7 @@ test('reject corrupted chord duration and accidental/ornamentation without mutat
   const source=create(),before=scoreEvents(source);
   const opening=all(bars(source)[0],'note');
   first(opening[1],'duration').textContent='96';
-  assert.throws(()=>rebarWrittenScore(source,{meter:'3/4'}),/동일한 길이/);
+  assert.throws(()=>rebarWrittenScore(source,{meter:'3/4'}),/type\/duration|동일한 길이/);
   first(opening[1],'duration').textContent='192';
   opening[0].appendChild(n('notations',[n('slur',[],{type:'start'})]));
   assert.throws(()=>rebarWrittenScore(source,{meter:'3/4'}),/보호합니다/);
