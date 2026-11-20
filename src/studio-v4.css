@@ -134,3 +134,56 @@
     font-size:12px;line-height:1.35
   }
 }
+
+
+/* Smart lyrics: anchored at the source-verified musical notehead, not a
+   detached inspector page. Remains legible beside the A4 preview on phones. */
+.jwoo-lyric-mode-button{
+  flex:none;margin:0 6px;padding:8px 10px;
+  border:1px solid #a2b094;border-radius:4px;background:#28362b;
+  color:#f0f8e8;font:inherit;font-size:12px;font-weight:700;cursor:pointer
+}
+.jwoo-lyric-mode-button.is-active{
+  background:#d9ff7a;border-color:#d9ff7a;color:#1d2416
+}
+.jwoo-lyric-mode-button:disabled{opacity:.45;cursor:not-allowed}
+.jwoo-lyric-mode-button:focus-visible{outline:2px solid #c5ff76;outline-offset:2px}
+.jwoo-lyric-helper{padding:8px 10px;border-left:3px solid #b7df76;background:#283525}
+.jwoo-lyric-popover{
+  position:fixed;z-index:2400;box-sizing:border-box;max-height:calc(100dvh - 20px);
+  overflow-y:auto;overscroll-behavior:contain;box-shadow:0 16px 44px #0009;
+  background:#232c22;border:1px solid #a7cb82;border-radius:9px;
+  color:#f5faee;padding:15px;
+  font-size:13px;line-height:1.45
+}
+.jwoo-lyric-popover[hidden]{display:none!important}
+.jwoo-lyric-pop-header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+.jwoo-lyric-pop-header strong{font-size:13px;line-height:1.35}
+.jwoo-lyric-pop-header button{flex:none;font-size:22px;line-height:1;width:32px;height:32px;
+  padding:1px;background:transparent;border:1px solid #748568;color:#ebf6df;border-radius:4px;cursor:pointer}
+.jwoo-lyric-popover>label:not(.jwoo-lyric-overwrite){display:block;margin:9px 0 5px;font-size:12px;font-weight:700}
+.jwoo-lyric-popover input[type=text],.jwoo-lyric-popover select{
+  display:block;box-sizing:border-box;width:100%;min-height:40px;padding:8px 10px;
+  background:#fff;color:#1c2419;border:1px solid #9da995;border-radius:4px;
+  font-size:16px;font-family:inherit
+}
+.jwoo-lyric-popover input:focus-visible,.jwoo-lyric-popover select:focus-visible,
+.jwoo-lyric-popover button:focus-visible{outline:2px solid #d6fa7c;outline-offset:2px}
+.jwoo-lyric-preview{margin:10px 0;padding:8px 10px;min-height:20px;
+  font-size:12px;line-height:1.6;overflow-wrap:anywhere;background:#35432d;border-radius:3px}
+.jwoo-lyric-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:10px 0}
+.jwoo-lyric-actions button{font:inherit;font-size:12px;font-weight:700;
+  padding:9px 7px;min-height:38px;color:#eaf5e0;background:#3f5140;
+  border:1px solid #7e9972;border-radius:3px;cursor:pointer}
+.jwoo-lyric-actions button.primary{background:#d9ff7a;color:#17200f;border-color:#d9ff7a}
+.jwoo-lyric-actions button.subtle{background:#322d27;color:#eee2d4;border-color:#786b5a}
+.jwoo-lyric-actions button:disabled{opacity:.42;cursor:default}
+.jwoo-lyric-overwrite{display:flex;align-items:center;gap:9px;font-size:12px;margin-top:12px}
+.jwoo-lyric-overwrite input{flex:none;width:17px;height:17px;accent-color:#d9ff7a}
+.jwoo-lyric-status{min-height:25px;color:#d4e6c9;font-size:11px;margin:10px 0 0;overflow-wrap:anywhere}
+.jwoo-lyric-status.is-error{color:#ffbfac}
+@media(max-width:640px){
+  .jwoo-lyric-mode-button{font-size:11px;padding:7px 8px;max-width:130px;line-height:1.35}
+  .jwoo-lyric-popover{padding:11px}
+}
+@media print{.jwoo-lyric-popover,.jwoo-lyric-mode-button{display:none!important}}
