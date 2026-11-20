@@ -16,6 +16,7 @@ import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.j
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline} from './studio-v4-crossbar.js';
+import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
 import './studio-v4.css';
 
 const intro=[
@@ -119,6 +120,13 @@ const panel=[
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
+  '<div class="v4-cadence-panel"><p class="v4-subhead">악보 전체 자동 줄·페이지 나눔 계획</p>',
+  '<div class="v4-inline"><div><label for="v4-cadence-bars">한 줄에 배치할 마디 수</label><select id="v4-cadence-bars"><option value="2">2마디</option><option value="3">3마디</option><option value="4" selected>4마디</option><option value="5">5마디</option><option value="6">6마디</option><option value="8">8마디</option></select></div>',
+  '<div><label for="v4-cadence-systems">한 페이지에 배치할 줄 수</label><select id="v4-cadence-systems"><option value="2">2줄</option><option value="3">3줄</option><option value="4" selected>4줄</option><option value="5">5줄</option><option value="6">6줄</option></select></div></div>',
+  '<label class="v4-timeline-move-check"><input id="v4-cadence-replace" type="checkbox" /> 기존 수동 줄·페이지 나눔 대체 허용</label>',
+  '<button id="v4-cadence-apply" type="button">모든 파트에 줄·페이지 나눔 적용</button>',
+  '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">모든 파트의 마디 수가 같아야 합니다. 기존 수동 나눔은 기본적으로 보호됩니다.</p>',
+  '<p class="v4-tiny">이 기능은 MusicXML 줄·페이지 나눔을 한꺼번에 작성합니다. 음표·가사 충돌을 자동 해소하는 조판 엔진은 아닙니다.</p></div>',
   '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
   '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
   '<button id="v4-part-svg-zip" type="button">모든 파트 SVG ZIP 저장 (벡터)</button>',
@@ -596,6 +604,26 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>setScoreLayoutBreak(doc,{
     measureIndex:selected().measureIndex,kind:$('v4-layout').value,
   }),'줄·페이지 나눔'));
+  $('v4-cadence-apply').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    const options={barsPerSystem:Number($('v4-cadence-bars').value),
+      systemsPerPage:Number($('v4-cadence-systems').value),
+      replaceExisting:$('v4-cadence-replace').checked};
+    const status=$('v4-cadence-status');
+    let plan;
+    try{
+      plan=planLayoutCadence(state.doc,options);
+    }catch(error){
+      status.textContent='나눔 적용 불가: '+(error.message||'설정 확인이 필요합니다.');
+      setMessage(status.textContent,true);return;
+    }
+    const before=state.doc;
+    await commit(doc=>applyLayoutCadence(doc,options),'전체 악보 줄·페이지 나눔');
+    if(state.doc!==before){
+      status.textContent='모든 파트 '+plan.parts+'개 · '+plan.total+'마디 · 새 줄 시작 '+
+        plan.systemStarts+'곳 · 페이지 시작 '+plan.pageStarts+'곳 기록 완료';
+    }else status.textContent='악보가 변경되지 않았습니다. 위 편집 상태를 확인해 주세요.';
+  });
   $('v4-play').addEventListener('click',async()=>{
     if(!state.doc)return;
     try{
