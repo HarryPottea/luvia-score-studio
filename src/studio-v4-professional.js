@@ -4,6 +4,7 @@
 // re-times other voices. Unsupported engravings fail closed; the input DOM
 // remains untouched until a candidate passes its post-edit timeline audit.
 import {inspectAdvancedMeasure} from './advanced-score.js';
+import {assertNotationMutation,insertOrderedNotation} from './studio-v4-notation-guard.js';
 const direct=(n,t)=>n?[...n.children].find(c=>c.localName===t)||null:null;
 const all=(n,t)=>n?[...n.children].filter(c=>c.localName===t):[];
 const value=(n,t)=>direct(n,t)?.textContent?.trim()||'';
@@ -135,7 +136,7 @@ function addNotation(note,name,attrs){
   if(!notations){notations=make(note,'notations');note.appendChild(notations);}
   const item=make(notations,name);
   for(const [k,v] of Object.entries(attrs))item.setAttribute(k,String(v));
-  notations.appendChild(item);
+  insertOrderedNotation(notations,item);
   return item;
 }
 function directionBefore(measure,note,kind,number,voice,staff){
@@ -348,6 +349,12 @@ export function toggleSlur(source,params={}){
     addNotation(last,'slur',{type:'stop',number});
   }
   post(source,doc,loc,new Set([identity(event)]),'slur');
+  assertNotationMutation(source,doc,{partId:params.partId,targets:[
+    {measureIndex:params.measureIndex,eventIndex:params.eventIndex,
+      allowed:[{name:'slur',type:'start'}]},
+    {measureIndex:params.measureIndex,eventIndex:params.endEventIndex,
+      allowed:[{name:'slur',type:'stop'}]}
+  ]});
   return {doc,change:{action:matched?'slur-remove':'slur-add',partId:params.partId,measureIndex:params.measureIndex}};
 }
 export function addHairpin(source,{kind='crescendo',...params}={}){
