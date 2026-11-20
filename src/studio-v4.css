@@ -195,3 +195,9 @@
   font:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .jwoo-lyric-selected:disabled{opacity:.42;cursor:not-allowed}
 .jwoo-lyric-selected:focus-visible{outline:2px solid #d9ff7a;outline-offset:3px}
+
+/* Selected-bar deletion follows the same visual language as composition tools. */
+.v4-measure-delete{margin:12px 0 15px;padding:12px;background:#292c23;border:1px solid #8a7159;border-radius:4px}
+.v4-editor .v4-measure-delete #v4-delete-measure{background:#504035;border-color:#cba786;color:#fff3e8}
+.v4-editor .v4-measure-delete #v4-delete-measure:hover:not(:disabled){background:#6b4e3f}
+.v4-measure-delete #v4-delete-measure-status{min-height:22px;color:#eee0cf}
