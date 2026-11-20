@@ -24,6 +24,7 @@ import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printboo
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
 import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
+import {planDensityLayout,applyDensityLayout} from './studio-v4-auto-layout.js';
 import {changeSingleEmptyMeasureMeter} from './studio-v4-meter-single.js';
 import './studio-v4.css';
 
@@ -170,6 +171,8 @@ const panel=[
   '<label class="v4-timeline-move-check"><input id="v4-cadence-replace" type="checkbox" /> 기존 수동 줄·페이지 나눔 대체 허용</label>',
   '<button id="v4-cadence-apply" type="button">모든 파트에 줄·페이지 나눔 적용</button>',
   '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">모든 파트의 마디 수가 같아야 합니다. 기존 수동 나눔은 기본적으로 보호됩니다.</p>',
+  '<button id="v4-auto-layout" type="button">곡 밀도 기반 자동 줄·페이지 나눔</button>',
+  '<p id="v4-auto-layout-status" class="v4-tiny" role="status" aria-live="polite">음표·가사·화음 밀도에 따라 모든 파트의 줄과 페이지 시작을 자동 제안합니다.</p>',
   '<p class="v4-tiny">이 기능은 MusicXML 줄·페이지 나눔을 한꺼번에 작성합니다. 음표·가사 충돌을 자동 해소하는 조판 엔진은 아닙니다.</p></div>',
   '<button id="v4-print-book" type="button">모든 파트 벡터 악보 인쇄 · PDF로 저장</button>',
   '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 미리보기의 조판 간격 선택도 파트보에 적용됩니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
@@ -822,6 +825,24 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       status.textContent='모든 파트 '+plan.parts+'개 · '+plan.total+'마디 · 새 줄 시작 '+
         plan.systemStarts+'곳 · 페이지 시작 '+plan.pageStarts+'곳 기록 완료';
     }else status.textContent='악보가 변경되지 않았습니다. 위 편집 상태를 확인해 주세요.';
+  });
+  $('v4-auto-layout').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    const options={pageFormat:$('page-orientation').value,
+      replaceExisting:$('v4-cadence-replace').checked};
+    const status=$('v4-auto-layout-status');
+    let plan;
+    try{plan=planDensityLayout(state.doc,options);}
+    catch(error){
+      status.textContent='자동 조판 계획 차단: '+(error.message||'악보 설정을 확인해 주세요.');
+      setMessage(status.textContent,true);return;
+    }
+    const before=state.doc;
+    await commit(doc=>applyDensityLayout(doc,options),'악보 밀도 기반 자동 줄·페이지 나눔');
+    status.textContent=state.doc!==before?
+      '자동 배치 적용 · '+plan.totalMeasures+'마디 · '+plan.systems+'줄 · 예상 '+plan.pages+
+      '페이지 · 모든 '+plan.parts+'파트 동기화 · 시각적 겹침은 인쇄 전에 확인해 주세요.':
+      '자동 배치를 적용하지 못했습니다. 이전 악보를 보존했습니다.';
   });
   $('v4-play').addEventListener('click',async()=>{
     if(!state.doc)return;
