@@ -9,7 +9,8 @@ export function inspectSvgLyricSpacing(svgs,{minimumOverlapPx=1.25,maxLyrics=400
      minimumOverlapPx<0.25||minimumOverlapPx>10||
      !Number.isInteger(maxLyrics)||maxLyrics<1||maxLyrics>1000)
     fail('가사 조판 검사의 SVG 페이지와 크기 설정이 올바르지 않습니다.');
-  let measured=0,unknown=0,collisions=0;
+  let measured=0,unknown=0,collisions=0,lyricNoteheadCollisions=0,
+    measuredNoteheads=0,unknownNoteheads=0;
   const samples=[];
   for(const svg of svgs){
     if(svg?.localName!=='svg'||typeof svg.querySelectorAll!=='function')
@@ -20,7 +21,8 @@ export function inspectSvgLyricSpacing(svgs,{minimumOverlapPx=1.25,maxLyrics=400
     const unique=[...new Set(candidates)].filter(node=>node.localName==='text'&&
       String(node.textContent||'').trim());
     if(measured+unique.length>maxLyrics)
-      return {measured,unknown,collisions,details:samples,
+      return {measured,unknown,collisions,lyricNoteheadCollisions,
+        measuredNoteheads,unknownNoteheads,details:samples,
         status:'MEASUREMENT_LIMIT_EXCEEDED',complete:false};
     const boxes=[];
     for(const [index,node] of unique.entries()){
@@ -48,9 +50,47 @@ export function inspectSvgLyricSpacing(svgs,{minimumOverlapPx=1.25,maxLyrics=400
         }
       }
     }
+    // The musical SVG contains the actual glyph outlines inside vf-notehead
+    // containers. Only compare each lyric to rendered glyph boxes. Unlike
+    // same-voice notehead overlap, text-versus-notehead overlap has no
+    // intentional chord/unison interpretation and warrants a review warning.
+    const noteheads=[...new Set(svg.querySelectorAll('.vf-notehead'))];
+    if(noteheads.length>1800){
+      unknownNoteheads+=noteheads.length;
+      continue;
+    }
+    const ink=[];
+    for(const item of noteheads){
+      let rect=null;
+      try{rect=item.getBoundingClientRect?.();}catch{}
+      if(!rect||![rect.left,rect.top,rect.width,rect.height].every(finite)||
+         rect.width<=0||rect.height<=0){
+        unknownNoteheads++;continue;
+      }
+      measuredNoteheads++;
+      ink.push({left:rect.left,right:rect.left+rect.width,
+        top:rect.top,bottom:rect.top+rect.height,height:rect.height,width:rect.width});
+    }
+    ink.sort((a,b)=>a.left-b.left);
+    for(const lyric of boxes){
+      for(const head of ink){
+        if(head.right<=lyric.left+minimumOverlapPx)continue;
+        if(head.left>=lyric.right-minimumOverlapPx)break;
+        const horizontal=Math.min(lyric.right,head.right)-Math.max(lyric.left,head.left);
+        const vertical=Math.min(lyric.bottom,head.bottom)-Math.max(lyric.top,head.top);
+        if(horizontal>minimumOverlapPx&&
+           vertical>Math.min(lyric.height,head.height)*.4){
+          collisions++;lyricNoteheadCollisions++;
+          if(samples.length<12)samples.push({a:lyric.label,b:'음표 머리',
+            overlapPx:Math.round(horizontal*100)/100});
+        }
+      }
+    }
   }
-  return {measured,unknown,collisions,details:samples,
-    status:unknown?'PARTIALLY_MEASURED':'MEASURED',complete:unknown===0};
+  return {measured,unknown,collisions,lyricNoteheadCollisions,
+    measuredNoteheads,unknownNoteheads,details:samples,
+    status:unknown||unknownNoteheads?'PARTIALLY_MEASURED':'MEASURED',
+    complete:unknown===0&&unknownNoteheads===0};
 }
 export function increaseLyricEngravingSpace(rules,{factor=1.4}={}){
   if(!rules||!finite(factor)||factor<=1||factor>3)
@@ -86,6 +126,8 @@ export async function adaptLyricRendering(osmd,holder,{maxAttempts=2}={}){
     if(report.status==='MEASUREMENT_LIMIT_EXCEEDED')break;
   }
   return {initial:original.collisions,remaining:report.collisions,
-    lyricElements:report.measured,attempts,complete:report.complete,
+    lyricElements:report.measured,noteheadCollisions:report.lyricNoteheadCollisions,
+    measuredNoteheads:report.measuredNoteheads,unknownNoteheads:report.unknownNoteheads,
+    attempts,complete:report.complete,
     collisionFreeCertified:false,status:report.status};
 }
