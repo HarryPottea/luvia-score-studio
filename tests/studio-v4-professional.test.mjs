@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
+import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
 import {
   editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie
 } from '../src/studio-v4-professional.js';
@@ -491,4 +492,44 @@ test('professional: dotted quarter duration and tied split preserve unrelated pi
   assert.deepEqual(values(tied).events.filter(e=>e.voice==='1'),
     values(original).events.filter(e=>e.voice==='1'));
   assert.equal(first(children(measure(tied),'backup')[0],'duration').textContent,'192');
+});
+
+function isolatedEmptyMeterFixture(){
+  const doc=fixture();
+  part(doc).appendChild(E('measure',[
+    voiceRest(192,'whole','1','1'),E('backup',[T('duration',192)]),
+    voiceRest(192,'whole','2','2'),
+  ],{number:'2'}));
+  const populated=measure(doc).cloneNode(true);
+  populated.setAttribute('number','3');
+  const attrs=first(populated,'attributes');
+  populated.removeChild(attrs);
+  part(doc).appendChild(populated);
+  return doc;
+}
+test('meter: change only an empty middle bar and restore 4/4 before following written voices',()=>{
+  const original=isolatedEmptyMeterFixture(),before=serialize(original);
+  const {doc}=changeSingleEmptyMeasureMeter(original,{measureIndex:1,beats:3,beatType:4});
+  assert.equal(serialize(original),before);
+  const bars=children(part(doc),'measure');
+  const changed=bars[1],following=bars[2];
+  assert.equal(first(first(first(changed,'attributes'),'time'),'beats').textContent,'3');
+  assert.equal(first(first(first(following,'attributes'),'time'),'beats').textContent,'4');
+  assert.deepEqual(children(changed,'note').map(n=>first(n,'duration').textContent),['144','144']);
+  assert.deepEqual(children(changed,'note').map(n=>first(n,'type').textContent),['half','half']);
+  assert.deepEqual(children(changed,'note').map(n=>children(n,'dot').length),[1,1]);
+  assert.equal(first(first(changed,'backup'),'duration').textContent,'144');
+  assert.deepEqual(children(following,'note').map(n=>first(n,'duration').textContent),
+    children(measure(original),'note').map(n=>first(n,'duration').textContent));
+  assert.equal(first(first(following,'backup'),'duration').textContent,'192');
+});
+test('meter: isolated change refuses written music or missing part clocks',()=>{
+  const original=isolatedEmptyMeterFixture(),before=serialize(original);
+  assert.throws(()=>changeSingleEmptyMeasureMeter(original,{measureIndex:0,beats:3,beatType:4}),/빈 쉼표|음표·가사/);
+  assert.throws(()=>changeSingleEmptyMeasureMeter(original,{measureIndex:1,beats:7,beatType:8}),/지원 범위/);
+  const modified=isolatedEmptyMeterFixture();
+  const second=children(part(modified),'measure')[1];
+  second.replaceChild(voiceNote('C',3,192,'whole','2','2'),children(second,'note')[1]);
+  assert.throws(()=>changeSingleEmptyMeasureMeter(modified,{measureIndex:1,beats:2,beatType:4}),/빈 쉼표|음표·가사/);
+  assert.equal(serialize(original),before);
 });
