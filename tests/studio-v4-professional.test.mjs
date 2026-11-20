@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {authorTupletGroup} from '../src/studio-v4-tuplet-groups.js';
 import {rebarWrittenScore} from '../src/studio-v4-rebar-written.js';
+import {transposeChordChromatically} from '../src/studio-v4-chord-transpose.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
 import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
@@ -759,4 +760,38 @@ test('rebarring: reject polyphony, meter anomalies, decorated music and unchange
   first(children(measure(altered),'note')[1],'pitch').appendChild(T('alter',1));
   assert.throws(()=>rebarWrittenScore(altered,{meter:'3/4'}),/변화표/);
   assert.equal(serialize(original),before);
+});
+
+function transposableChordFixture(){
+  const doc=fixture(),m=measure(doc),base=notes(doc)[0];
+  const chord=E('note',[E('chord'),E('pitch',[T('step','E'),T('octave',4)]),
+    T('duration',24),T('voice','1'),T('type','eighth'),T('staff','1')]);
+  m.insertBefore(chord,base.nextSibling);
+  assert.equal(values(doc).reason,null);
+  return doc;
+}
+test('chord: semitone transpose moves an entire polyphonic chord without other voice changes',()=>{
+  const original=transposableChordFixture(),saved=serialize(original),v2=secondVoice(original);
+  const changed=transposeChordChromatically(original,{...params(1),semitones:2,spelling:'sharp'});
+  assert.equal(serialize(original),saved);
+  assert.deepEqual(secondVoice(changed.doc),v2);
+  assert.deepEqual(values(changed.doc).events.slice(0,2).map(e=>[
+    e.start,e.duration,e.step,e.alter,e.octave,e.chord]),[
+    [0,24,'D',0,4,false],[0,24,'F',1,4,true]
+  ]);
+  assert.equal(first(notes(changed.doc)[1],'accidental').textContent,'sharp');
+  assert.equal(changed.change.firstEventIndex,0);
+});
+test('chord: flat spelling and explicit protections never retime written music',()=>{
+  const original=transposableChordFixture();
+  const changed=transposeChordChromatically(original,{...params(),semitones:-1,spelling:'flat'});
+  assert.deepEqual(values(changed.doc).events.slice(0,2).map(e=>[e.step,e.alter,e.octave]),[
+    ['B',0,3],['E',-1,4]
+  ]);
+  const plain=fixture();
+  assert.throws(()=>transposeChordChromatically(plain,{...params(),semitones:1}),/화음/);
+  const tied=transposableChordFixture(),before=serialize(tied);
+  notes(tied)[0].appendChild(E('tie',[],{type:'start'}));
+  assert.throws(()=>transposeChordChromatically(tied,{...params(),semitones:1}),/붙임줄|장식/);
+  assert.equal(serialize(tied),before);
 });
