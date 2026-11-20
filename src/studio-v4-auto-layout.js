@@ -1,5 +1,6 @@
 // MusicXML-aware automatic system/page break planner.
 import {assertScopedScoreMutation} from './studio-v4-structural-guard.js';
+import {balanceMusicSystems} from './studio-v4-system-balance.js';
 //
 // This is a spacing heuristic, not a collision-free engraver. All markup is
 // preserved except explicitly computed print new-system/new-page flags.
@@ -51,6 +52,45 @@ function breaksAt(score){
   }
   return printed;
 }
+// Preserve continuity when possible: a line break inside an open tie/slur or
+// hairpin is not necessarily invalid MusicXML, but is a worse engraving choice.
+// These are soft costs: long connecting phrases can still cross systems.
+function connectionPenalties(parts,length){
+  const seams=Array(length+1).fill(0);
+  for(const part of parts){
+    const open=new Set();
+    for(const [i,bar] of all(part,'measure').entries()){
+      for(const item of bar.children){
+        const markers=[];
+        if(item.localName==='note'){
+          const voice=text(item,'voice')||'1',staff=text(item,'staff')||'1';
+          const pitch=first(item,'pitch');
+          const pitchKey=[voice,staff,text(pitch,'step'),
+            text(pitch,'alter')||'0',text(pitch,'octave')].join('/');
+          const sounding=all(item,'tie');
+          const tied=sounding.length?sounding:all(first(item,'notations'),'tied');
+          for(const t of tied)markers.push(['tie:'+pitchKey,t.getAttribute('type')]);
+          for(const slur of all(first(item,'notations'),'slur'))
+            markers.push(['slur:'+voice+':'+staff+':'+(slur.getAttribute('number')||'1'),
+              slur.getAttribute('type')]);
+        }
+        if(item.localName==='direction'){
+          for(const kind of all(item,'direction-type'))
+            for(const wedge of all(kind,'wedge')){
+              const type=wedge.getAttribute('type');
+              markers.push(['wedge:'+(wedge.getAttribute('number')||'1'),
+                type==='stop'?'stop':type==='crescendo'||type==='diminuendo'?'start':'continue']);
+            }
+        }
+        // A continuation may stop and start on the same note; preserve it.
+        for(const [key,type] of markers)if(type==='stop')open.delete(key);
+        for(const [key,type] of markers)if(type==='start')open.add(key);
+      }
+      if(i+1<length)seams[i+1]+=Math.min(280,open.size*140);
+    }
+  }
+  return seams;
+}
 export function planDensityLayout(source,{pageFormat='A4_P',
   replaceExisting=false}={}){
   if(!['A4_P','A4_L'].includes(pageFormat)||typeof replaceExisting!=='boolean')
@@ -69,17 +109,10 @@ export function planDensityLayout(source,{pageFormat='A4_P',
   const maxBars=pageFormat==='A4_L'?7:6;
   const systemsPerPage=Math.max(1,Math.min(7,
     Math.floor((pageFormat==='A4_L'?17:28)/(Math.max(2,staves*2.5)+2))));
-  const starts=[0],systemWeights=[],systemBars=[];
-  let width=0,numBars=0;
-  for(let i=0;i<len;i++){
-    const next=widths[i];
-    if(i>0&&(width+next>capacity||numBars>=maxBars)){
-      systemWeights.push(width);systemBars.push(numBars);
-      starts.push(i);width=0;numBars=0;
-    }
-    width+=next;numBars++;
-  }
-  systemWeights.push(width);systemBars.push(numBars);
+  const penalties=connectionPenalties(parts,len);
+  const balanced=balanceMusicSystems(widths,{capacity,maxBars,breakPenalties:penalties});
+  const starts=balanced.systemStarts,systemWeights=balanced.systemWeights,
+    systemBars=balanced.systemBars;
   const expected=Array(len).fill('none');
   for(let i=1;i<starts.length;i++)
     expected[starts[i]]=i%systemsPerPage===0?'page':'system';
@@ -93,7 +126,8 @@ export function planDensityLayout(source,{pageFormat='A4_P',
   return {pageFormat,totalMeasures:len,parts:parts.length,totalStaves:staves,
     widths,capacity,systemStarts:starts,systems:starts.length,
     systemsPerPage,pages:Math.ceil(starts.length/systemsPerPage),
-    systemWeights,systemBars,expected,
+    systemWeights,systemBars,expected,breakPenaltyTotal:penalties.reduce((a,b)=>a+b,0),
+    balancePolicy:balanced.policy,
     kind:'DENSITY_HEURISTIC_NOT_COLLISION_CERTIFIED'};
 }
 function make(bar,tag){
