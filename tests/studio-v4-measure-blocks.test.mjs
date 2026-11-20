@@ -568,3 +568,33 @@ test('move quarter note into an entire second-voice rest and retain dotted-half 
   assert.equal(first(first(rows(before)[0][0],'note'),'pitch').textContent,'G4');
   assert.equal(first(first(rows(result.doc)[1][0],'note'),'rest').localName,'rest');
 });
+
+
+test('transfer a second-beat quarter note into an interior of a whole-bar rest',()=>{
+  const source=fixture(1,1),bar=rows(source)[0][0],firstRest=first(bar,'note');
+  first(firstRest,'duration').textContent='48';
+  first(firstRest,'type').textContent='quarter';
+  bar.insertBefore(n('note',{},[
+    n('pitch',{},[leaf('step','F'),leaf('octave',4)]),
+    leaf('duration',48),leaf('type','quarter'),
+    n('lyric',{number:'1'},[leaf('text','달빛')])
+  ]),first(bar,'direction'));
+  bar.insertBefore(n('note',{},[n('rest'),leaf('duration',96),leaf('type','half')]),
+    first(bar,'direction'));
+  const expanded=addIndependentVoice(source,{partId:'P1',voice:'2'}).doc;
+  const result=moveNoteToRestingVoice(expanded,{partId:'P1',
+    measureIndex:0,eventIndex:1,targetVoice:'2'});
+  const notes=rows(result.doc)[0][0].children.filter(x=>x.localName==='note');
+  assert.deepEqual(notes.map(note=>first(note,'duration').textContent),
+    ['48','48','96','48','48','96']);
+  assert.deepEqual(notes.map(note=>Boolean(first(note,'pitch'))),
+    [false,false,false,false,true,false]);
+  assert.equal(first(notes[4],'pitch').textContent,'F4');
+  assert.equal(first(notes[4],'lyric').textContent,'달빛');
+  assert.deepEqual(notes.slice(3).map(note=>first(note,'voice').textContent),
+    ['2','2','2']);
+  assert.equal(result.change.splitRestCount,2);
+  assert.equal(result.change.nextEventIndex,4);
+  assert.equal(first(rows(expanded)[0][0].children.filter(x=>x.localName==='note')[1],
+    'pitch').textContent,'F4');
+});
