@@ -92,12 +92,21 @@ function validatePart(part,partId,totalMeasures){
           duration!==expected[1]*metadata.divisions)
           reject('음표·쉼표의 type/duration이 일치하지 않습니다.');
         const pitch=first(note,'pitch');
-        if(pitch&&(
-          val(pitch,'step').length!==1||!'CDEFGAB'.includes(val(pitch,'step'))||
-          !isInt(Number(val(pitch,'octave')),1,8)||
-          kid(note,'accidental').length||
-          val(pitch,'alter')&&val(pitch,'alter')!=='0'))
-          reject('변화표·화성의 의미를 보존할 수 없어 리바링하지 않습니다.');
+        if(pitch){
+          const alterRaw=val(pitch,'alter'),alter=alterRaw===''?0:Number(alterRaw);
+          const acc=kid(note,'accidental');
+          const spellings=new Map([[-2,'flat-flat'],[-1,'flat'],[0,'natural'],
+            [1,'sharp'],[2,'double-sharp']]);
+          if(val(pitch,'step').length!==1||!'CDEFGAB'.includes(val(pitch,'step'))||
+             !isInt(Number(val(pitch,'octave')),1,8)||
+             !Number.isInteger(alter)||!spellings.has(alter)||
+             kid(pitch,'step').length!==1||kid(pitch,'octave').length!==1||
+             kid(pitch,'alter').length>1||
+             [...pitch.children].some(x=>!['step','alter','octave'].includes(x.localName))||
+             acc.length>1||acc.some(a=>a.attributes?.length||a.children.length||
+               a.textContent.trim()!==spellings.get(alter)))
+            reject('지원하지 않는 변화표·미분음 또는 장식적 임시표는 리바링에서 보호합니다.');
+        }
         const key=(val(note,'voice')||'1')+'@'+(val(note,'staff')||'1');
         if(!groupKey)groupKey=key;
         if(groupKey!==key)reject('한 성부 블록에 서로 다른 성부·보표가 있습니다.');
@@ -288,5 +297,5 @@ export function rebarWrittenScore(source,{meter='3/4'}={}){
     paddedTicks:changes[0].measures*targetTicks-firstReport.totalTicks,
     affectedNotes:changes.reduce((n,x)=>n+x.originalNotes,0),
     maxVoices:Math.max(...changes.map(x=>x.voices)),
-    simpleChordsPreserved:true}};
+    simpleChordsPreserved:true,chromaticPitchesPreserved:true}};
 }
