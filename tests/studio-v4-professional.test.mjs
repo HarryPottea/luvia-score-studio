@@ -866,6 +866,6 @@ test('rebarring: piano two independent staves reject incomplete voice clocks',()
   assert.throws(()=>rebarWrittenScore(invalid,{meter:'3/4'}),/backup|성부 시간/);
   assert.equal(serialize(invalid),original);
   const mismatch=fixture();
-  children(measure(mismatch),'note')[6].appendChild(T('staff','2'));
+  first(children(measure(mismatch),'note')[6],'staff').textContent='1';
   assert.throws(()=>rebarWrittenScore(mismatch,{meter:'3/4'}),/성부|보표|복잡/);
 });
