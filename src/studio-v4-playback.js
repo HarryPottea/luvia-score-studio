@@ -160,9 +160,25 @@ export function clipPlaybackToMeasures(timeline,{start,end}={}){
   }
   return {events,durationSeconds:round(right-left),
     warnings:[...new Set(timeline.warnings||[])],
-    selectedMeasures:{start,end},tempoChanges:timeline.tempoChanges||[]};
+    selectedMeasures:{start,end},tempoChanges:timeline.tempoChanges||[],
+    measureSeconds:timeline.measureSeconds.slice(start,end+2).map(n=>round(n-left))};
 }
-export function createAuditionPlayer({onState=()=>{}}={}){
+// Locate the musical bar by its measured time, never by synthesizer note count.
+export function measureAtPlaybackSecond(timeline,seconds){
+  const times=timeline?.measureSeconds;
+  if(!Array.isArray(times)||times.length<2||!Number.isFinite(seconds)||seconds<0)
+    return null;
+  if(times.some((v,i)=>!Number.isFinite(v)||(i>0&&v<times[i-1])))return null;
+  if(seconds>=times.at(-1))return times.length-2;
+  let low=0,high=times.length-2;
+  while(low<=high){
+    const mid=Math.floor((low+high)/2);
+    if(times[mid]<=seconds&&seconds<times[mid+1])return mid;
+    if(times[mid]>seconds)high=mid-1;else low=mid+1;
+  }
+  return null;
+}
+export function createAuditionPlayer({onState=()=>{},onPosition=()=>{}}={}){
   let context=null,timer=null,events=[],index=0,base=0,active=[],playing=false,repeat=false;
   function stop(){
     if(timer!==null){clearInterval(timer);timer=null;}
@@ -171,6 +187,7 @@ export function createAuditionPlayer({onState=()=>{}}={}){
     const old=context;context=null;
     if(old)void old.close().catch(()=>{});
     onState(false);
+    onPosition(null);
   }
   async function play(timeline,{loop=false}={}){
     stop();
@@ -182,6 +199,8 @@ export function createAuditionPlayer({onState=()=>{}}={}){
     events=timeline.events.slice().sort((a,b)=>a.start-b.start);
     base=context.currentTime+.13;
     index=0;playing=true;repeat=loop===true;onState(true);
+    onPosition({measureIndex:(timeline.selectedMeasures?.start||0),seconds:0,loopCycle:0});
+    let loopCycle=0,lastMeasureIndex=null;
     const schedule=()=>{
       if(!context||context.state==='closed')return;
       const now=context.currentTime, horizon=now+1.2;
@@ -201,8 +220,17 @@ export function createAuditionPlayer({onState=()=>{}}={}){
         osc.onended=()=>{try{osc.disconnect();gain.disconnect();}catch{}active=active.filter(x=>x!==osc);};
         active.push(osc);
       }
+      const elapsed=Math.max(0,Math.min(timeline.durationSeconds,now-base));
+      const inRange=measureAtPlaybackSecond(timeline,elapsed);
+      if(inRange!==null){
+        const measureIndex=inRange+(timeline.selectedMeasures?.start||0);
+        if(measureIndex!==lastMeasureIndex){
+          lastMeasureIndex=measureIndex;
+          onPosition({measureIndex,seconds:elapsed,loopCycle});
+        }
+      }
       if(index===events.length&&now>base+timeline.durationSeconds+.3){
-        if(repeat){index=0;base=now+.14;}
+        if(repeat){index=0;base=now+.14;loopCycle++;lastMeasureIndex=null;}
         else stop();
       }
     };
