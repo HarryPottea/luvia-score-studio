@@ -7,6 +7,7 @@ import {buildPlaybackTimeline,clipPlaybackToMeasures,createAuditionPlayer} from 
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {saveLocalCheckpoint,listLocalCheckpoints,loadLocalCheckpoint,removeLocalCheckpoint} from './studio-v4-checkpoints.js';
 import {createPortableScoreProject,readPortableScoreProject} from './studio-v4-project-archive.js';
+import {addIndependentVoice} from './studio-v4-add-voice.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {createPartSvgZip} from './studio-v4-part-svg.js';
 import {createVectorPartPdfZip} from './studio-v4-vector-pdf.js';
@@ -77,6 +78,13 @@ const panel=[
   '<label for="v4-articulation">아티큘레이션</label><select id="v4-articulation"><option value="staccato">스타카토</option><option value="tenuto">테누토</option><option value="accent">악센트</option></select>',
   '<button id="v4-apply-articulation" type="button">선택 음표에 추가 / 해제</button>',
   '<p class="v4-subhead">02 / 다성부·셋잇단음·이음줄</p>',
+  '<p class="v4-tiny">선택한 악기 파트 전체에 독립적인 빈 성부를 추가한 뒤 09 / 음표 편집에서 해당 성부의 쉼표를 선택해 입력할 수 있습니다.</p>',
+  '<div class="v4-inline"><div><label for="v4-add-voice-number">추가 성부</label>',
+  '<select id="v4-add-voice-number"><option value="2">2성부</option><option value="3">3성부</option><option value="4">4성부</option></select></div>',
+  '<div><label for="v4-add-voice-staff">악기 보표</label>',
+  '<select id="v4-add-voice-staff"><option value="1">위/첫째 보표</option><option value="2">둘째 보표</option></select></div></div>',
+  '<button id="v4-add-voice" type="button">선택 악기에 새 독립 성부 생성</button>',
+  '<p id="v4-add-voice-status" class="v4-tiny" role="status" aria-live="polite">기존 음표·가사·리듬을 이동하지 않고 새로운 성부를 만듭니다. 기존 성부 번호와 겹치면 생성하지 않습니다.</p>',
   '<p class="v4-tiny">악보에서 음표를 선택하세요. 같은 성부의 박자 합계를 유지하며, 지원하지 않는 복합 표기는 보호합니다.</p>',
   '<p class="v4-tiny">다성부 악보에서는 09 / 음표 편집의 일부 입력이 제한되므로, 아래의 별도 음정·길이 설정을 사용하세요.</p>',
   '<div class="v4-inline"><div><label for="v4-pro-step">음이름</label><select id="v4-pro-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div><div><label for="v4-pro-octave">옥타브</label><select id="v4-pro-octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div></div>',
@@ -430,6 +438,17 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       $('v4-current-total').value=after===null?'':String(after);
     }
   }
+  $('v4-add-voice').addEventListener('click',async()=>{
+    if(!state.doc||state.showBaseline)return;
+    const position=selected(),voice=$('v4-add-voice-number').value,
+      staff=Number($('v4-add-voice-staff').value),status=$('v4-add-voice-status');
+    const before=state.doc;
+    await commit(doc=>addIndependentVoice(doc,{partId:position.partId,voice,staff}),
+      '선택 파트 '+voice+'성부 생성');
+    status.textContent=state.doc!==before?
+      voice+'성부 생성 완료 · 기존 리듬 보존 · 새 성부의 쉼표를 선택해 음표를 입력하세요.':
+      '새 성부가 생성되지 않았습니다. 오류 메시지와 파트·보표 설정을 확인하세요.';
+  });
   $('v4-current-total').addEventListener('change',()=>void applyCurrentMeasureCount());
   $('v4-apply-total').addEventListener('click',()=>void applyCurrentMeasureCount());
 
