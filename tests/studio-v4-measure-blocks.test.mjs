@@ -143,8 +143,8 @@ test('protect slurs and ties in copied bars and at deletion seams',()=>{
   const a=fixture();
   first(a.documentElement.children[0].children[2],'note')
     .appendChild(n('notations',{},[n('slur',{type:'start'})]));
-  assert.throws(()=>captureMeasureRange(a,{start:2,end:2}),/연결·반복/);
-  assert.throws(()=>deleteMeasureRange(a,{start:3,end:3}),/연결 기호/);
+  assert.throws(()=>captureMeasureRange(a,{start:2,end:2}),/종료되지 않은/);
+  assert.throws(()=>deleteMeasureRange(a,{start:3,end:3}),/종료되지 않은/);
   assert.equal(rows(a)[0].length,6);
 });
 test('protect structural meter edits and irregular score measurements',()=>{
@@ -165,4 +165,82 @@ test('a committed block edit supports snapshot-based undo and redo',()=>{
   history.record(source,next,'마디 복제');
   assert.equal(rows(history.undo(next).doc)[0].length,6);
   assert.equal(rows(history.redo(source).doc)[0].length,7);
+});
+
+
+function pitched(note,step='C',octave=4){
+  const rest=first(note,'rest');if(rest)note.removeChild(rest);
+  note.insertBefore(n('pitch',{},[leaf('step',step),leaf('octave',octave)]),note.firstChild);
+  return note;
+}
+function addLink(note,kind,type,number='1'){
+  const notations=first(note,'notations')||note.appendChild(n('notations'));
+  if(kind==='tie'){
+    note.insertBefore(n('tie',{type}),first(note,'type'));
+    notations.appendChild(n('tied',{type}));
+  }else notations.appendChild(n(kind,{type,number}));
+}
+function connectedBars(){
+  const score=fixture();
+  for(const part of score.documentElement.children){
+    const bars=part.children;
+    addLink(pitched(first(bars[1],'note')),'tie','start');
+    addLink(pitched(first(bars[2],'note')),'tie','stop');
+    addLink(first(bars[1],'note'),'slur','start');
+    addLink(first(bars[2],'note'),'slur','stop');
+  }
+  return score;
+}
+test('complete cross-bar ties and slurs are copied with all parts',()=>{
+  const source=connectedBars(),clip=captureMeasureRange(source,{start:1,end:2});
+  const copied=pasteMeasureRange(source,{clipboard:clip,index:3}).doc;
+  for(const row of rows(copied)){
+    assert.equal(first(row[3].children.find(x=>x.localName==='note'),'tie').getAttribute('type'),'start');
+    assert.equal(first(row[4].children.find(x=>x.localName==='note'),'tie').getAttribute('type'),'stop');
+    assert.equal(first(row[1].children.find(x=>x.localName==='note'),'tie').getAttribute('type'),'start');
+  }
+  assert.equal(rows(source)[0].length,6);
+});
+test('closed cross-bar ties and slurs may be deleted as a complete selected block',()=>{
+  const source=connectedBars(),result=deleteMeasureRange(source,{start:1,end:2});
+  assert.deepEqual(rows(result.doc)[0].map(marker),['100','103','104','105']);
+  assert.deepEqual(rows(result.doc)[1].map(marker),['110','113','114','115']);
+  assert.equal(rows(source)[0].length,6);
+});
+test('partial links crossing selection boundary are blocked before mutation',()=>{
+  const source=connectedBars();
+  assert.throws(()=>captureMeasureRange(source,{start:1,end:1}),/선택 구간 밖/);
+  assert.throws(()=>deleteMeasureRange(source,{start:2,end:2}),/선택 구간 밖/);
+  assert.throws(()=>insertBlankMeasureRange(source,{index:2}),/마디를 가로지르는/);
+  assert.equal(rows(source)[0].length,6);
+});
+test('a closed slur within a neighboring measure does not block boundary edits',()=>{
+  const source=fixture(),bar=rows(source)[0][1];
+  const a=pitched(first(bar,'note'));
+  first(a,'duration').textContent='96';first(a,'type').textContent='half';
+  const b=n('note',{},[n('pitch',{},[leaf('step','C'),leaf('octave',4)]),
+    leaf('duration','96'),leaf('type','half')]);bar.insertBefore(b,bar.children.at(-1));
+  addLink(a,'slur','start');addLink(b,'slur','stop');
+  const clip=captureMeasureRange(source,{start:1,end:1});
+  const result=pasteMeasureRange(source,{clipboard:clip,index:2});
+  assert.equal(rows(result.doc)[0].length,7);
+  assert.equal(rows(result.doc)[0][2].children.filter(x=>x.localName==='note').length,2);
+});
+test('a tuplet group that closes inside one selected bar is preserved',()=>{
+  const source=fixture(),bar=rows(source)[0][1];
+  const note=pitched(first(bar,'note'));
+  addLink(note,'tuplet','start');
+  const finish=n('note',{},[n('pitch',{},[leaf('step','D'),leaf('octave',4)]),
+    leaf('duration','96'),leaf('type','half')]);
+  first(note,'duration').textContent='96';first(note,'type').textContent='half';
+  addLink(finish,'tuplet','stop');
+  bar.insertBefore(finish,bar.children.at(-1));
+  const clip=captureMeasureRange(source,{start:1,end:1});
+  assert.equal(pasteMeasureRange(source,{clipboard:clip,index:2}).doc.documentElement.children.length,2);
+});
+test('score-wide unmatched connection marks remain safely blocked',()=>{
+  const source=fixture();
+  addLink(pitched(first(rows(source)[0][1],'note')),'tie','stop');
+  assert.throws(()=>captureMeasureRange(source,{start:3,end:3}),/앞부분과 맞지/);
+  assert.equal(rows(source)[0].length,6);
 });
