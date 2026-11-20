@@ -77,7 +77,8 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
     const last=lyricAudits.at(-1);
     onProgress((index+1)+'/'+parts.length+' · '+p.name+' 렌더링 완료'+
       (last?.attempts?' · 간격 자동 보정 '+last.attempts+'회':'')+
-      (last?.remaining?' · 가사 겹침 의심 '+last.remaining+'건':'')+
+      (last?.remaining?' · 가사 겹침 의심 '+last.remaining+'건'+
+        (last.noteheadCollisions?' (음표와 겹침 '+last.noteheadCollisions+'건)':''):'')+
       (!last?.coverageSufficient?' · 가사 위치 검사 미완료 ('+
         last?.lyricElements+'/'+last?.expectedLyrics+')':'')+
       (boundsAudits.at(-1)?.overflowPages?' · 페이지 외부 기보 의심 '+
@@ -89,6 +90,9 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
     initial:lyricAudits.reduce((n,a)=>n+a.initial,0),
     remaining:lyricAudits.reduce((n,a)=>n+a.remaining,0),
     attempts:lyricAudits.reduce((n,a)=>n+a.attempts,0),
+    noteheadCollisions:lyricAudits.reduce((n,a)=>n+(a.noteheadCollisions||0),0),
+    measuredNoteheads:lyricAudits.reduce((n,a)=>n+(a.measuredNoteheads||0),0),
+    unknownNoteheads:lyricAudits.reduce((n,a)=>n+(a.unknownNoteheads||0),0),
     complete:lyricAudits.every(a=>a.coverageSufficient),
     expectedLyrics:lyricAudits.reduce((n,a)=>n+a.expectedLyrics,0),
     measuredLyrics:lyricAudits.reduce((n,a)=>n+a.lyricElements,0),
