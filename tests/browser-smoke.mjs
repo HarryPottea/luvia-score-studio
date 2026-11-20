@@ -1020,7 +1020,7 @@ try {
   assert.equal(await page.locator('#v4-lyric-mode-button').getAttribute('aria-pressed'),'true');
   await scoreHeads.first().click();
   await page.locator('#v4-inline-lyric-editor:visible').waitFor();
-  assert.equal(await page.locator('#v4-inline-input').inputValue(),'우');
+  assert.equal(await page.locator('#v4-inline-input').inputValue(),'아');
   assert.equal(await page.locator('#v4-inline-verse').inputValue(),'2',
     'Current verse follows the active global lyric verse, initially last used 2');
   await page.selectOption('#v4-inline-verse','1');
