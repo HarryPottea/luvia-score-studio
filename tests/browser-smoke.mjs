@@ -2278,6 +2278,74 @@ try {
 
 
 
+  // Stage 1 direct graphical editing acceptance: chord root, polyphonic rest,
+  // note-time movement and Delete are connected to the same undoable XML model.
+  const s1Original=await fs.readFile('tests/fixtures/complex-voices-original.musicxml','utf8');
+  const s1OldTail='<note><pitch><step>F</step><octave>3</octave></pitch><duration>12</duration><voice>2</voice><type>quarter</type><stem>down</stem><staff>2</staff></note>';
+  const s1NewTail='<note><rest/><duration>12</duration><voice>2</voice><type>quarter</type><staff>2</staff></note>';
+  const s1Xml=s1Original.replace(s1OldTail,s1NewTail);
+  assert.notEqual(s1Xml,s1Original,'stage1 two-voice rest fixture must be constructed');
+  await page.locator('#file-input').setInputFiles({
+    name:'stage1-multi-staff-direct.musicxml',mimeType:'application/xml',
+    buffer:Buffer.from(s1Xml)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===11,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  assert.equal(await page.locator('#v3-chord-remove').isDisabled(),false,
+    'chord root is removable with safe promotion');
+  await page.click('#v3-chord-remove');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('화음 구성 음 삭제 완료'),
+    null,{timeout:30000});
+  assert.equal(await page.locator('#v3-events .v3-event').count(),10);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#v3-events')?.querySelectorAll('.v3-event').length===11,
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE1_CHORD_ROOT_REMOVE_AND_UNDO');
+
+  const s1Rest=page.locator('#score-container .jwoo-rest-target').first();
+  await s1Rest.waitFor({state:'visible',timeout:30000});
+  await s1Rest.focus();
+  await s1Rest.press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 쉼표에 성부 보존 음표 삽입 완료'),
+    null,{timeout:30000});
+  const s1InsertDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s1Inserted=await fs.readFile(await (await s1InsertDownload).path(),'utf8');
+  assert.ok(s1Inserted.includes('<voice>2</voice>'),'inserted note preserves the second voice');
+  assert.doesNotMatch(s1Inserted,/<note><rest\/><duration>12<\/duration><voice>2<\/voice><type>quarter<\/type><staff>2<\/staff><\/note>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelectorAll('#score-container .jwoo-rest-target').length>0,
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE1_SVG_REST_ENTER_INSERT_AND_UNDO');
+
+  await page.locator('#v3-events .v3-event').nth(9).click();
+  assert.equal(await page.locator('#v3-move').isDisabled(),false);
+  await page.fill('#v3-target-beat','4');
+  await page.click('#v3-move');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 음표 박자 위치 이동 완료'),
+    null,{timeout:30000});
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE1_SECOND_VOICE_TIME_MOVE_AND_UNDO');
+
+  const s1SecondVoice=page.locator('#score-container .jwoo-note-target[aria-label*="2성부"]').first();
+  await s1SecondVoice.waitFor({state:'visible',timeout:30000});
+  await s1SecondVoice.focus();
+  await s1SecondVoice.press('Delete');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 성부 음표를 쉼표로 변경 완료'),
+    null,{timeout:30000});
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const s1FinalDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s1Final=await fs.readFile(await (await s1FinalDownload).path(),'utf8');
+  assert.equal((s1Final.match(/<voice>2<\/voice>/g)||[]).length,4);
+  assert.ok(s1Final.includes(s1NewTail),'undo must restore original second-voice rest');
+  console.log('BROWSER_STAGE=STAGE1_SVG_DELETE_UNDO_AND_XML_ROUNDTRIP');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
