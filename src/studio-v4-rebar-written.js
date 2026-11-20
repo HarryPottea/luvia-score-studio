@@ -101,8 +101,9 @@ function validatePart(part,partId,totalMeasures){
              !isInt(Number(val(pitch,'octave')),1,8)||
              !Number.isInteger(alter)||!spellings.has(alter)||
              kid(pitch,'step').length!==1||kid(pitch,'octave').length!==1||
-             kid(pitch,'alter').length>1||
-             [...pitch.children].some(x=>!['step','alter','octave'].includes(x.localName))||
+             kid(pitch,'alter').length>1||pitch.attributes?.length||
+             JSON.stringify([...pitch.children].map(x=>x.localName))!==
+               JSON.stringify(alterRaw===''?['step','octave']:['step','alter','octave'])||
              acc.length>1||acc.some(a=>a.attributes?.length||a.children.length||
                a.textContent.trim()!==spellings.get(alter)))
             reject('지원하지 않는 변화표·미분음 또는 장식적 임시표는 리바링에서 보호합니다.');
