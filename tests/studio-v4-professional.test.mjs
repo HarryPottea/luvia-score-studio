@@ -533,3 +533,32 @@ test('meter: isolated change refuses written music or missing part clocks',()=>{
   assert.throws(()=>changeSingleEmptyMeasureMeter(modified,{measureIndex:1,beats:2,beatType:4}),/빈 쉼표|음표·가사/);
   assert.equal(serialize(original),before);
 });
+
+
+test('professional: note entry spans two successive rests while leaving the other piano voice unchanged',()=>{
+  const original=fixture(),before=serialize(original),other=secondVoice(original);
+  // The original 48+96 tick consecutive rests can accommodate a 96 tick half.
+  const updated=editVoiceRhythm(original,{...params(2),mode:'insert',
+    type:'half',step:'A',octave:4}).doc;
+  assert.equal(serialize(original),before);
+  assert.deepEqual(secondVoice(updated),other);
+  assert.deepEqual(values(updated).events.filter(e=>e.voice==='1').map(e=>
+    [e.start,e.duration,e.rest,e.step]),[
+    [0,24,false,'C'],[24,24,false,'E'],
+    [48,96,false,'A'],[144,48,true,'']
+  ]);
+  assert.equal(first(children(measure(updated),'backup')[0],'duration').textContent,'192');
+  assert.equal(values(updated).reason,null);
+});
+test('professional: multi-rest entry blocks an occupied beat and leaves source unchanged',()=>{
+  const original=fixture(),before=serialize(original);
+  assert.throws(()=>editVoiceRhythm(original,{...params(2),mode:'insert',
+    type:'whole',step:'A',octave:4}),/연속된 쉼표/);
+  const blocked=fixture();
+  measure(blocked).insertBefore(E('direction',[E('direction-type',[T('words','rit.')])]),notes(blocked)[3]);
+  const old=serialize(blocked);
+  assert.throws(()=>editVoiceRhythm(blocked,{...params(2),mode:'insert',
+    type:'half',step:'A',octave:4}),/연속된 쉼표/);
+  assert.equal(serialize(original),before);
+  assert.equal(serialize(blocked),old);
+});
