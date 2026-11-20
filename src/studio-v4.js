@@ -15,6 +15,7 @@ import {createVectorPartPdfZip} from './studio-v4-vector-pdf.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
+import {editConnectedPitch} from './studio-v4-connected-pitch.js';
 import {authorTupletGroup} from './studio-v4-tuplet-groups.js';
 import {rebarWrittenScore} from './studio-v4-rebar-written.js';
 import {transposeChordChromatically} from './studio-v4-chord-transpose.js';
@@ -100,6 +101,8 @@ const panel=[
   '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="half-dotted">점2분음표</option><option value="quarter" selected>4분음표</option><option value="quarter-dotted">점4분음표</option><option value="eighth">8분음표</option><option value="eighth-dotted">점8분음표</option><option value="16th">16분음표</option><option value="16th-dotted">점16분음표</option><option value="32nd">32분음표</option></select>',
   '<button id="v4-pro-insert" type="button">전문 입력 · 선택 쉼표에 음표 삽입</button>',
   '<div class="v4-inline"><button id="v4-pro-duration" type="button">선택 음표 길이 변경</button><button id="v4-pro-to-rest" type="button">선택 음표 → 쉼표</button></div>',
+  '<button id="v4-connected-pitch" type="button">선택 음표·붙임줄 전체 음정 변경</button>',
+  '<p class="v4-tiny">위의 음이름·변화표·옥타브를 사용합니다. 붙임줄의 시작·중간·끝 중 어느 음표를 선택해도 연결된 모든 음표의 음정을 함께 바꾸고 가사·리듬·이음줄은 보존합니다. 악보에서 직접 선택할 수 없는 보호 음표는 09 / 음표 목록에서 선택하세요.</p>',
   '<p class="v4-tiny">다성부에서도 성부·보표를 유지합니다. 가사·붙임줄·화음·셋잇단음 등 복합 기보는 보호됩니다.</p>',
   '<div class="v4-inline"><div><label for="v4-split-type">붙임줄로 나눌 첫 음표 길이</label><select id="v4-split-type"><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select></div><button id="v4-split-tie" type="button">선택 음표 분할·붙임줄 연결</button></div>',
   '<p class="v4-tiny">선택 음표를 정확한 길이의 두 음표로 나누고 재생·기보용 붙임줄을 함께 만듭니다. 가사는 첫 음표에 보존합니다. 분할 가능한 길이만 적용됩니다.</p>',
@@ -789,6 +792,10 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     alter:Number($('v4-pro-alter').value),octave:Number($('v4-pro-octave').value),
     type:$('v4-pro-type').value,
   }),'전문 음표 입력'));
+  $('v4-connected-pitch').addEventListener('click',()=>void commit(doc=>editConnectedPitch(doc,{
+    ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
+    octave:Number($('v4-pro-octave').value)
+  }),'붙임줄 연결 음표 전체 음정 변경'));
   $('v4-pro-duration').addEventListener('click',()=>void commit(doc=>editVoiceRhythm(doc,{
     ...selected(),mode:'duration',type:$('v4-pro-type').value,
   }),'성부별 음표 길이 변경'));
