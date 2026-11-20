@@ -51,7 +51,10 @@ export function mountAdvancedControls({state,v3,setMessage}) {
       $('v3-advanced-octave').value=String(event.octave||4);
       $('v3-advanced-pitch').disabled=!permitted;
       $('v3-chord-add').disabled=!permitted||event.chord;
-      $('v3-chord-remove').disabled=!permitted||!event.chord;
+      const follower=measure.events[pos.eventIndex+1];
+      const chordRoot=!event.chord&&follower?.chord&&
+        follower.voice===event.voice&&follower.staff===event.staff;
+      $('v3-chord-remove').disabled=!permitted||!(event.chord||chordRoot);
     }catch(error) {
       active=null;report.textContent='구조 검사 실패: '+error.message;
       for(const id of ['v3-advanced-pitch','v3-chord-add','v3-chord-remove'])$(id).disabled=true;
