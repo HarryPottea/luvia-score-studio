@@ -7,6 +7,7 @@ import {baseScoreName,safeFileName} from './part-export.js';
 import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 import {rasterizeUnicodeSvgText} from './studio-v4-unicode-svg.js';
 import {inspectGeneratedPdfObjects} from './studio-v4-pdf-object-audit.js';
+import {readLocalTrueType,prepareFontSvg,registerPdfTrueType,assertEmbeddedFontInPdf} from './studio-v4-local-font.js';
 
 const MAX_PAGES=80,MAX_PARTS=12,MAX_FILE_BYTES=24*1024*1024;
 const FORMAT={A4_P:{w:595.2756,h:841.8898,orientation:'p'},
@@ -91,16 +92,19 @@ function assertPdf(bytes){
 }
 export async function createVectorPartPdfZip({
   pages,filename='score.musicxml',pageFormat='A4_P',allowUnicodeText=false,
-  onProgress=()=>{}
+  fontFile=null,onProgress=()=>{}
 }={}){
-  const plan=preflightVectorPartPages(pages,pageFormat,{allowUnicodeText});
+  const localFont=fontFile?await readLocalTrueType(fontFile):null;
+  const plan=preflightVectorPartPages(pages,pageFormat,{
+    allowUnicodeText:allowUnicodeText||!!localFont
+  });
   const jsPDF=await loadLibraries();
   const format=FORMAT[pageFormat],zip=new JSZip();
-  let count=0,bytes=0,hybridTextCount=0;
+  let count=0,bytes=0,hybridTextCount=0,embeddedVectorTextCount=0;
   for(const [index,id] of plan.order.entries()){
     const part=plan.groups.get(id);
     // A new PDF per part; all SVG measures are rendered into vector pages.
-    let pdf=null;
+    let pdf=null,fontRegistered=false,partVectorTextCount=0;
     for(const [pageIndex,svg] of part.pages.entries()){
       if(!pdf)pdf=new jsPDF({
         orientation:format.orientation,unit:'pt',format:[format.w,format.h],
@@ -110,7 +114,13 @@ export async function createVectorPartPdfZip({
       const clone=stripEditing(svg);
       const pathCount=clone.querySelectorAll('path,rect,line,polyline,polygon,circle,ellipse').length;
       if(!pathCount)fail('벡터 음악 기호가 없는 페이지는 파트별 PDF로 내보내지 않습니다.');
-      if(nonAsciiText(clone)!==null&&allowUnicodeText){
+      if(nonAsciiText(clone)!==null&&localFont){
+        if(!fontRegistered){registerPdfTrueType(pdf,localFont);fontRegistered=true;}
+        const vectorized=prepareFontSvg(clone,localFont);
+        partVectorTextCount+=vectorized.nodes;
+        embeddedVectorTextCount+=vectorized.nodes;
+        inspectPrintableSvg(clone);
+      }else if(nonAsciiText(clone)!==null&&allowUnicodeText){
         const converted=await rasterizeUnicodeSvgText(clone);
         hybridTextCount+=converted.rasterizedTextCount;
         // The only image elements were generated from local glyph snapshots
@@ -122,8 +132,10 @@ export async function createVectorPartPdfZip({
     const buffer=pdf.output('arraybuffer');
     assertPdf(buffer);
     inspectGeneratedPdfObjects(buffer,{
-      expectedPages:part.pages.length,w:format.w,h:format.h,imagesAllowed:allowUnicodeText
+      expectedPages:part.pages.length,w:format.w,h:format.h,
+      imagesAllowed:allowUnicodeText&&!localFont
     });
+    if(partVectorTextCount)assertEmbeddedFontInPdf(buffer);
     bytes+=buffer.byteLength;
     if(bytes>MAX_FILE_BYTES)fail('파트 PDF 총용량이 24MiB를 초과했습니다.');
     const ordinal=String(index+1).padStart(2,'0');
@@ -131,7 +143,9 @@ export async function createVectorPartPdfZip({
   }
   zip.file('README.txt',
     'J-WOO part PDFs converted locally from OSMD SVG. No uploads. A4.\n'+
-    (hybridTextCount?'HYBRID: '+hybridTextCount+
+    (embeddedVectorTextCount?'EMBEDDED TTF: '+embeddedVectorTextCount+
+      ' Unicode text nodes use the locally selected TrueType font. Font licensing and visual quality require review.\n':
+      hybridTextCount?'HYBRID: '+hybridTextCount+
       ' Unicode text nodes are local PNG glyphs; music vector paths remain vector.\n':
       'ASCII-only PDF font mode.\n')+
     'Verify all glyphs and layout in PDF before distributing.\n'+
@@ -140,6 +154,7 @@ export async function createVectorPartPdfZip({
     compressionOptions:{level:5}});
   return {blob,filename:baseScoreName(filename)+'-vector-part-pdfs.zip',
     parts:plan.parts,pages:plan.pages,vectorStaffIntended:true,
-    hybridTextCount,glyphVerificationRequired:true,
-    unicodeExportSupported:hybridTextCount>0};
+    hybridTextCount,embeddedVectorTextCount,
+    vectorFontEmbedded:embeddedVectorTextCount>0,glyphVerificationRequired:true,
+    unicodeExportSupported:hybridTextCount>0||embeddedVectorTextCount>0};
 }
