@@ -55,7 +55,8 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
       osmd.render();
       const measured=await adaptLyricRendering(osmd,holder,{maxAttempts:2});
       const lyricAudit={...measured,partId:p.id,expectedLyrics,
-        coverageSufficient:measured.lyricElements>=expectedLyrics&&measured.complete};
+        coverageSufficient:measured.lyricElements>=expectedLyrics&&measured.complete&&
+          (expectedLyrics===0||measured.measuredNoteheads>0)};
       if(!lyricAudit.coverageSufficient)
         lyricAudit.status='LYRIC_MEASUREMENT_INCOMPLETE';
       lyricAudits.push(lyricAudit);
