@@ -152,7 +152,8 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
       // Structural measure operations can remap a bar even when no note-level
       // hint exists. Clamp to a surviving measure after the immutable commit.
       if(Number.isSafeInteger(result.change?.nextMeasureIndex)&&
-         result.change.nextMeasureIndex>=0){
+         result.change.nextMeasureIndex>=0&&
+         (result.change.partId===undefined||result.change.partId===selection.partId)){
         const parts=[...result.doc.documentElement.children].filter(n=>n.localName==='part');
         const selectedPart=parts.find(n=>n.getAttribute('id')===selection.partId)||parts[0];
         const length=selectedPart?[...selectedPart.children].filter(n=>n.localName==='measure').length:0;
