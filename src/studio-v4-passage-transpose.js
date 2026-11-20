@@ -20,7 +20,9 @@ const noteMIDI=note=>{
      all(pitch,'step').length!==1||all(pitch,'octave').length!==1||
      all(pitch,'alter').length>1)
     fail('음표의 복합 음정 표기는 이조하지 않습니다.');
-  const step=text(pitch,'step'),octave=Number(text(pitch,'octave'));
+  const step=text(pitch,'step'),octaveText=text(pitch,'octave');
+  if(!/^(0|[1-9][0-9]*)$/.test(octaveText))fail('음표의 옥타브가 비어 있거나 잘못됐습니다.');
+  const octave=Number(octaveText);
   const altered=text(pitch,'alter'),alter=altered===''?0:Number(altered);
   if(!(step in semitone)||!integer(octave,0,9)||!integer(alter,-2,2))
     fail('악보의 음정 또는 옥타브 표기를 확인할 수 없습니다.');
@@ -68,6 +70,9 @@ export function transposeMeasurePassage(source,{
      (partId!==null&&(typeof partId!=='string'||!partId)))
     fail('반음 이동 범위(-12~+12), 변화표 또는 파트 설정을 확인해 주세요.');
   const parts=all(source.documentElement,'part');
+  const partIds=parts.map(p=>p.getAttribute('id'));
+  if(partIds.some(id=>!id)||new Set(partIds).size!==partIds.length)
+    fail('악기 파트 ID가 비어 있거나 중복되어 이조를 보호합니다.');
   const bars=parts.map(measureList);
   if(!parts.length||parts.length>12||!bars[0]?.length||bars[0].length>128||
      bars.some(b=>b.length!==bars[0].length))
