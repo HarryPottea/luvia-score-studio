@@ -718,7 +718,10 @@ try {
   await page.selectOption('#v3-part','P2');
   assert.equal(await page.locator('#v3-events .v3-event').count(),2);
   await page.locator('#v3-events .v3-event').nth(1).click();
-  assert.equal(await page.locator('#v3-length').isDisabled(),true);
+  assert.equal(await page.locator('#v3-pitch').isEnabled(),true,
+    'Stage1 enables direct rest insertion for a valid grand-staff voice');
+  assert.equal(await page.locator('#v3-duration').isDisabled(),true,
+    'Legacy single-voice duration change remains blocked for grand staff');
   await page.selectOption('#v4-pro-step','A');
   await page.selectOption('#v4-pro-octave','3');
   await page.selectOption('#v4-pro-type','quarter');
