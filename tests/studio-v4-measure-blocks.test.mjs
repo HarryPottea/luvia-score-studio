@@ -1048,3 +1048,21 @@ test('complex grace notation is never rewritten and target must be an existing g
   assert.throws(()=>editGraceNote(source,{partId:'P1',measureIndex:0,
     eventIndex:0,type:'quarter'}),/설정/);
 });
+
+
+test('new 32nd grace note may be authored without using even one rhythmic tick',()=>{
+  const source=fixture(1,1),firstNote=first(rows(source)[0][0],'note');
+  pitched(firstNote,'D',4);
+  const created=insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0,
+    step:'E',alter:-1,octave:5,slash:false,type:'32nd'});
+  const notes=rows(created.doc)[0][0].children.filter(x=>x.localName==='note');
+  assert.equal(first(notes[0],'type').textContent,'32nd');
+  assert.equal(first(notes[0],'grace').getAttribute('slash'),'no');
+  assert.equal(first(notes[0],'pitch').textContent,'E-15');
+  assert.equal(first(notes[0],'duration'),undefined);
+  assert.equal(first(notes[1],'duration').textContent,'192');
+  assert.equal(inspectAdvancedMeasure(created.doc,'P1',0).reason,null);
+  assert.equal(created.change.type,'32nd');
+  assert.throws(()=>insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0,
+    type:'quarter'}),/설정/);
+});
