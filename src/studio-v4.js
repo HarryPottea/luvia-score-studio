@@ -1,7 +1,7 @@
 // J-WOO 4.0 integrated authoring workspace.
 // Reuses V3 commitExternal for immutable edits, history, rollback, and re-render.
 import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount} from './studio-v4-core.js';
-import {deleteScoreMeasure} from './studio-v4-measure-delete.js';
+import {deleteMeasureRange} from './studio-v4-measure-blocks.js';
 import {mountMeasureToolbar} from './studio-v4-measure-toolbar.js';
 import {buildPlaybackTimeline,clipPlaybackToMeasures,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
@@ -780,7 +780,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     if(!state.doc||current===null||current<=1||!Number.isSafeInteger(index)||index<0||index>=current)return;
     if(!confirm((index+1)+'마디를 모든 파트에서 삭제합니다. 해당 마디에 있는 음표·쉼표·가사·코드도 함께 삭제됩니다. 09 / 음표 편집의 실행 취소로 복원할 수 있습니다. 계속할까요?'))return;
     const before=state.doc;
-    await commit(doc=>deleteScoreMeasure(doc,{measureIndex:index}),'선택한 '+(index+1)+'마디 삭제');
+    await commit(doc=>deleteMeasureRange(doc,{start:index,end:index}),'선택한 '+(index+1)+'마디 삭제');
     if(state.doc!==before){
       syncMeasureDelete();
       $('v4-delete-measure-status').textContent=(index+1)+'마디 삭제 완료 · '+current+' → '+(current-1)+'마디 · 실행 취소 가능';
