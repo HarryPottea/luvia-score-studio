@@ -1313,6 +1313,7 @@ try {
   await page.selectOption('#v4-tuplet-ratio','5:4');
   await page.selectOption('#v4-tuplet-unit','16th');
   await page.selectOption('#v4-pro-step','G');
+  await page.selectOption('#v4-pro-octave','4');
   await page.click('#v4-tuplet-author');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('잇단음 그룹 생성 완료'),null,{timeout:30000});
   const groupFile=page.waitForEvent('download');
