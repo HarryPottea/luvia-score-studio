@@ -9,6 +9,7 @@ import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
 import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMeasures} from '../src/studio-v4-voice-phrase.js';
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 import {toggleAdvancedArticulation} from '../src/studio-v4-articulations.js';
+import {insertGraceNote,removeGraceNote} from '../src/studio-v4-grace-notes.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
 const xmlOwner={
@@ -763,4 +764,55 @@ test('unsupported articulation input and rests cannot change original score',()=
     partId:'P1',measureIndex:0,eventIndex:0,kind:'unknown'
   }),/종류/);
   assert.equal(first(note,'notations'),undefined);
+});
+
+
+test('zero-time grace note insert and delete preserves original voice clock and other part',()=>{
+  const source=fixture(2,2),note=first(rows(source)[0][0],'note');
+  pitched(note,'C',4);
+  note.appendChild(n('lyric',{number:'1'},[leaf('text','햇살')]));
+  const initial=inspectAdvancedMeasure(source,'P1',0);
+  const inserted=insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0,
+    step:'F',alter:1,octave:5,slash:true});
+  const notes=rows(inserted.doc)[0][0].children.filter(x=>x.localName==='note');
+  assert.equal(notes.length,2);
+  assert.equal(first(notes[0],'grace').getAttribute('slash'),'yes');
+  assert.equal(first(notes[0],'duration'),undefined);
+  assert.equal(first(notes[0],'pitch').textContent,'F15');
+  assert.equal(first(notes[0],'accidental').textContent,'sharp');
+  assert.equal(first(notes[1],'pitch').textContent,'C4');
+  assert.equal(first(notes[1],'duration').textContent,'192');
+  assert.equal(first(notes[1],'lyric').textContent,'햇살');
+  assert.equal(rows(inserted.doc)[1][0].children.filter(x=>x.localName==='note').length,1);
+  assert.equal(inspectAdvancedMeasure(inserted.doc,'P1',0).events[0].duration,0);
+  assert.equal(inspectAdvancedMeasure(inserted.doc,'P1',0).events[1].start,initial.events[0].start);
+  assert.equal(initial.max,inspectAdvancedMeasure(inserted.doc,'P1',0).max);
+  const removed=removeGraceNote(inserted.doc,{partId:'P1',measureIndex:0,eventIndex:0});
+  assert.equal(rows(removed.doc)[0][0].children.filter(x=>x.localName==='note').length,1);
+  assert.equal(first(first(rows(removed.doc)[0][0],'note'),'lyric').textContent,'햇살');
+  assert.equal(first(note,'grace'),undefined);
+});
+test('grace note can precede sounding tie without disturbing its notation',()=>{
+  const source=connectedBars();
+  const inserted=insertGraceNote(source,{partId:'P1',measureIndex:1,eventIndex:0,
+    step:'D',octave:4,slash:false});
+  const notes=rows(inserted.doc)[0][1].children.filter(x=>x.localName==='note');
+  assert.equal(first(notes[0],'grace').getAttribute('slash'),'no');
+  assert.equal(first(notes[1],'tie').getAttribute('type'),'start');
+  assert.equal(first(first(notes[1],'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(first(first(rows(inserted.doc)[0][2],'note'),'tie').getAttribute('type'),'stop');
+  assert.equal(inspectAdvancedMeasure(inserted.doc,'P1',1).reason,null);
+});
+test('grace editing blocks rests and refuses deletion when special notation cannot be preserved',()=>{
+  const source=fixture(1,1);
+  assert.throws(()=>insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0}),/일반 음표/);
+  pitched(first(rows(source)[0][0],'note'),'C',4);
+  const inserted=insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0});
+  const grace=first(rows(inserted.doc)[0][0],'note');
+  grace.appendChild(n('notations',{},[n('slur',{number:'1',type:'start'})]));
+  assert.throws(()=>removeGraceNote(inserted.doc,{
+    partId:'P1',measureIndex:0,eventIndex:0
+  }),/복잡한 기보/);
+  assert.equal(first(grace,'notations').children.length,1);
+  assert.equal(first(first(rows(source)[0][0],'note'),'pitch').textContent,'C4');
 });
