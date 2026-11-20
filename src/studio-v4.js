@@ -2,6 +2,7 @@
 // Reuses V3 commitExternal for immutable edits, history, rollback, and re-render.
 import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount} from './studio-v4-core.js';
 import {deleteScoreMeasure} from './studio-v4-measure-delete.js';
+import {mountMeasureToolbar} from './studio-v4-measure-toolbar.js';
 import {buildPlaybackTimeline,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
@@ -203,6 +204,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   let saveTimer=null,pending=null,skipRendered=false,currentRenderedDoc=null,writing=false;
   let changingMeasureCount=false;
   let disabledDraft=false;
+  let measureToolbar=null;
   const player=createAuditionPlayer({onState:playing=>{
     $('v4-play').disabled=playing;
     $('v4-stop').disabled=!playing;
@@ -253,6 +255,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     if(copy)void saveSnapshot(copy);
   }
   function beforeOpen(){
+    measureToolbar?.reset();
     inlineLyrics.close();
     flushPending();
     player.stop();
@@ -263,6 +266,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     inlineLyrics.onRendered();
     syncCurrentMeasureCount();
     syncMeasureDelete();
+    measureToolbar?.render();
     renderVoiceGrid();
     syncChordSelection();
     $('v4-audit-result').textContent='악보 변경 또는 재렌더링됨 · 저장 전 다시 검사해 주세요.';
@@ -280,7 +284,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){inlineLyrics.onLoaded();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();void refreshDrafts();}
+  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();void refreshDrafts();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{
@@ -385,6 +389,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     await v3.commitExternal(transform,label);
   }
   function selected(){return v3.getSelection();}
+  measureToolbar=mountMeasureToolbar({state,v3,commit,setMessage});
   const inlineLyrics=mountInlineLyricEditor({
     state,v3,commit,setMessage,lyricVerseInput:$('v4-lyric-verse'),
     getNoteRect:position=>state.graphicBridge?.rectFor?.(position),
@@ -856,7 +861,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }
   });
   void refreshDrafts();
-  return {beforeOpen,onRendered,onLoaded,onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();syncMeasureDelete();inlineLyrics.onSelectionChange(selected());},
+  return {beforeOpen,onRendered,onLoaded,onMeasurePointer:(index,extend=false)=>measureToolbar?.pick(index,extend),onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();syncMeasureDelete();inlineLyrics.onSelectionChange(selected());},
     lyricMode:()=>inlineLyrics.isMode(),
     openLyricFromScore:(position,element)=>inlineLyrics.openFromScore(position,element),
     stop:()=>player.stop()};
