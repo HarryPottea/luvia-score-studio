@@ -316,7 +316,7 @@ test('professional: split a polyphonic half note into two tied quarters with exa
   assert.deepEqual(values(result.doc).events.filter(x=>x.voice==='1'),unaffectedVoice);
   assert.deepEqual(secondVoice(result.doc).map(x=>[x[0],x[1],x[3]]),[
     [0,48,'C'],[48,48,''],[96,48,'G'],[144,48,'G']]);
-  const halves=notes(result.doc).filter(x=>first(first(x,'pitch'),'step')?.textContent==='G');
+  const halves=notes(result.doc).filter(x=>first(x,'pitch')?.children?.some(y=>y.localName==='step'&&y.textContent==='G'));
   assert.equal(halves.length,2);
   assert.deepEqual(halves.map(x=>first(x,'tie')?.getAttribute('type')),['start','stop']);
   assert.deepEqual(halves.map(x=>first(first(x,'notations'),'tied')?.getAttribute('type')),['start','stop']);
@@ -326,7 +326,7 @@ test('professional: splitting a lyric note preserves the syllable only on the fi
   const original=fixture(),sustained=notes(original)[6];
   sustained.appendChild(E('lyric',[T('text','오늘')]));
   const result=splitVoiceNoteWithTie(original,{...params(6),firstType:'quarter'});
-  const pitches=notes(result.doc).filter(x=>first(first(x,'pitch'),'step')?.textContent==='G');
+  const pitches=notes(result.doc).filter(x=>first(x,'pitch')?.children?.some(y=>y.localName==='step'&&y.textContent==='G'));
   assert.equal(first(first(pitches[0],'lyric'),'text').textContent,'오늘');
   assert.equal(first(pitches[1],'lyric'),undefined);
   assert.equal(first(sustained,'duration').textContent,'96');
