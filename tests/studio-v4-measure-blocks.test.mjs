@@ -303,3 +303,17 @@ test('reject transposing instruments and out-of-range octaves without mutation',
   first(rows(b)[0][0],'attributes').appendChild(n('transpose',{},[leaf('chromatic',-2)]));
   assert.throws(()=>transposeMeasurePassage(b,{start:1,end:1}),/이조 악기/);
 });
+
+
+test('reject duplicate part IDs and missing pitch octave during passage transpose',()=>{
+  const score=fixture();
+  score.documentElement.children[1].setAttribute('id','P1');
+  pitched(first(rows(score)[0][1],'note'),'C',4);
+  assert.throws(()=>transposeMeasurePassage(score,{start:1,end:1}),/ID/);
+  const second=fixture();
+  const note=pitched(first(rows(second)[0][1],'note'),'C',4);
+  const oct=first(first(note,'pitch'),'octave');
+  oct.textContent='';
+  assert.throws(()=>transposeMeasurePassage(second,{start:1,end:1}),/옥타브/);
+  assert.equal(first(first(note,'pitch'),'step').textContent,'C');
+});
