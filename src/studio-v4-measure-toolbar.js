@@ -2,7 +2,7 @@
 import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from './studio-v4-measure-blocks.js';
 import {transposeMeasurePassage} from './studio-v4-passage-transpose.js';
-import {transposeWrittenVoice} from './studio-v4-voice-transpose.js';
+import {transposeWrittenVoice,respellWrittenVoice} from './studio-v4-voice-transpose.js';
 import {editArticulationForVoice} from './studio-v4-articulation-batch.js';
 import './studio-v4-measure-toolbar.css';
 
@@ -36,6 +36,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     '<label>대상 성부 <select id="jwoo-transpose-voice" aria-label="선택 악기에서 이조할 성부"><option value="1">1성부</option><option value="2">2성부</option><option value="3">3성부</option><option value="4">4성부</option></select></label>',
     '<label class="jwoo-transpose-chords"><input id="jwoo-transpose-chords" type="checkbox" checked /> 코드 기호도 함께 이조 (전체/파트 선택)</label>',
     '<button type="button" data-act="transpose">선택 구간 음정 일괄 이조</button>',
+    '<button type="button" data-act="respell">선택 악기·성부 이명동음 표기 정리 (음높이 유지)</button>',
     '</div>',
     '<div class="jwoo-articulation-controls">',
     '<label>표현 기호 <select id="jwoo-batch-articulation-kind"><option value="staccato">스타카토</option><option value="staccatissimo">스타카티시모</option><option value="tenuto">테누토</option><option value="accent">악센트</option><option value="strong-accent">강한 악센트</option><option value="detached-legato">데타셰 레가토</option><option value="spiccato">스피카토</option></select></label>',
@@ -174,6 +175,19 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
   async function execute(action){
     try{
       const region=scope();
+      if(action==='respell'){
+        const activePart=$('v3-part')?.value,
+          voice=$('jwoo-transpose-voice').value,
+          spelling=$('jwoo-transpose-spelling').value;
+        if(!activePart)throw new Error('현재 편집할 악기 파트를 선택해 주세요.');
+        const before=state.doc;
+        await commit(doc=>respellWrittenVoice(doc,{
+          ...region,partId:activePart,voice,spelling
+        }),spelling==='flat'?'선택 성부 플랫 우선 이명동음 표기 정리':
+          '선택 성부 샤프 우선 이명동음 표기 정리');
+        if(before!==state.doc)render();
+        return;
+      }
       if(action==='articulation'){
         const activePart=$('v3-part')?.value;
         if(!activePart)throw new Error('작곡 편집기에서 악기 파트를 선택해 주세요.');
