@@ -10,6 +10,7 @@ import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
 import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
 import {authorTupletGroup} from './studio-v4-tuplet-groups.js';
 import {rebarWrittenScore} from './studio-v4-rebar-written.js';
+import {transposeChordChromatically} from './studio-v4-chord-transpose.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
@@ -91,6 +92,11 @@ const panel=[
   '<button id="v4-tuplet-author" type="button">선택 위치부터 잇단음 그룹 만들기</button>',
   '<p class="v4-tiny">3:2는 원래 음표 2개, 5:4·6:4·7:4는 4개가 필요합니다. 동일 성부의 동일 길이 일반 음표가 연속되어야 하며, 생성되는 추가 음은 위 음이름·변화표·옥타브를 사용합니다.</p>',
   '<p class="v4-tiny">분할값이 부족하면 해당 파트의 MusicXML divisions를 정확히 확장합니다. 복잡한 빔·붙임줄·화음·보호된 표시가 있으면 변경하지 않습니다.</p></div>',
+  '<div class="v4-chord-transpose"><p class="v4-subhead">화음 전체 반음 이동</p>',
+  '<div class="v4-inline"><div><label for="v4-chord-semitones">반음 이동 (음수는 아래로)</label><input id="v4-chord-semitones" type="number" min="-12" max="12" step="1" value="2" /></div>',
+  '<div><label for="v4-chord-spelling">변화표 선택</label><select id="v4-chord-spelling"><option value="sharp" selected>샤프 기준</option><option value="flat">플랫 기준</option></select></div></div>',
+  '<button id="v4-chord-transpose" type="button">선택 화음 전체 이동</button>',
+  '<p class="v4-tiny">화음의 아무 음이나 선택한 후 사용하세요. 모든 구성 음을 같은 반음 수만큼 이동하며, 성부와 음표 길이는 변경하지 않습니다. 기존 붙임줄·특수 기보는 보호합니다.</p></div>',
   '<label for="v4-pro-end">이음줄·크레셴도 끝 음표의 목록 번호 (1부터 시작)</label>',
   '<input id="v4-pro-end" type="number" min="2" max="9999" step="1" value="2" />',
   '<label for="v4-slur-next-measure">이음줄 끝 마디</label><select id="v4-slur-next-measure"><option value="0">현재 마디</option><option value="1">다음 마디</option><option value="2">2마디 뒤</option><option value="3">3마디 뒤</option><option value="4">4마디 뒤</option><option value="8">8마디 뒤</option></select>',
@@ -556,6 +562,10 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     '다음 마디로 음표 붙임줄 연장'));
   $('v4-crossbar-move').addEventListener('click',()=>void commit(doc=>
     moveVoiceIntoNextMeasure(doc,selected()),'선택 음표를 다음 마디로 이동'));
+  $('v4-chord-transpose').addEventListener('click',()=>void commit(doc=>
+    transposeChordChromatically(doc,{...selected(),
+      semitones:Number($('v4-chord-semitones').value),spelling:$('v4-chord-spelling').value,
+    }),'화음 전체 반음 이동'));
   $('v4-tuplet-author').addEventListener('click',()=>void commit(doc=>authorTupletGroup(doc,{
     ...selected(),ratio:$('v4-tuplet-ratio').value,type:$('v4-tuplet-unit').value,
     step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
