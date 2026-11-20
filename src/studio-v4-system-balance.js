@@ -6,21 +6,25 @@
 // that is intrinsically wider than the nominal page capacity.
 const fail=message=>{throw new Error(message);};
 export function balanceMusicSystems(widths,{
-  capacity=84,maxBars=6,breakPenalties=[]
+  capacity=84,maxBars=6,breakPenalties=[],hardBreaks=[]
 }={}){
   if(!Array.isArray(widths)||widths.length<1||widths.length>300||
      widths.some(x=>!Number.isFinite(x)||x<1||x>1e5)||
      !Number.isFinite(capacity)||capacity<20||capacity>1e5||
      !Number.isSafeInteger(maxBars)||maxBars<1||maxBars>16||
      !Array.isArray(breakPenalties)||
-     breakPenalties.some(x=>!Number.isFinite(x)||x<0||x>1e6))
+     breakPenalties.some(x=>!Number.isFinite(x)||x<0||x>1e6)||
+     !Array.isArray(hardBreaks)||hardBreaks.some(x=>!Number.isSafeInteger(x)||
+       x<1||x>=widths.length)||new Set(hardBreaks).size!==hardBreaks.length)
     fail('마디 밀도·페이지 폭·줄 나눔 설정을 확인해 주세요.');
-  const n=widths.length;
+  const n=widths.length,forced=new Set(hardBreaks);
   const cost=Array(n+1).fill(Infinity),choice=Array(n).fill(null);
   cost[n]=0;
   for(let start=n-1;start>=0;start--){
     let sum=0;
     for(let end=start+1;end<=Math.min(n,start+maxBars);end++){
+      // A user-authored system/page boundary must never be crossed.
+      if(end>start+1&&forced.has(end-1))break;
       sum+=widths[end-1];
       if(sum>capacity&&end-start>1)break;
       const count=end-start,last=end===n;
