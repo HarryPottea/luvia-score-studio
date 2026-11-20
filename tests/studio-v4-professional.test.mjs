@@ -796,3 +796,27 @@ test('chord: flat spelling and explicit protections never retime written music',
   assert.throws(()=>transposeChordChromatically(tied,{...params(),semitones:1}),/붙임줄|장식/);
   assert.equal(serialize(tied),before);
 });
+
+test('tuplets: reused closed group numbers permit many common tuplet groups per part',()=>{
+  const source=groupedTupletFixture(),m=measure(source);
+  for(let index=1;index<8;index++){
+    const copy=m.cloneNode(true);copy.setAttribute('number',String(index+1));
+    part(source).appendChild(copy);
+  }
+  const before=serialize(source);
+  let output=source;
+  for(let index=0;index<8;index++){
+    output=authorTupletGroup(output,{partId:'P1',measureIndex:index,eventIndex:0,
+      ratio:'5:4',type:'16th',step:'G',octave:4}).doc;
+  }
+  assert.equal(serialize(source),before);
+  assert.equal(children(part(output),'measure').length,8);
+  for(let index=0;index<8;index++){
+    const notes=children(children(part(output),'measure')[index],'note');
+    assert.equal(first(first(notes[0],'notations'),'tuplet').getAttribute('number'),'1');
+    assert.equal(first(first(notes[4],'notations'),'tuplet').getAttribute('number'),'1');
+    const info=inspectAdvancedMeasure(output,'P1',index);
+    assert.equal(info.reason,null);
+    assert.equal(info.events.filter(e=>e.tuplet).length,5);
+  }
+});
