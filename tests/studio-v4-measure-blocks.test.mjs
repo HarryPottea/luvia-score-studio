@@ -10,6 +10,7 @@ import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMe
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 import {toggleAdvancedArticulation} from '../src/studio-v4-articulations.js';
 import {insertGraceNote,removeGraceNote} from '../src/studio-v4-grace-notes.js';
+import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 
 // Small deterministic XML DOM for the pure transformations (no browser).
 const xmlOwner={
