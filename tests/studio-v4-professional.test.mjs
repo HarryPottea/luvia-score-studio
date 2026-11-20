@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
-import {extendVoiceAcrossBarline,toggleSlurAcrossBarline} from '../src/studio-v4-crossbar.js';
+import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
 import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
 import {
@@ -561,4 +561,52 @@ test('professional: multi-rest entry blocks an occupied beat and leaves source u
     type:'half',step:'A',octave:4}),/연속된 쉼표/);
   assert.equal(serialize(original),before);
   assert.equal(serialize(blocked),old);
+});
+
+test('crossbar: moving an onset to the next bar preserves both piano voices and selection',()=>{
+  const source=crossbarFixture(),before=serialize(source);
+  const leftVoice=values(source).events.filter(e=>e.voice==='1');
+  const rightVoice=secondAudit(source).events.filter(e=>e.voice==='1');
+  const moved=moveVoiceIntoNextMeasure(source,params(6));
+  assert.equal(serialize(source),before);
+  assert.deepEqual(values(moved.doc).events.filter(e=>e.voice==='1'),leftVoice);
+  assert.deepEqual(secondAudit(moved.doc).events.filter(e=>e.voice==='1'),rightVoice);
+  assert.deepEqual(values(moved.doc).events.filter(e=>e.voice==='2')
+    .map(e=>[e.start,e.duration,e.rest,e.step]),[
+    [0,48,false,'C'],[48,48,true,''],[96,96,true,'']
+  ]);
+  assert.deepEqual(secondAudit(moved.doc).events.filter(e=>e.voice==='2')
+    .map(e=>[e.start,e.duration,e.rest,e.step]),[
+    [0,96,false,'G'],[96,96,false,'A']
+  ]);
+  assert.equal(moved.change.nextMeasureIndex,1);
+  assert.equal(moved.change.nextEventIndex,1);
+  assert.equal(first(children(measure(moved.doc),'backup')[0],'duration').textContent,'192');
+  assert.equal(first(children(secondMeasure(moved.doc),'backup')[0],'duration').textContent,'192');
+});
+test('crossbar: moving a lyric note preserves attached lyric and rejects key changes',()=>{
+  const source=crossbarFixture();
+  notes(source)[6].appendChild(E('lyric',[T('text','함께')]));
+  const result=moveVoiceIntoNextMeasure(source,params(6)).doc;
+  assert.equal(first(first(children(secondMeasure(result),'note')[1],'lyric'),'text').textContent,'함께');
+  assert.equal(first(notes(source)[6],'pitch')!==undefined,true);
+  const keyed=crossbarFixture();
+  const attrs=E('attributes',[E('key',[T('fifths',1)])]);
+  secondMeasure(keyed).insertBefore(attrs,secondMeasure(keyed).children[0]);
+  assert.throws(()=>moveVoiceIntoNextMeasure(keyed,params(6)),/조표/);
+});
+test('crossbar: move cannot silently overwrite a note, bridge a longer rest or lose source',()=>{
+  const source=crossbarFixture(),before=serialize(source);
+  assert.throws(()=>moveVoiceIntoNextMeasure(source,params(5)),/마디 끝/);
+  const occupied=crossbarFixture();
+  secondMeasure(occupied).replaceChild(voiceNote('F',3,96,'half','2','2'),
+    children(secondMeasure(occupied),'note')[1]);
+  assert.throws(()=>moveVoiceIntoNextMeasure(occupied,params(6)),/쉼표/);
+  const tooShort=crossbarFixture();
+  const rest=children(secondMeasure(tooShort),'note')[1];
+  first(rest,'duration').textContent='48';first(rest,'type').textContent='quarter';
+  secondMeasure(tooShort).insertBefore(voiceRest(48,'quarter','2','2'),
+    children(secondMeasure(tooShort),'note')[2]);
+  assert.throws(()=>moveVoiceIntoNextMeasure(tooShort,params(6)),/짧습니다/);
+  assert.equal(serialize(source),before);
 });
