@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planDensityLayout,applyDensityLayout} from '../src/studio-v4-auto-layout.js';
+import {planDensityLayout,applyDensityLayout,planIndependentPartLayout,applyIndependentPartLayout} from '../src/studio-v4-auto-layout.js';
 
 class Element{
   constructor(localName,children=[],props={},value=''){
@@ -99,4 +99,31 @@ test('unbalanced measures and unsupported document never mutate input',()=>{
   assert.equal(bars(source.documentElement.children[0]).length,12);
   assert.equal(bars(source.documentElement.children[1]).length,11);
   assert.throws(()=>planDensityLayout(score(),{pageFormat:'LETTER'}),/용지 방향/);
+});
+
+
+test('part-by-part layout produces different page turns for dense vocal and sparse instrument',()=>{
+  const source=score({parts:2,count:16,notes:4,lyrics:true});
+  const instrumental=source.documentElement.children[1];
+  for(const bar of bars(instrumental)){
+    const notes=bar.children.filter(x=>x.localName==='note');
+    for(const note of notes.slice(1))bar.removeChild(note);
+    // Remove the lyric from the remaining simple instrumental note.
+    const lyric=first(notes[0],'lyric');if(lyric)notes[0].removeChild(lyric);
+  }
+  const plan=planIndependentPartLayout(source);
+  assert.equal(plan.parts,2);
+  assert.ok(plan.partPlans[0].systems>plan.partPlans[1].systems);
+  const result=applyIndependentPartLayout(source);
+  assert.notDeepEqual(marks(result.doc)[0],marks(result.doc)[1]);
+  assert.deepEqual(marks(source)[0],Array(16).fill('none'));
+  assert.deepEqual(marks(source)[1],Array(16).fill('none'));
+  assert.equal(result.change.collisionVerified,false);
+});
+test('independent part layout refuses conflicting manual breaks without replacement consent',()=>{
+  const source=score({parts:2,count:12,notes:4});
+  const bar=bars(source.documentElement.children[1])[1];
+  bar.insertBefore(el('print',[],{'new-page':'yes'}),bar.firstChild);
+  assert.throws(()=>planIndependentPartLayout(source),/기존 수동/);
+  assert.equal(applyIndependentPartLayout(source,{replaceExisting:true}).change.parts,2);
 });
