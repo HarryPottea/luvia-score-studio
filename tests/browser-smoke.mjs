@@ -2103,6 +2103,41 @@ try {
     null,{timeout:30000});
   console.log('BROWSER_STAGE=V4_TWO_MEASURE_VOICE_PHRASE_TRANSFER_WITH_UNDO');
 
+  // E06 scoped transposition: shift the selected melodic voice across bars,
+  // retaining the independently timed accompaniment rests and Korean lyrics.
+  await page.locator('#file-input').setInputFiles({
+    name:'polyphonic-voice-transpose.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(twoBarPhrase)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===2,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','1');
+  await page.fill('#jwoo-range-to','2');
+  await page.click('#jwoo-range-apply');
+  await page.selectOption('#jwoo-transpose-scope','voice');
+  await page.selectOption('#jwoo-transpose-voice','1');
+  await page.fill('#jwoo-transpose-semitones','2');
+  await page.selectOption('#jwoo-transpose-spelling','sharp');
+  await page.click('#jwoo-measure-toolbar [data-act="transpose"]');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('이조 완료'),
+    null,{timeout:30000});
+  const scopedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const scopedXml=await fs.readFile(await (await scopedDownload).path(),'utf8');
+  assert.equal((scopedXml.match(/<voice>1<\/voice>/g)||[]).length,6);
+  assert.equal((scopedXml.match(/<voice>2<\/voice>/g)||[]).length,2);
+  assert.equal((scopedXml.match(/<backup>/g)||[]).length,2);
+  assert.match(scopedXml,/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(scopedXml,/<step>F<\/step><alter>1<\/alter><octave>4<\/octave>/);
+  assert.match(scopedXml,/<text>별빛<\/text>/);
+  assert.match(scopedXml,/<text>달빛<\/text>/);
+  assert.equal((scopedXml.match(/<rest\s*\/>/g)||[]).length,2);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_SCOPED_VOICE_TRANSPOSITION_AND_UNDO');
+
+
 
 
 
