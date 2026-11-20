@@ -456,3 +456,39 @@ test('engraving: manual break conflicts are protected until user opts into repla
   assert.equal(preserved.getAttribute('staff-spacing'),'18','Other print settings remain intact');
   assert.throws(()=>planLayoutCadence(original,{barsPerSystem:7,systemsPerPage:2}),/지원 범위/);
 });
+
+
+test('professional: dotted eighth entry consumes only correct ticks in an independent voice',()=>{
+  const source=fixture(),other=secondVoice(source),before=serialize(source);
+  const {doc}=editVoiceRhythm(source,{...params(2),mode:'insert',
+    type:'eighth-dotted',step:'A',octave:4});
+  assert.equal(serialize(source),before);
+  assert.deepEqual(secondVoice(doc),other);
+  assert.deepEqual(values(doc).events.slice(2,4).map(e=>[e.duration,e.type,e.rest]),[
+    [36,'eighth',false],[12,'16th',true]
+  ]);
+  assert.equal(children(notes(doc)[2],'dot').length,1);
+  const removed=replaceVoiceNoteWithRest(doc,params(2)).doc;
+  assert.equal(values(removed).events[2].duration,36);
+  assert.equal(values(removed).events[2].rest,true);
+  assert.equal(children(notes(removed)[2],'dot').length,1);
+});
+test('professional: dotted quarter duration and tied split preserve unrelated piano voice',()=>{
+  const original=fixture(),other=secondVoice(original);
+  const shortened=editVoiceRhythm(original,{...params(6),mode:'duration',type:'quarter-dotted'}).doc;
+  assert.deepEqual(values(shortened).events.filter(e=>e.voice==='2').map(e=>[e.start,e.duration,e.rest]),[
+    [0,48,false],[48,48,true],[96,72,false],[168,24,true]]);
+  assert.equal(children(notes(shortened)[6],'dot').length,1);
+  const tied=splitVoiceNoteWithTie(shortened,{...params(6),firstType:'quarter'}).doc;
+  const second=values(tied).events.filter(e=>e.voice==='2');
+  assert.deepEqual(second.map(e=>[e.start,e.duration,e.rest]),[
+    [0,48,false],[48,48,true],[96,48,false],[144,24,false],[168,24,true]
+  ]);
+  assert.equal(children(notes(tied)[6],'dot').length,0);
+  assert.equal(children(notes(tied)[7],'dot').length,0);
+  assert.equal(first(notes(tied)[6],'tie').getAttribute('type'),'start');
+  assert.equal(first(notes(tied)[7],'tie').getAttribute('type'),'stop');
+  assert.deepEqual(values(tied).events.filter(e=>e.voice==='1'),
+    values(original).events.filter(e=>e.voice==='1'));
+  assert.equal(first(children(measure(tied),'backup')[0],'duration').textContent,'192');
+});
