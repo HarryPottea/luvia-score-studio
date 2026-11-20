@@ -122,6 +122,7 @@ function scoreMeasureSummary(){
 }
 function setMessage(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
 function showLoaded() {
+  document.querySelector('.site-shell')?.classList.add('has-active-score');
   $('editor-controls').hidden = false;
   $('output-actions').hidden = false;
   $('empty-preview').hidden = true;
