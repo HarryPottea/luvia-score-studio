@@ -1575,6 +1575,21 @@ try {
   assert.match(await page.locator('#v4-project-status').textContent(),/SHA-256 일치/);
   console.log('BROWSER_STAGE=V4_PORTABLE_PROJECT_ARCHIVE_RESTORED_WITH_HISTORY');
 
+  await page.selectOption('#v4-add-voice-number','2');
+  await page.selectOption('#v4-add-voice-staff','1');
+  await page.click('#v4-add-voice');
+  await page.waitForFunction(()=>document.querySelector('#v4-add-voice-status')?.textContent?.includes('2성부 생성 완료'),
+    null,{timeout:30000});
+  const voiceDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const voiceXml=await fs.readFile(await (await voiceDownload).path(),'utf8');
+  assert.equal((voiceXml.match(/<voice>2<\/voice>/g)||[]).length,4);
+  assert.equal((voiceXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,4);
+  assert.equal((voiceXml.match(/<rest\s*\/>/g)||[]).length,4);
+  assert.equal((voiceXml.match(/<measure number="/g)||[]).length,4);
+  console.log('BROWSER_STAGE=V4_INDEPENDENT_SECOND_VOICE_CREATED_WITHOUT_TIMING_SHIFT');
+
+
 
 
 
