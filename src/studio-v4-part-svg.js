@@ -17,7 +17,7 @@ export async function createPartSvgZip({pages,filename='score.musicxml',onProgre
     const clone=page.svg.cloneNode(true);
     for(const overlay of clone.querySelectorAll('.jwoo-selection-ring,.jwoo-hit-area'))overlay.remove();
     for(const mark of clone.querySelectorAll('.jwoo-note-target,.jwoo-note-selected')){
-      mark.classList.remove('jwoo-note-target','jwoo-note-selected');
+      mark.classList.remove('jwoo-note-target','jwoo-note-selected','jwoo-measure-selected');
       for(const attr of ['tabindex','role','aria-pressed','aria-label'])mark.removeAttribute(attr);
     }
     clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
