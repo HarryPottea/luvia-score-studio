@@ -6,7 +6,7 @@ import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {baseScoreName} from './part-export.js';
 import {auditMusicXml,summarizeMusicXmlAudit} from './studio-v4-audit.js';
-import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest} from './studio-v4-professional.js';
+import {editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie} from './studio-v4-professional.js';
 import {inspectAdvancedMeasure} from './advanced-score.js';
 import {setNoteVerse,toggleSoundingTie} from './studio-v4-composer.js';
 import {readChordSymbol,editChordSymbol} from './studio-v4-chords.js';
@@ -54,6 +54,8 @@ const panel=[
   '<label for="v4-pro-type">음표 길이</label><select id="v4-pro-type"><option value="whole">온음표</option><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select>',
   '<div class="v4-inline"><button id="v4-pro-duration" type="button">선택 음표 길이 변경</button><button id="v4-pro-to-rest" type="button">선택 음표 → 쉼표</button></div>',
   '<p class="v4-tiny">다성부에서도 성부·보표를 유지합니다. 가사·붙임줄·화음·셋잇단음 등 복합 기보는 보호됩니다.</p>',
+  '<div class="v4-inline"><div><label for="v4-split-type">붙임줄로 나눌 첫 음표 길이</label><select id="v4-split-type"><option value="half">2분음표</option><option value="quarter" selected>4분음표</option><option value="eighth">8분음표</option><option value="16th">16분음표</option><option value="32nd">32분음표</option></select></div><button id="v4-split-tie" type="button">선택 음표 분할·붙임줄 연결</button></div>',
+  '<p class="v4-tiny">선택 음표를 정확한 길이의 두 음표로 나누고 재생·기보용 붙임줄을 함께 만듭니다. 가사는 첫 음표에 보존합니다. 분할 가능한 길이만 적용됩니다.</p>',
   '<label for="v4-grid-step">시작 위치 이동 간격</label><select id="v4-grid-step"><option value="eighth">8분음표</option><option value="16th" selected>16분음표</option><option value="32nd">32분음표</option></select>',
   '<div class="v4-inline"><button id="v4-nudge-earlier" type="button">← 선택 음표를 앞 쉼표로 이동</button><button id="v4-nudge-later" type="button">선택 음표를 뒤 쉼표로 이동 →</button></div>',
   '<div class="v4-relocate-panel"><label for="v4-relocate-beat">선택 음표를 이동할 박자 위치 (1부터, 4분음표 기준)</label>',
@@ -484,6 +486,9 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-pro-to-rest').addEventListener('click',()=>void commit(doc=>replaceVoiceNoteWithRest(doc,{
     ...selected(),
   }),'다성부 음표를 쉼표로 대체'));
+  $('v4-split-tie').addEventListener('click',()=>void commit(doc=>splitVoiceNoteWithTie(doc,{
+    ...selected(),firstType:$('v4-split-type').value,
+  }),'음표 분할·붙임줄 연결'));
   $('v4-pro-triplet').addEventListener('click',()=>void commit(doc=>createEighthTriplet(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
     octave:Number($('v4-pro-octave').value),
