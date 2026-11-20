@@ -81,4 +81,44 @@ export function mountSettingsAccordions(){
     bar.append(button);
   }
   host.prepend(bar);
+  // Shortcuts reduce scrolling without hiding features or changing editor state.
+  // Open exactly the enclosing accordions needed for the chosen control.
+  const quick=document.createElement('nav');
+  quick.className='jwoo-quick-links';
+  quick.setAttribute('aria-label','세부 설정 바로가기');
+  const quickLabel=document.createElement('span');
+  quickLabel.textContent='바로가기';
+  quick.append(quickLabel);
+  const shortcuts=[
+    ['새 악보','#v4-new'],
+    ['파트','#parts-list'],
+    ['음표','#v3-events'],
+    ['가사','#v4-lyrics-batch-text'],
+    ['코드','#v4-chord-input'],
+    ['출력','#v4-print-book'],
+  ];
+  for(const [name,selector] of shortcuts){
+    const target=host.querySelector(selector);
+    if(!target)continue;
+    const link=document.createElement('button');
+    link.type='button';link.className='jwoo-quick-link';
+    link.textContent=name;
+    link.setAttribute('aria-label',name+' 설정으로 이동');
+    link.addEventListener('click',()=>{
+      const ancestors=[];
+      for(let node=target.parentElement;node&&node!==host;node=node.parentElement){
+        if(node.classList?.contains('jwoo-fold-body'))ancestors.push(node);
+      }
+      for(const body of ancestors.reverse()){
+        const fold=toggles.find(item=>item.body===body);
+        fold?.update(false);
+      }
+      const reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+      window.requestAnimationFrame(()=>target.scrollIntoView({
+        behavior:reducedMotion?'instant':'smooth',block:'start',
+      }));
+    });
+    quick.append(link);
+  }
+  bar.after(quick);
 }
