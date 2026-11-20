@@ -76,8 +76,8 @@ function stripEditing(svg){
   const clone=svg.cloneNode(true);
   for(const overlay of clone.querySelectorAll('.jwoo-selection-ring,.jwoo-hit-area'))
     overlay.remove();
-  for(const target of clone.querySelectorAll('.jwoo-note-target,.jwoo-note-selected,.jwoo-measure-selected')){
-    target.classList.remove('jwoo-note-target','jwoo-note-selected','jwoo-measure-selected');
+  for(const target of clone.querySelectorAll('.jwoo-note-target,.jwoo-rest-target,.jwoo-note-selected,.jwoo-measure-selected,.jwoo-playback-active')){
+    target.classList.remove('jwoo-note-target','jwoo-rest-target','jwoo-note-selected','jwoo-measure-selected','jwoo-playback-active');
     for(const key of ['role','tabindex','aria-label','aria-pressed'])target.removeAttribute(key);
   }
   return clone;
