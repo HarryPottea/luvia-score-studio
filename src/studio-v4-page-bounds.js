@@ -38,7 +38,7 @@ export function inspectSvgPageBounds(pages,{tolerance=2,maxPages=80}={}){
     let ink=null;
     try{ink=page.getBBox?.();}catch{}
     if(!view||!ink||![ink.x,ink.y,ink.width,ink.height].every(finite)||
-       ink.width<0||ink.height<0){
+       ink.width<=0||ink.height<=0){
       unknownPages++;continue;
     }
     measuredPages++;
