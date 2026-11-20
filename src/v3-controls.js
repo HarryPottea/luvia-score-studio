@@ -101,8 +101,23 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     const next=measure?.events[selection.eventIndex+1];
     const samePitch=!!event&&!event.rest&&!!next&&!next.rest&&event.step===next.step&&event.alter===next.alter&&event.octave===next.octave;
     $('v3-tie').disabled=!!busy||!!state.showBaseline||!!measure?.reason||!samePitch;
+    // The lightweight V3 clock can accumulate simultaneous voices as if they
+    // were sequential. In multi-voice bars show the accurate backup/forward
+    // timing from the advanced score inspector instead of misleading onsets.
+    let advanced=null;
+    if(measure?.reason&&state.doc){
+      try{
+        const candidate=inspectAdvancedMeasure(state.doc,selection.partId,selection.measureIndex);
+        if(!candidate.reason)advanced=candidate;
+      }catch{}
+    }
+    const scoreEvent=advanced?.events[selection.eventIndex]||event;
     $('v3-selection').textContent=event?
-      (selection.eventIndex+1)+'번째 '+(event.rest?'쉼표':'음표')+' · 시작 '+event.start+'/'+(measure.divisions??'?')+' · 길이 '+event.duration+' · '+(editable?'수정 가능':'보호된 표기 (원본 유지)')
+      (selection.eventIndex+1)+'번째 '+(scoreEvent.rest?'쉼표':'음표')+
+      ' · 시작 '+scoreEvent.start+'/'+(advanced?.divisions??measure.divisions??'?')+
+      ' · 길이 '+scoreEvent.duration+
+      (advanced?' · 성부 '+scoreEvent.voice+' / 보표 '+scoreEvent.staff:'')+
+      ' · '+(editable?'수정 가능':advanced?'전문 편집 도구 사용':'보호된 표기 (원본 유지)')
       :'마디에 음표·쉼표가 없습니다.';
     if(event) {
       $('v3-step').value=event.step||'C';
