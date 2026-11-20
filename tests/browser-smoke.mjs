@@ -1325,6 +1325,10 @@ try {
   assert.match(grouped,/<tuplet[^>]*type="stop"/);
   assert.match(grouped,/<step>G<\/step><octave>4<\/octave>/);
   console.log('BROWSER_STAGE=V4_EXACT_PENTUPLET_WITH_SCALED_DIVISIONS_AND_XML');
+  await page.click('#v4-audit-run');
+  await page.waitForFunction(()=>document.querySelector('#v4-audit-result')?.textContent?.includes('기본 음악 구조 검사 통과'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-audit-result').textContent(),/오류 0건/);
+  console.log('BROWSER_STAGE=V4_NEW_TUPLET_MUSIC_XML_STRUCTURAL_AUDIT_CLEAN');
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
