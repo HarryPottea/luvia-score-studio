@@ -10,6 +10,7 @@ import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
 import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMeasures} from '../src/studio-v4-voice-phrase.js';
 import {editConnectedPitch} from '../src/studio-v4-connected-pitch.js';
 import {toggleAdvancedArticulation} from '../src/studio-v4-articulations.js';
+import {toggleMusicXmlOrnament,SUPPORTED_ORNAMENTS} from '../src/studio-v4-ornaments.js';
 import {editArticulationForVoice} from '../src/studio-v4-articulation-batch.js';
 import {insertGraceNote,removeGraceNote,editGraceNote} from '../src/studio-v4-grace-notes.js';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
@@ -1065,4 +1066,59 @@ test('new 32nd grace note may be authored without using even one rhythmic tick',
   assert.equal(created.change.type,'32nd');
   assert.throws(()=>insertGraceNote(source,{partId:'P1',measureIndex:0,eventIndex:0,
     type:'quarter'}),/설정/);
+});
+
+
+test('ornament toggle preserves tied vocal note, Korean lyric, second voice and other part',()=>{
+  const source=fixture(3,2),a=pitched(first(rows(source)[0][1],'note'),'C',4),
+    b=pitched(first(rows(source)[0][2],'note'),'C',4);
+  addLink(a,'tie','start');addLink(b,'tie','stop');
+  a.appendChild(n('lyric',{number:'1'},[leaf('text','별빛')]));
+  const poly=addIndependentVoice(source,{partId:'P1',voice:'2',staff:1}).doc;
+  const added=toggleMusicXmlOrnament(poly,{partId:'P1',measureIndex:1,
+    eventIndex:0,kind:'trill-mark'});
+  const bar=rows(added.doc)[0][1],note=first(bar,'note'),nts=first(note,'notations');
+  assert.equal(first(first(nts,'ornaments'),'trill-mark').localName,'trill-mark');
+  assert.equal(first(nts,'tied').getAttribute('type'),'start');
+  assert.equal(first(note,'tie').getAttribute('type'),'start');
+  assert.equal(first(note,'duration').textContent,'192');
+  assert.equal(first(note,'lyric').textContent,'별빛');
+  const second=bar.children.filter(x=>x.localName==='note')[1];
+  assert.equal(first(second,'voice').textContent,'2');
+  assert.equal(first(second,'rest').localName,'rest');
+  assert.equal(first(first(rows(added.doc)[1][1],'note'),'rest').localName,'rest');
+  assert.equal(first(first(rows(poly)[0][1],'note'),'notations').children.length,1);
+  const removed=toggleMusicXmlOrnament(added.doc,{partId:'P1',measureIndex:1,
+    eventIndex:0,kind:'trill-mark'});
+  const undone=first(rows(removed.doc)[0][1],'note');
+  assert.equal(first(first(undone,'notations'),'ornaments'),undefined);
+  assert.equal(first(first(undone,'notations'),'tied').getAttribute('type'),'start');
+  assert.equal(removed.change.enabled,false);
+});
+
+test('all supported ornament symbols are independently toggleable without changing pitch',()=>{
+  for(const kind of SUPPORTED_ORNAMENTS){
+    const source=fixture(1,1),note=pitched(first(rows(source)[0][0],'note'),'D',4);
+    const result=toggleMusicXmlOrnament(source,{partId:'P1',measureIndex:0,
+      eventIndex:0,kind});
+    assert.equal(first(first(first(rows(result.doc)[0][0],'note'),'notations'),'ornaments')
+      .children[0].localName,kind);
+    assert.equal(result.change.enabled,true);
+    assert.equal(first(first(rows(result.doc)[0][0],'note'),'pitch').textContent,'D4');
+    assert.equal(first(note,'notations'),undefined);
+  }
+});
+test('ornaments safely refuse rests, unknown marks and complex pre-existing groups',()=>{
+  const source=fixture(1,1);
+  assert.throws(()=>toggleMusicXmlOrnament(source,{partId:'P1',measureIndex:0,
+    eventIndex:0,kind:'trill-mark'}),/일반 음표/);
+  const note=pitched(first(rows(source)[0][0],'note'),'D',4);
+  assert.throws(()=>toggleMusicXmlOrnament(source,{partId:'P1',measureIndex:0,
+    eventIndex:0,kind:'unknown-ornament'}),/종류/);
+  note.appendChild(n('notations',{},[n('ornaments',{placement:'below'},
+    [n('trill-mark')])]));
+  assert.throws(()=>toggleMusicXmlOrnament(source,{partId:'P1',measureIndex:0,
+    eventIndex:0,kind:'trill-mark'}),/복잡한/);
+  assert.equal(first(first(first(note,'notations'),'ornaments'),'trill-mark').localName,
+    'trill-mark');
 });
