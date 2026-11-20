@@ -82,3 +82,29 @@
 .v4-timeline-move-check input[type=checkbox]{flex:none;width:17px;height:17px;min-height:0;accent-color:var(--lime);margin:0}
 .v4-beat-event.rest:hover{border-color:#d9ff7a!important;color:white!important}
 @media(max-width:670px){.v4-relocate-panel{padding:10px}.v4-editor .v4-relocate-panel #v4-relocate-note{font-size:11px;line-height:1.3}}
+
+/* Cross-measure and coordinated engraving controls are explicit, not
+   hidden behind one-click "auto-fix" promises. */
+.v4-crossbar,.v4-cadence-panel{
+  border:1px solid #5f7956;border-radius:4px;background:#253321;
+  padding:12px;margin:13px 0 16px
+}
+.v4-crossbar .v4-subhead,.v4-cadence-panel .v4-subhead{
+  margin:0 0 12px;border:0;padding:0
+}
+.v4-editor .v4-crossbar .v4-inline button{
+  min-height:38px;margin:0;background:var(--lime);
+  color:#191d14;border-color:var(--lime);align-self:end
+}
+.v4-editor .v4-cadence-panel #v4-cadence-apply{
+  background:var(--lime);color:#191d14;border-color:var(--lime)
+}
+.v4-editor .v4-crossbar .v4-inline button:hover:not(:disabled),
+.v4-editor .v4-cadence-panel #v4-cadence-apply:hover:not(:disabled){
+  background:#f1ffbd
+}
+.v4-cadence-panel #v4-cadence-status{min-height:24px;color:#d9eec7}
+@media(max-width:670px){
+  .v4-crossbar,.v4-cadence-panel{padding:10px}
+  .v4-editor .v4-crossbar .v4-inline button{font-size:11px;line-height:1.3}
+}
