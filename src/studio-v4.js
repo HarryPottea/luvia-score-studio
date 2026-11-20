@@ -207,7 +207,7 @@ const panel=[
   '<div class="v4-inline"><div><label for="v4-rebar-meter">새 박자표</label><select id="v4-rebar-meter"><option value="2/4">2/4</option><option value="3/4" selected>3/4</option><option value="4/4">4/4</option><option value="3/8">3/8</option><option value="6/8">6/8</option></select></div>',
   '<button id="v4-rebar-written" type="button">작성된 음표를 새 박자로 재분할</button></div>',
   '<p class="v4-tiny">모든 파트가 최대 4개의 독립 성부·보표로 구분되고 각 성부의 마디 시간이 정확할 때 전체 악보를 재분할합니다. 기존 음표 길이와 순서를 보존하며, 마디를 넘는 긴 음표는 붙임줄로 연결합니다. 마지막 마디의 부족한 박자는 쉼표로 채웁니다.</p>',
-  '<p class="v4-tiny">기존 화음·잇단음·중간 조표·악상 및 특수 표기는 변경하지 않고 차단합니다. 실행 전 원본 MusicXML을 별도로 저장하세요.</p></div>',
+  '<p class="v4-tiny">기존 단순 화음도 음정별 붙임줄로 재분할하며, 각 성부의 원래 리듬과 가사는 보존합니다. 잇단음·이미 연결된 붙임줄·중간 조표·악상·특수 표기는 보호합니다. 실행 전 원본 MusicXML을 별도로 저장하세요.</p></div>',
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
