@@ -241,7 +241,7 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
     },
     onRendered:()=>{
       updateButton();
-      if(!busy&&!editor.hidden&&state.doc!==openedDoc)close();
+      if(!busy&&!editor.hidden&&(!enabled()||state.doc!==openedDoc))close();
     },
   };
 }
