@@ -14,7 +14,7 @@ const FLATS=Object.freeze([['C',0],['D',-1],['D',0],['E',-1],['E',0],
 const ALLOWED_HARMONY=new Set(['root','kind','bass','degree','staff']);
 function validatePitch(pitch,prefix){
   if(!pitch||pitch.attributes?.length||pitch.children.length>2||
-     pitch.children.some(n=>!new Set([prefix+'-step',prefix+'-alter']).has(n.localName)))
+     [...pitch.children].some(n=>!new Set([prefix+'-step',prefix+'-alter']).has(n.localName)))
     fail('복잡한 코드 기호의 루트·베이스 구조는 자동 이조하지 않습니다.');
   const stepNodes=all(pitch,prefix+'-step'),alterNodes=all(pitch,prefix+'-alter');
   if(stepNodes.length!==1||alterNodes.length>1||
@@ -47,7 +47,7 @@ export function transposeHarmonyMarkup(harmony,{semitones,spelling='sharp'}={}){
   if(harmony?.localName!=='harmony'||harmony.attributes?.length||
      !Number.isSafeInteger(semitones)||semitones===0||Math.abs(semitones)>12||
      !['sharp','flat'].includes(spelling)||
-     harmony.children.some(n=>!ALLOWED_HARMONY.has(n.localName)))
+     [...harmony.children].some(n=>!ALLOWED_HARMONY.has(n.localName)))
     fail('복잡한 코드 기호 또는 이조 옵션을 안전하게 처리할 수 없습니다.');
   const roots=all(harmony,'root'),kinds=all(harmony,'kind'),
     basses=all(harmony,'bass'),staff=all(harmony,'staff');
