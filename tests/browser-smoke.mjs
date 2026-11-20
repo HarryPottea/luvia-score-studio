@@ -1330,6 +1330,31 @@ try {
   await page.waitForFunction(()=>document.querySelector('#v4-audit-result')?.textContent?.includes('기본 음악 구조 검사 통과'),null,{timeout:30000});
   assert.match(await page.locator('#v4-audit-result').textContent(),/오류 0건/);
   console.log('BROWSER_STAGE=V4_NEW_TUPLET_MUSIC_XML_STRUCTURAL_AUDIT_CLEAN');
+  const fullChord='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>48</duration><type>quarter</type></note>'+
+    '<note><chord/><pitch><step>E</step><octave>4</octave></pitch><duration>48</duration><type>quarter</type></note>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'transpose-full-chord.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(fullChord)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.fill('#v4-chord-semitones','2');
+  await page.selectOption('#v4-chord-spelling','sharp');
+  await page.click('#v4-chord-transpose');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('화음 전체 반음 이동 완료'),null,{timeout:30000});
+  const transposeDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const shifted=await fs.readFile(await (await transposeDownload).path(),'utf8');
+  assert.match(shifted,/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(shifted,/<step>F<\/step><alter>1<\/alter><octave>4<\/octave>/);
+  assert.match(shifted,/<accidental>sharp<\/accidental>/);
+  assert.match(shifted,/<rest\s*\/><duration>144<\/duration>/);
+  console.log('BROWSER_STAGE=V4_WHOLE_CHORD_SEMITONE_SHIFT_AND_MUSICXML');
+
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
