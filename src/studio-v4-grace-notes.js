@@ -36,9 +36,10 @@ function check(before,after){
     fail('꾸밈음 편집으로 기존 음표·성부 박자가 변경되어 작업을 취소했습니다.');
 }
 export function insertGraceNote(source,{partId,measureIndex,eventIndex,
-  step='C',alter=0,octave=4,slash=true}={}){
+  step='C',alter=0,octave=4,slash=true,type='eighth'}={}){
   if(typeof step!=='string'||step.length!==1||!'CDEFGAB'.includes(step)||
-     !valid(alter,-2,2)||!valid(octave,1,8)||typeof slash!=='boolean')
+     !valid(alter,-2,2)||!valid(octave,1,8)||typeof slash!=='boolean'||
+     !['eighth','16th','32nd'].includes(type))
     fail('꾸밈음의 음정·변화표·옥타브 설정을 확인해 주세요.');
   const original=locate(source,{partId,measureIndex,eventIndex});
   const target=original.note;
@@ -60,7 +61,7 @@ export function insertGraceNote(source,{partId,measureIndex,eventIndex,
   grace.appendChild(pitch);
   const voice=first(note,'voice');
   if(voice)grace.appendChild(voice.cloneNode(true));
-  grace.appendChild(make(grace,'type','eighth'));
+  grace.appendChild(make(grace,'type',type));
   if(alter)grace.appendChild(make(grace,'accidental',ACCIDENTAL[alter]));
   const staff=first(note,'staff');
   if(staff)grace.appendChild(staff.cloneNode(true));
@@ -72,7 +73,7 @@ export function insertGraceNote(source,{partId,measureIndex,eventIndex,
      after.events[eventIndex]?.duration!==0)
     fail('꾸밈음이 무박자 음표로 생성되지 않았습니다.');
   return {doc,change:{action:'insert-grace-note',partId,measureIndex,
-    eventIndex,step,alter,octave,slash,
+    eventIndex,step,alter,octave,slash,type,
     nextMeasureIndex:measureIndex,nextEventIndex:eventIndex+1}};
 }
 export function removeGraceNote(source,{partId,measureIndex,eventIndex}={}){
