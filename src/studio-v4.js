@@ -3,7 +3,7 @@
 import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount} from './studio-v4-core.js';
 import {deleteScoreMeasure} from './studio-v4-measure-delete.js';
 import {mountMeasureToolbar} from './studio-v4-measure-toolbar.js';
-import {buildPlaybackTimeline,createAuditionPlayer} from './studio-v4-playback.js';
+import {buildPlaybackTimeline,clipPlaybackToMeasures,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {createPartSvgZip} from './studio-v4-part-svg.js';
@@ -167,7 +167,8 @@ const panel=[
   '<button id="v4-vector-zip" type="button">현재 미리보기 SVG ZIP 저장</button>',
   '<p class="v4-tiny">벡터 PDF는 미리보기 상단 ‘인쇄 · PDF 저장’을 이용하세요. 08 / 파트별 PDF ZIP은 이미지 기반 출력입니다.</p>',
   '<p class="v4-subhead">05 / 간이 청음</p>',
-  '<div class="v4-inline"><button id="v4-play" type="button">▶ 악보 재생</button><button id="v4-stop" type="button" disabled>■ 정지</button></div>',
+  '<div class="v4-inline"><button id="v4-play" type="button">▶ 악보 재생</button><button id="v4-play-range" type="button">▶ 선택 마디 청음</button><button id="v4-stop" type="button" disabled>■ 정지</button></div>',
+  '<label class="v4-timeline-move-check"><input id="v4-loop-range" type="checkbox" /> 선택 마디 반복 청음 (■ 정지로 종료)</label>',
   '<p id="v4-play-status" class="v4-tiny" role="status">Web Audio 기반 간이 신시사이저 · 음악적 표현과 실제 악기 음색을 재현하지 않습니다.</p>',
   '<p class="v4-subhead">06 / 음악 구조 무결성 검사</p>',
   '<button id="v4-audit-run" type="button">현재 악보의 박자·성부·연결 기호 검사</button>',
@@ -207,6 +208,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   let measureToolbar=null;
   const player=createAuditionPlayer({onState:playing=>{
     $('v4-play').disabled=playing;
+    $('v4-play-range').disabled=playing;
     $('v4-stop').disabled=!playing;
     if(!playing&&$('v4-play-status').textContent.includes('재생 중'))$('v4-play-status').textContent='재생 종료 · 새 재생을 시작할 수 있습니다.';
   }});
@@ -747,6 +749,23 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       $('v4-play-status').textContent='재생 중 · '+timeline.events.length+'음 · 약 '+Math.ceil(timeline.durationSeconds)+'초 · '+timeline.tempoChanges.map(x=>x.bpm+' BPM').join(' → ')
         +(timeline.warnings.length?' · 주의: '+timeline.warnings.join(' / '):'');
     }catch(error){player.stop();setMessage('간이 재생 실패: '+error.message,true);}
+  });
+  $('v4-play-range').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    try{
+      const region=measureToolbar.getRange();
+      const full=buildPlaybackTimeline(state.doc,{defaultBpm:Number($('v4-tempo').value)});
+      const excerpt=clipPlaybackToMeasures(full,region);
+      const loop=$('v4-loop-range').checked;
+      await player.play(excerpt,{loop});
+      $('v4-play-status').textContent='선택 마디 '+(region.start+1)+
+        (region.start===region.end?'':'–'+(region.end+1))+
+        ' · '+excerpt.events.length+'음 · '+Math.ceil(excerpt.durationSeconds)+
+        '초'+(loop?' · 반복 중 (정지 버튼으로 종료)':'')+
+        (excerpt.warnings.length?' · 주의: '+excerpt.warnings.join(' / '):'');
+    }catch(error){
+      player.stop();setMessage('선택 마디 청음 실패: '+(error.message||'알 수 없는 오류'),true);
+    }
   });
   $('v4-stop').addEventListener('click',()=>player.stop());
   $('v4-print-book').addEventListener('click',async()=>{
