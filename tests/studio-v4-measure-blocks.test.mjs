@@ -4,6 +4,7 @@ import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from '../src/studio-v4-measure-blocks.js';
 import {createEditorHistory} from '../src/editor-history.js';
 import {transposeMeasurePassage} from '../src/studio-v4-passage-transpose.js';
+import {transposeWrittenVoice} from '../src/studio-v4-voice-transpose.js';
 import {addIndependentVoice} from '../src/studio-v4-add-voice.js';
 import {moveNoteToRestingVoice} from '../src/studio-v4-voice-transfer.js';
 import {transferVoicePhrase,inspectTransferableVoicePhrase,transferVoiceAcrossMeasures} from '../src/studio-v4-voice-phrase.js';
@@ -816,4 +817,82 @@ test('grace editing blocks rests and refuses deletion when special notation cann
   }),/복잡한 기보/);
   assert.equal(first(grace,'notations').children.length,1);
   assert.equal(first(first(rows(source)[0][0],'note'),'pitch').textContent,'C4');
+});
+
+
+test('transpose one polyphonic voice while preserving its companion voice, Korean lyrics, and other part',()=>{
+  const source=fixture(4,2);
+  pitched(first(rows(source)[0][1],'note'),'C',4);
+  const withVoices=addIndependentVoice(source,{partId:'P1',voice:'2',staff:1}).doc;
+  const bar=rows(withVoices)[0][1],notes=bar.children.filter(x=>x.localName==='note');
+  pitched(notes[1],'E',4);
+  notes[1].appendChild(n('lyric',{number:'1'},[leaf('text','밤하늘')]));
+  const result=transposeWrittenVoice(withVoices,{
+    partId:'P1',voice:'2',start:1,end:1,semitones:2});
+  const edited=rows(result.doc)[0][1].children.filter(x=>x.localName==='note');
+  assert.equal(first(edited[0],'pitch').textContent,'C4');
+  assert.equal(first(edited[1],'pitch').textContent,'F14');
+  assert.equal(first(edited[1],'lyric').textContent,'밤하늘');
+  assert.equal(first(edited[1],'duration').textContent,'192');
+  assert.equal(rows(result.doc)[0][1].children.filter(x=>x.localName==='backup').length,1);
+  assert.equal(first(first(rows(result.doc)[1][1],'note'),'rest').localName,'rest');
+  assert.equal(first(notes[1],'pitch').textContent,'E4');
+  assert.deepEqual([result.change.notes,result.change.tuplets,result.change.chords],[1,0,0]);
+});
+test('voice-scoped transposition preserves complete crossbar tied notes and rejects a cut tie',()=>{
+  const source=fixture(4,2);
+  for(const index of [1,2])pitched(first(rows(source)[0][index],'note'),'C',4);
+  addLink(first(rows(source)[0][1],'note'),'tie','start');
+  addLink(first(rows(source)[0][2],'note'),'tie','stop');
+  assert.throws(()=>transposeWrittenVoice(source,{
+    partId:'P1',voice:'1',start:1,end:1,semitones:2}),/범위 밖/);
+  const result=transposeWrittenVoice(source,{
+    partId:'P1',voice:'1',start:1,end:2,semitones:2});
+  for(const i of [1,2]){
+    assert.equal(first(first(rows(result.doc)[0][i],'note'),'pitch').textContent,'D4');
+    assert.equal(first(rows(result.doc)[0][i],'note').getAttribute('type'),null);
+  }
+  assert.equal(first(first(rows(result.doc)[0][1],'note'),'tie').getAttribute('type'),'start');
+  assert.equal(first(first(rows(result.doc)[0][2],'note'),'tie').getAttribute('type'),'stop');
+  assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'C4');
+});
+test('voice-scoped transposition handles a full 3:2 tuplet without changing its rhythm',()=>{
+  const source=fixture(3,2),bar=rows(source)[0][1],old=first(bar,'note');
+  bar.removeChild(old);
+  const quarterTriplet=(step,i)=>n('note',{},[
+    n('pitch',{},[leaf('step',step),leaf('octave',4)]),
+    leaf('duration',16),leaf('voice','1'),leaf('type','eighth'),
+    n('time-modification',{},[leaf('actual-notes',3),leaf('normal-notes',2),
+      leaf('normal-type','eighth')]),
+    n('notations',{},[...(i===0?[n('tuplet',{number:'1',type:'start'})]:[]),
+      ...(i===2?[n('tuplet',{number:'1',type:'stop'})]:[])]),
+  ]);
+  for(const [i,step] of ['C','D','E'].entries())bar.insertBefore(quarterTriplet(step,i),
+    first(bar,'direction'));
+  bar.insertBefore(n('note',{},[n('rest'),leaf('duration',144),
+    leaf('voice','1'),leaf('type','half'),n('dot')]),first(bar,'direction'));
+  const result=transposeWrittenVoice(source,{
+    partId:'P1',voice:'1',start:1,end:1,semitones:2,spelling:'flat'});
+  const notes=rows(result.doc)[0][1].children.filter(x=>x.localName==='note');
+  assert.deepEqual(notes.slice(0,3).map(x=>first(x,'pitch').textContent),['D4','E4','G-14']);
+  assert.ok(notes.slice(0,3).every(x=>first(x,'duration').textContent==='16'));
+  assert.equal(first(first(notes[0],'notations'),'tuplet').getAttribute('type'),'start');
+  assert.equal(first(first(notes[2],'notations'),'tuplet').getAttribute('type'),'stop');
+  assert.equal(result.change.tuplets,3);
+  assert.equal(first(notes[3],'rest').localName,'rest');
+  assert.equal(first(first(bar,'note'),'pitch').textContent,'C4');
+});
+test('single-voice transposition refuses chord-symbol mismatch and out-of-range pitches',()=>{
+  const source=fixture(3,2);
+  pitched(first(rows(source)[0][1],'note'),'C',4);
+  const harmony=n('harmony',{},[n('root',{},[leaf('root-step','C')]),
+    n('kind',{},[],'major')]);
+  rows(source)[0][1].insertBefore(harmony,first(rows(source)[0][1],'note'));
+  assert.throws(()=>transposeWrittenVoice(source,{
+    partId:'P1',voice:'1',start:1,end:1,semitones:2}),/코드 기호/);
+  rows(source)[0][1].removeChild(harmony);
+  pitched(first(rows(source)[0][1],'note'),'C',1);
+  assert.throws(()=>transposeWrittenVoice(source,{
+    partId:'P1',voice:'1',start:1,end:1,semitones:-1}),/음역/);
+  assert.equal(first(first(rows(source)[0][1],'note'),'pitch').textContent,'C1');
 });
