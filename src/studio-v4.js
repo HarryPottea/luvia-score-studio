@@ -60,9 +60,11 @@ const panel=[
   '<div class="v4-inline"><input id="v4-relocate-beat" type="number" min="1" step="any" value="1" aria-describedby="v4-relocate-status" /><button id="v4-relocate-note" type="button">지정한 박자로 이동</button></div>',
   '<p id="v4-relocate-status" class="v4-tiny" role="status" aria-live="polite">음표를 선택한 후 목표 박자를 입력하세요. 2.5는 두 번째 박자의 중간입니다.</p>',
   '<label class="v4-timeline-move-check"><input id="v4-timeline-move" type="checkbox" /> 시간표에서 쉼표를 눌러 선택 음표 이동</label>',
+  '<label class="v4-timeline-move-check"><input id="v4-timeline-insert" type="checkbox" /> 시간표에서 쉼표를 눌러 새 음표 입력</label>',
+  '<p class="v4-tiny">새 음표 입력은 위 음이름·변화표·옥타브·길이 설정을 사용합니다. 두 모드 중 하나만 선택할 수 있습니다.</p>',
   '<p class="v4-tiny">같은 성부·보표의 연속된 쉼표 안에서 이동합니다. 다른 음표·마디·붙임줄·셋잇단음·빔은 넘지 않습니다. 변경은 실행 취소할 수 있습니다.</p></div>',
   '<p class="v4-subhead">현재 마디 성부 시간표</p>',
-  '<p class="v4-tiny">음표를 선택해 위치를 확인하세요. Shift+←/→로 한 격자씩 이동하거나, 위의 시간표 이동 기능을 켜고 빈 쉼표를 클릭하세요.</p>',
+  '<p class="v4-tiny">음표를 선택해 위치를 확인하세요. Shift+←/→로 한 격자씩 이동하거나, 위에서 이동·입력 모드를 선택하고 빈 쉼표를 클릭하세요.</p>',
   '<div id="v4-beat-grid" class="v4-beat-grid" role="group" aria-label="마디 성부별 음표 시작 위치"></div>',
   '<button id="v4-pro-triplet" type="button">4·8·16분음표 두 개 → 셋잇단음 세 개</button>',
   '<p class="v4-tiny">같은 성부·보표의 동일 길이 음표 두 개를 선택하세요. 3:2 박자를 정확히 표현할 수 있는 경우에만 변환합니다. 복잡한 빔·가사·붙임줄은 보호됩니다.</p>',
@@ -413,6 +415,14 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
         entry.setAttribute('aria-label',entry.title);
         entry.setAttribute('aria-pressed',String(e.eventIndex===pos.eventIndex));
         entry.addEventListener('click',()=>{
+          if(e.rest&&$('v4-timeline-insert').checked){
+            v3.select({partId:pos.partId,measureIndex:pos.measureIndex,eventIndex:e.eventIndex});
+            void commit(doc=>editVoiceRhythm(doc,{...selected(),mode:'insert',
+              type:$('v4-pro-type').value,step:$('v4-pro-step').value,
+              alter:Number($('v4-pro-alter').value),octave:Number($('v4-pro-octave').value),
+            }),'성부 시간표에서 음표 입력');
+            return;
+          }
           if(e.rest&&$('v4-timeline-move').checked){
             const current=selected(),chosen=audit.events[current.eventIndex];
             if(!chosen||chosen.rest||chosen.voice!==e.voice||chosen.staff!==e.staff){
@@ -439,6 +449,13 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       }
       scroll.append(canvas);line.append(title,scroll);host.append(line);
     }
+  }
+
+  for(const [id,other] of [['v4-timeline-move','v4-timeline-insert'],
+    ['v4-timeline-insert','v4-timeline-move']]){
+    $(id).addEventListener('change',()=>{
+      if($(id).checked)$(other).checked=false;
+    });
   }
 
   // Keep backward compatibility with 4.0's original simple-score controls,
