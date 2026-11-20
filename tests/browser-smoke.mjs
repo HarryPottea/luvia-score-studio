@@ -1524,6 +1524,7 @@ try {
   await page.locator('#v4-checkpoint-restore').click();
   await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
     null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelector('#v4-checkpoint-status')?.textContent?.includes('복원 완료'),null,{timeout:30000});
   assert.match(await page.locator('#v4-checkpoint-status').textContent(),/복원 완료/);
   console.log('BROWSER_STAGE=V4_MANUAL_CHECKPOINT_RESTORE');
 
