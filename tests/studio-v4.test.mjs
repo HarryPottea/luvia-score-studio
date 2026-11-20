@@ -4,7 +4,7 @@ import {
   createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,
   appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount,
 } from '../src/studio-v4-core.js';
-import {buildPlaybackTimeline,clipPlaybackToMeasures} from '../src/studio-v4-playback.js';
+import {buildPlaybackTimeline,clipPlaybackToMeasures,measureAtPlaybackSecond} from '../src/studio-v4-playback.js';
 import {parseBatchLyrics,planBatchLyrics,applyBatchLyrics} from '../src/studio-v4-lyrics-batch.js';
 
 // Minimal deterministic XML DOM with the operations used by the pure editor.
@@ -361,4 +361,24 @@ test('audition only accepts valid score measure ranges',()=>{
   for(const [start,end] of [[-1,0],[2,3],[1,0],[0,3],[1.2,2]])
     assert.throws(()=>clipPlaybackToMeasures(timeline,{start,end}),/범위/);
   assert.deepEqual(timeline.measureSeconds,[0,2,6,10]);
+});
+
+
+test('playhead maps a tempo-changing score to the exact current bar',()=>{
+  const whole=buildPlaybackTimeline(threeBarAuditionScore(),{defaultBpm:120});
+  assert.deepEqual(whole.measureSeconds,[0,2,6,10]);
+  for(const [time,bar] of [[0,0],[1.99,0],[2,1],[5.99,1],[6,2],[9.99,2],[10,2]]){
+    assert.equal(measureAtPlaybackSecond(whole,time),bar);
+  }
+  const excerpt=clipPlaybackToMeasures(whole,{start:1,end:2});
+  assert.deepEqual(excerpt.measureSeconds,[0,4,8]);
+  assert.equal(excerpt.selectedMeasures.start,1);
+  assert.equal(measureAtPlaybackSecond(excerpt,0.1)+excerpt.selectedMeasures.start,1);
+  assert.equal(measureAtPlaybackSecond(excerpt,4.1)+excerpt.selectedMeasures.start,2);
+});
+test('playhead refuses corrupt time boundaries and negative timestamps',()=>{
+  assert.equal(measureAtPlaybackSecond({measureSeconds:[]},1),null);
+  assert.equal(measureAtPlaybackSecond({measureSeconds:[0,3,2]},1),null);
+  assert.equal(measureAtPlaybackSecond({measureSeconds:[0,3]},-1),null);
+  assert.equal(measureAtPlaybackSecond({measureSeconds:[0,3]},Number.NaN),null);
 });
