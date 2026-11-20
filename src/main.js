@@ -296,8 +296,21 @@ function requestPreviewUpdate(){
   }
   previewUpdater.request();
 }
+function syncPartControlsAfterStructuralEdit(){
+  const current=scoreParts().map(p=>p.id);
+  const listed=[...$('export-part').options].map(option=>option.value);
+  if(JSON.stringify(current)===JSON.stringify(listed))return;
+  const prior=new Set(listed),available=new Set(current);
+  for(const id of current)if(!prior.has(id))state.visible.add(id);
+  for(const id of [...state.visible])if(!available.has(id))state.visible.delete(id);
+  if(!state.visible.size&&current.length)state.visible.add(current[0]);
+  renderPartInputs();
+}
 async function renderScore() {
   if (!state.doc) return false;
+  // A new or removed instrument must refresh part selection/visibility before
+  // OSMD renders. Preserve hidden-part preferences for unchanged IDs.
+  syncPartControlsAfterStructuralEdit();
   previewUpdater?.cancel();
   const token=++state.renderToken;
   renderInFlight++;
