@@ -1058,8 +1058,12 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       if(win.closed){setMessage('인쇄용 창이 닫혀 출력이 취소됐습니다.',true);return;}
       const output=populateVectorPrintWindow(win,{pages,
         pageFormat,title:state.filename+' · J-WOO 벡터 파트보'});
+      const lyricAudit=pages.lyricAudit;
       setMessage('벡터 파트보 '+output.pages+
-        '페이지 준비 완료 · 새 창의 인쇄/PDF 저장 버튼을 누르세요. 실제 품질은 인쇄 미리보기에서 검수해야 합니다.');
+        '페이지 준비 완료 · 가사 위치 자동 보정 '+(lyricAudit?.attempts||0)+
+        '회 ·'+(lyricAudit?.remaining?' 남은 가사 겹침 의심 '+lyricAudit.remaining+'건 ·':
+          ' SVG 측정상 가사 겹침 0건 ·')+
+        ' 새 창의 인쇄/PDF 저장 버튼을 누르세요. 음표·가사·폰트·페이지의 시각적 검수는 필요합니다.');
     }catch(error){
       if(!win.closed)win.document.body.textContent='벡터 파트보 생성 실패: '+error.message;
       setMessage('벡터 파트보를 만들지 못했습니다: '+error.message,true);
@@ -1083,7 +1087,9 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       anchor.href=url;anchor.download=result.filename;anchor.click();
       setTimeout(()=>URL.revokeObjectURL(url),10000);
       setMessage('파트별 SVG '+result.parts+'개 파트 · '+result.pages+
-        '페이지 ZIP 저장 완료 · SVG는 벡터이지만 PDF 파일은 아닙니다.');
+        '페이지 ZIP 저장 완료 · 가사 보정 '+(pages.lyricAudit?.attempts||0)+'회 ·'+
+        (pages.lyricAudit?.remaining?' 겹침 의심 '+pages.lyricAudit.remaining+'건 ·':'')+
+        ' SVG는 벡터이지만 PDF 파일은 아닙니다.');
     }catch(error){setMessage('파트별 벡터 ZIP 생성 실패: '+error.message,true);}
     finally{button.disabled=false;}
   });
@@ -1109,7 +1115,10 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       setTimeout(()=>URL.revokeObjectURL(url),10000);
       setMessage('파트별 '+(result.hybridTextCount?'하이브리드':'벡터')+' PDF '+result.parts+
         '개 파트 · '+result.pages+'페이지 ZIP 저장 · 한글 글자 이미지 '+result.hybridTextCount+
-        '개 · 실제 글꼴·악보·페이지를 PDF 뷰어에서 검수해 주세요.');
+        '개 · 가사 간격 자동 보정 '+(pages.lyricAudit?.attempts||0)+'회 ·'+
+        (pages.lyricAudit?.remaining?' 남은 겹침 의심 '+pages.lyricAudit.remaining+'건 ·':
+          ' 측정상 겹침 0건 ·')+
+        ' 실제 글꼴·악보·페이지를 PDF 뷰어에서 검수해 주세요.');
     }catch(error){
       setMessage('벡터 PDF ZIP 생성 차단: '+(error.message||'지원하지 않는 SVG 표기입니다.'),true);
     }finally{button.disabled=false;}
