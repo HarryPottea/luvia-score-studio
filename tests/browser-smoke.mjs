@@ -1508,6 +1508,26 @@ try {
   assert.match(rangeXml,/<step>F<\/step>/);
   console.log('BROWSER_STAGE=V4_BLOCK_EDIT_MUSIC_XML_SAVE');
 
+  await page.fill('#v4-checkpoint-label','마디 편집 후 기준 시점');
+  await page.click('#v4-checkpoint-save');
+  await page.waitForFunction(()=>document.querySelector('#v4-checkpoint-status')?.textContent?.includes('복원 시점 저장 완료'),
+    null,{timeout:15000});
+  const recoveryId=await page.locator('#v4-checkpoint-select').inputValue();
+  assert.ok(recoveryId.length>12);
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#jwoo-measure-toolbar [data-act="delete"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===3,
+    null,{timeout:30000});
+  await page.locator('#v4-checkpoint-select').selectOption(recoveryId);
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-checkpoint-restore').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
+    null,{timeout:30000});
+  assert.match(await page.locator('#v4-checkpoint-status').textContent(),/복원 완료/);
+  console.log('BROWSER_STAGE=V4_MANUAL_CHECKPOINT_RESTORE');
+
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
