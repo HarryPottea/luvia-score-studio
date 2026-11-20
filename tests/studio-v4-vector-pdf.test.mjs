@@ -24,6 +24,10 @@ test('reject unembedded Korean or complex unicode rather than corrupting lyric g
   assert.throws(()=>preflightVectorPartPages([
     {partId:'P1',partName:'Voice',svg:svg(['우리의 노래'])}
   ]),/한글·특수문자/);
+  const hybrid=preflightVectorPartPages([{partId:'P1',partName:'Voice',svg:svg(['우리의 노래'])}],
+    'A4_P',{allowUnicodeText:true});
+  assert.equal(hybrid.allowUnicodeText,true);
+  assert.equal(hybrid.pages,1);
 });
 test('block invalid paper, page count, part overflow and active external SVG',()=>{
   const one={partId:'P1',partName:'Voice',svg:svg()};
