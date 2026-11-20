@@ -113,6 +113,13 @@ try {
   assert.equal(await page.locator('#score-title').inputValue(),originalTitle,
     'Toggling settings must preserve edited score state');
   console.log('BROWSER_STAGE=SETTINGS_TOGGLE_DOES_NOT_REPLACE_SCORE');
+  await page.waitForFunction(()=>document.querySelectorAll('#score-container .jwoo-rest-target').length>0,
+    null,{timeout:15000});
+  const restHead=page.locator('#score-container .jwoo-rest-target').first();
+  const restBounds=await restHead.boundingBox();
+  assert.ok(restBounds?.width>0&&restBounds?.height>0,'SVG rest lacks clickable bounds');
+  await restHead.click();
+  console.log('BROWSER_STAGE=V4_CLICK_DIRECTLY_ON_NOTATED_REST');
   await page.selectOption('#v3-length','quarter');
   await page.click('#v4-insert-note');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('음표 삽입 완료'));
