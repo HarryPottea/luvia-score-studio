@@ -874,7 +874,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   }),'전문 음표 입력'));
   $('v4-grace-insert').addEventListener('click',()=>void commit(doc=>insertGraceNote(doc,{
     ...selected(),step:$('v4-pro-step').value,alter:Number($('v4-pro-alter').value),
-    octave:Number($('v4-pro-octave').value),slash:$('v4-grace-slash').checked
+    octave:Number($('v4-pro-octave').value),slash:$('v4-grace-slash').checked,
+    type:$('v4-grace-type').value
   }),'꾸밈음 추가'));
   $('v4-grace-remove').addEventListener('click',()=>void commit(doc=>removeGraceNote(doc,selected()),
     '꾸밈음 삭제'));
