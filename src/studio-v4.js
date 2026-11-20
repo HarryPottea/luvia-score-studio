@@ -9,6 +9,7 @@ import {saveLocalCheckpoint,listLocalCheckpoints,loadLocalCheckpoint,removeLocal
 import {createPortableScoreProject,readPortableScoreProject} from './studio-v4-project-archive.js';
 import {addIndependentVoice} from './studio-v4-add-voice.js';
 import {moveNoteToRestingVoice} from './studio-v4-voice-transfer.js';
+import {transferVoicePhrase} from './studio-v4-voice-phrase.js';
 import {addEmptyInstrumentPart} from './studio-v4-add-part.js';
 import {createVectorPageZip} from './studio-v4-vector.js';
 import {createPartSvgZip} from './studio-v4-part-svg.js';
@@ -100,6 +101,10 @@ const panel=[
   '<select id="v4-transfer-voice"><option value="1">1성부</option><option value="2" selected>2성부</option><option value="3">3성부</option><option value="4">4성부</option></select>',
   '<button id="v4-transfer-note" type="button">다른 성부의 빈 쉼표로 음표 이동</button></div>',
   '<p id="v4-transfer-status" class="v4-tiny" role="status" aria-live="polite">선택 음표의 박자 구간을 포함하는 다른 성부의 쉼표로 음표·가사를 이동합니다. 앞·뒤의 남는 박자는 정확한 쉼표로 나누고 원래 성부 시간은 보존합니다.</p>',
+  '<label for="v4-transfer-phrase-end">구간 이동 마지막 음표 목록 번호 (선택 음표부터, 1부터 시작)</label>',
+  '<div class="v4-inline"><input id="v4-transfer-phrase-end" type="number" min="2" max="9999" step="1" value="4" />',
+  '<button id="v4-transfer-phrase" type="button">연속 음표를 다른 성부로 일괄 이동</button></div>',
+  '<p id="v4-transfer-phrase-status" class="v4-tiny" role="status" aria-live="polite">선택한 음표부터 마지막 목록 번호까지 연속된 2~16개 음표를 대상 성부의 빈 박자 공간으로 옮깁니다. 가사도 함께 이동합니다.</p>',
   '<p class="v4-tiny">악보에서 음표를 선택하세요. 같은 성부의 박자 합계를 유지하며, 지원하지 않는 복합 표기는 보호합니다.</p>',
   '<p class="v4-tiny">다성부 악보에서는 09 / 음표 편집의 일부 입력이 제한되므로, 아래의 별도 음정·길이 설정을 사용하세요.</p>',
   '<div class="v4-inline"><div><label for="v4-pro-step">음이름</label><select id="v4-pro-step"><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>A</option><option>B</option></select></div><div><label for="v4-pro-octave">옥타브</label><select id="v4-pro-octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select></div></div>',
@@ -480,6 +485,17 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       v3.select({partId:createdId,measureIndex:0,eventIndex:0});
       status.textContent=createdId+' · '+name.trim()+' 파트 추가 완료 · 첫 쉼표를 선택해 음표를 입력할 수 있습니다.';
     }else status.textContent='새 파트 추가가 적용되지 않았습니다. 위 오류 메시지와 박자 구조를 확인해 주세요.';
+  });
+  $('v4-transfer-phrase').addEventListener('click',async()=>{
+    const previous=state.doc,status=$('v4-transfer-phrase-status');
+    const position=selected(),finalIndex=Number($('v4-transfer-phrase-end').value)-1;
+    await commit(doc=>transferVoicePhrase(doc,{
+      ...position,startEventIndex:position.eventIndex,endEventIndex:finalIndex,
+      targetVoice:$('v4-transfer-voice').value
+    }),'연속 음표를 대상 성부로 일괄 이동');
+    status.textContent=state.doc!==previous?
+      '연속 음표·가사 성부 이동 완료 · 원래 성부 박자 및 다른 파트 보존':
+      '구간 이동이 적용되지 않았습니다. 대상 성부의 쉼표와 구간을 확인하세요.';
   });
   $('v4-transfer-note').addEventListener('click',async()=>{
     const previous=state.doc,status=$('v4-transfer-status');
