@@ -490,6 +490,40 @@ try {
   assert.match(nudgedXml,/<backup><duration>192<\/duration><\/backup>/);
   assert.match(nudgedXml,/<step>G<\/step><octave>3<\/octave><\/pitch><duration>96<\/duration>/);
   console.log('BROWSER_STAGE=V4_POLYPHONIC_BEAT_GRID_ONSET_EDIT');
+  // One transaction moves a selected pitch across more than one rest, and
+  // the selection follows that same pitch after the rest list is rebuilt.
+  await page.fill('#v4-relocate-beat','3');
+  await page.click('#v4-relocate-note');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('음표를 지정한 박자로 이동 완료'),null,{timeout:30000});
+  const exactPosition=await page.locator('#v3-selection').textContent();
+  assert.match(exactPosition,/시작 96\/48/);
+  assert.match(await page.locator('#v4-relocate-beat').inputValue(),/^3$/);
+  const movedXmlDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const movedXml=await fs.readFile(await (await movedXmlDownload).path(),'utf8');
+  assert.match(movedXml,/<step>E<\/step><octave>4<\/octave><\/pitch><duration>24<\/duration>/);
+  assert.match(movedXml,/<backup><duration>192<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_EXACT_BEAT_RELOCATION_PRESERVES_SELECTION');
+
+  // With explicit mode enabled, clicking an empty rest in the timeline moves
+  // the selected note there; ordinary clicks continue to select an event.
+  await page.locator('#v4-timeline-move').check();
+  await page.locator('.v4-beat-lane').first().locator('.v4-beat-event.rest').last().click();
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('시간표에서 음표 위치 이동 완료'),null,{timeout:30000});
+  assert.match(await page.locator('#v3-selection').textContent(),/시작 168\/48/);
+  assert.equal(await page.locator('#v3-events .v3-event.selected').count(),1);
+  console.log('BROWSER_STAGE=V4_TIMELINE_REST_CLICK_RELOCATES_NOTE');
+
+  await page.click('#v4-pro-to-rest');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('다성부 음표를 쉼표로 대체 완료'),null,{timeout:30000});
+  const removedXmlDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const removedXml=await fs.readFile(await (await removedXmlDownload).path(),'utf8');
+  assert.doesNotMatch(removedXml,/<step>E<\/step><octave>4<\/octave>/);
+  assert.match(removedXml,/<step>G<\/step><octave>3<\/octave>/);
+  assert.match(removedXml,/<backup><duration>192<\/duration><\/backup>/);
+  console.log('BROWSER_STAGE=V4_POLYPHONIC_NOTE_TO_REST_SAFE');
+
 
 
   await page.fill('#v4-new-title','셋잇단음 편집 검증');
