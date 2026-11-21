@@ -239,12 +239,13 @@ const panel=[
   '<button id="v4-key-from-measure" type="button">선택 마디부터 모든 파트 조표 변경</button>',
   '<div class="v4-symbol-position" role="group" aria-label="기호 표시 위치 조정">',
   '<strong>기호 표시 위치</strong>',
-  '<p class="v4-tiny">박자·조성을 바꾸지 않고 표시만 이동합니다. 쉼표는 악보에서 선택하고, 조표는 해당 파트·마디를 선택하세요.</p>',
-  '<div class="v4-inline"><label for="v4-symbol-kind">기호</label><select id="v4-symbol-kind"><option value="rest">선택 쉼표</option><option value="key">선택 마디 조표</option></select></div>',
+  '<p class="v4-tiny">박자·조성·음자리의 의미는 바꾸지 않고 표시만 이동합니다.</p>',
+  '<label class="v4-timeline-move-check"><input id="v4-symbol-drag" type="checkbox" /> 직접 드래그 켜기 · 기호 선택 불필요</label>',
+  '<p class="v4-tiny">켜면 악보의 쉼표·조표·박자표·음자리표를 각각 바로 끌어 옮길 수 있습니다. 아래 기호 선택은 수치로 정밀 조정할 때만 사용합니다.</p>',
+  '<div class="v4-inline"><label for="v4-symbol-kind">기호</label><select id="v4-symbol-kind"><option value="rest">선택 쉼표</option><option value="key">선택 마디 조표</option><option value="time">선택 마디 박자표</option><option value="clef">선택 보표 음자리표</option></select></div>',
   '<div class="v4-inline"><div><label for="v4-symbol-x">가로 (+ 오른쪽)</label><input id="v4-symbol-x" type="number" min="-200" max="200" step="0.5" value="0" /></div>',
   '<div><label for="v4-symbol-y">세로 (+ 위쪽)</label><input id="v4-symbol-y" type="number" min="-200" max="200" step="0.5" value="0" /></div></div>',
   '<div class="v4-inline"><button id="v4-symbol-apply" type="button">표시 위치 적용</button><button id="v4-symbol-reset" type="button">기본 위치로</button></div>',
-  '<label class="v4-timeline-move-check"><input id="v4-symbol-drag" type="checkbox" /> 악보에서 쉼표·조표 드래그</label>',
   '<p id="v4-symbol-status" class="v4-tiny" role="status" aria-live="polite">악보를 열고 기호를 선택해 주세요. 이동 좌표는 -200~200입니다.</p></div>',
   '<label for="v4-meter">선택 마디 이후 비어 있는 구간의 박자표</label><select id="v4-meter"><option value="2/4">2/4</option><option value="3/4" selected>3/4</option><option value="4/4">4/4</option><option value="6/8">6/8</option><option value="3/8">3/8</option><option value="2/2">2/2</option></select>',
   '<div class="v4-inline"><button id="v4-meter-empty" type="button">선택 마디 이후 빈 구간 박자 변경</button>',
@@ -719,32 +720,38 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     await v3.commitExternal(transform,label);
   }
   function selected(){return v3.getSelection();}
+  const symbolName={rest:'쉼표',key:'조표',time:'박자표',clef:'음자리표'};
   function syncSymbolControls(){
     const kind=$('v4-symbol-kind').value,enabled=!!state.doc&&!state.showBaseline;
-    $('v4-symbol-apply').disabled=!enabled;
-    $('v4-symbol-reset').disabled=!enabled;
     $('v4-symbol-drag').disabled=!enabled;
     const dragMode=enabled&&$('v4-symbol-drag').checked;
+    for(const id of ['v4-symbol-kind','v4-symbol-x','v4-symbol-y',
+      'v4-symbol-apply','v4-symbol-reset'])$(id).disabled=!enabled||dragMode;
     $('score-container')?.classList.toggle('jwoo-symbol-drag-mode',dragMode);
-    for(const key of $('score-container')?.querySelectorAll('.vf-keysignature')||[]){
-      let hit=key.querySelector(':scope > .jwoo-key-hit-area');
+    for(const symbol of $('score-container')?.querySelectorAll(
+      '.vf-keysignature,.vf-timesignature,.vf-clef')||[]){
+      let hit=symbol.querySelector(':scope > .jwoo-symbol-hit-area');
       if(!hit&&dragMode){
-        const box=key.getBBox();
-        hit=key.ownerDocument.createElementNS('http://www.w3.org/2000/svg','rect');
-        hit.classList.add('jwoo-key-hit-area');
+        const box=symbol.getBBox();
+        hit=symbol.ownerDocument.createElementNS('http://www.w3.org/2000/svg','rect');
+        hit.classList.add('jwoo-symbol-hit-area');
         for(const [name,value] of Object.entries({x:box.x-3,y:box.y-3,
           width:Math.max(12,box.width+6),height:Math.max(18,box.height+6),fill:'transparent'}))
           hit.setAttribute(name,String(value));
-        key.appendChild(hit);
+        symbol.appendChild(hit);
       }
       hit?.setAttribute('pointer-events',dragMode?'all':'none');
     }
     if(!enabled){$('v4-symbol-status').textContent='악보를 열고 기호를 선택해 주세요.';return;}
+    if(dragMode){
+      $('v4-symbol-status').textContent='직접 드래그 중 · 드롭다운 선택 없이 악보의 기호를 바로 끌어 옮기세요.';
+      return;
+    }
     try{
       const value=readSymbolOffset(state.doc,selected(),kind);
       $('v4-symbol-x').value=String(value.x);
       $('v4-symbol-y').value=String(value.y);
-      $('v4-symbol-status').textContent=(kind==='rest'?'선택 쉼표':'선택 마디의 조표')+
+      $('v4-symbol-status').textContent='선택 '+symbolName[kind]+
         ' · 가로 '+value.x+' · 세로 '+value.y+' · 실행 취소 가능';
     }catch(error){$('v4-symbol-status').textContent=error.message;}
   }
@@ -756,7 +763,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       const x=reset?0:Number($('v4-symbol-x').value);
       const y=reset?0:Number($('v4-symbol-y').value);
       void commit(doc=>setSymbolOffset(doc,{position,kind,x,y}),
-        (kind==='rest'?'쉼표':'조표')+' 표시 위치 '+(reset?'초기화':'조정'));
+        symbolName[kind]+' 표시 위치 '+(reset?'초기화':'조정'));
     });
   }
   const scoreHost=$('score-container');
@@ -768,12 +775,15 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     const svg=event.target.closest('svg'),rect=svg?.getBoundingClientRect();
     const width=svg?.viewBox?.baseVal?.width;
     if(!rect?.width||!width)return;
-    const element=event.target.closest('.jwoo-rest-target,.vf-keysignature');
+    const element=event.target.closest('.jwoo-rest-target,.vf-keysignature,.vf-timesignature,.vf-clef');
     symbolDrag={...hit,element,startX:event.clientX,startY:event.clientY,
       pixelToUnit:width/rect.width/(Number(state.osmd?.zoom)||1),pointerId:event.pointerId,
       doc:state.doc};
     event.preventDefault();
   },true);
+  scoreHost?.addEventListener('touchmove',event=>{
+    if(symbolDrag)event.preventDefault();
+  },{capture:true,passive:false});
   function dragValues(drag,event){
     const prior=readSymbolOffset(drag.doc,drag.position,drag.kind);
     const clamp=value=>Math.max(-symbolOffsetLimit,Math.min(symbolOffsetLimit,Math.round(value*2)/2));
@@ -800,7 +810,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       $('v4-symbol-kind').value=drag.kind;
       v3.select({...drag.position,eventIndex:drag.position.eventIndex??0});
       void commit(doc=>setSymbolOffset(doc,{position:drag.position,kind:drag.kind,x,y}),
-        (drag.kind==='rest'?'쉼표':'조표')+' 드래그 위치 조정');
+        symbolName[drag.kind]+' 드래그 위치 조정');
     }catch(error){setMessage('기호 이동 불가: '+error.message,true);}
   });
   document.addEventListener('pointercancel',event=>{

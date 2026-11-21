@@ -23,6 +23,21 @@ function activeKey(doc,{partId,measureIndex}){
   }
   return key;
 }
+function activeStaffAttribute(doc,position,name){
+  const part=partAt(doc,position.partId),measures=children(part,'measure');
+  const staff=Number(position.staff||first(noteAt(doc,position),'staff')?.textContent||1);
+  if(!part||!Number.isInteger(position.measureIndex)||position.measureIndex<0||
+     position.measureIndex>=measures.length||!Number.isInteger(staff)||staff<1)return null;
+  let found=null;
+  for(let index=0;index<=position.measureIndex;index++)for(const attrs of children(measures[index],'attributes')){
+    const candidates=children(attrs,name);
+    const exact=candidates.find(node=>Number(node.getAttribute('number'))===staff);
+    const shared=candidates.find(node=>!node.hasAttribute('number')&&
+      (name==='time'||staff===1));
+    if(exact||shared)found=exact||shared;
+  }
+  return found;
+}
 function target(doc,position,kind){
   if(kind==='key'){
     const key=activeKey(doc,position);
@@ -35,6 +50,16 @@ function target(doc,position,kind){
     if(!note||!first(note,'rest')||first(note,'pitch'))
       throw new Error('먼저 악보의 쉼표를 선택해 주세요.');
     return note;
+  }
+  if(kind==='time'){
+    const time=activeStaffAttribute(doc,position,'time');
+    if(!time||!first(time,'beats'))throw new Error('선택한 마디의 일반 박자표를 찾지 못했습니다.');
+    return time;
+  }
+  if(kind==='clef'){
+    const clef=activeStaffAttribute(doc,position,'clef');
+    if(!clef||!first(clef,'sign'))throw new Error('선택한 보표의 음자리표를 찾지 못했습니다.');
+    return clef;
   }
   throw new Error('지원하지 않는 기호입니다.');
 }
@@ -94,11 +119,11 @@ function visualMeasureGroups(osmd,doc,holder,visibleParts){
   return groups;
 }
 export function applySymbolOffsets(osmd,doc,holder,visibleParts){
-  if(!osmd||!doc||!holder)return {rests:0,keys:0};
+  if(!osmd||!doc||!holder)return {rests:0,keys:0,times:0,clefs:0};
   const targets=graphicalTargets(osmd,doc,visibleParts,holder);
   const scale=Number(osmd.zoom)||1;
   const measureGroups=visualMeasureGroups(osmd,doc,holder,visibleParts);
-  let rests=0,keys=0;
+  let rests=0,keys=0,times=0,clefs=0;
   for(const item of targets){
     if(!item.rest)continue;
     const note=noteAt(doc,item),shift=offset(note);
@@ -106,13 +131,18 @@ export function applySymbolOffsets(osmd,doc,holder,visibleParts){
     svgShift(item.element,shift,scale);rests++;
   }
   for(const [group,item] of measureGroups){
-    const key=activeKey(doc,item);if(!key)continue;
-    const shift=offset(key);if(!shift.x&&!shift.y)continue;
-    for(const element of group.querySelectorAll(':scope > .vf-keysignature')){
-      svgShift(element,shift,scale);keys++;
+    for(const [kind,selector] of [['key','.vf-keysignature'],['time','.vf-timesignature'],
+      ['clef','.vf-clef']]){
+      let node=null;
+      try{node=target(doc,item,kind);}catch{continue;}
+      const shift=offset(node);if(!shift.x&&!shift.y)continue;
+      for(const element of group.querySelectorAll(':scope > '+selector)){
+        svgShift(element,shift,scale);
+        if(kind==='key')keys++;else if(kind==='time')times++;else clefs++;
+      }
     }
   }
-  return {rests,keys};
+  return {rests,keys,times,clefs};
 }
 export function symbolAtElement(osmd,doc,holder,visibleParts,element){
   if(!element?.closest)return null;
@@ -121,11 +151,13 @@ export function symbolAtElement(osmd,doc,holder,visibleParts,element){
     (item.element===element||item.element.contains(element)));
   if(rest.length===1)return {kind:'rest',position:{partId:rest[0].partId,
     measureIndex:rest[0].measureIndex,eventIndex:rest[0].eventIndex}};
-  const key=element.closest('.vf-keysignature');
-  if(!key||!holder.contains(key))return null;
-  const group=key.closest('.vf-measure');
+  const symbol=element.closest('.vf-keysignature,.vf-timesignature,.vf-clef');
+  if(!symbol||!holder.contains(symbol))return null;
+  const group=symbol.closest('.vf-measure');
   const matched=visualMeasureGroups(osmd,doc,holder,visibleParts).get(group);
   if(!matched)return null;
-  const position={partId:matched.partId,measureIndex:matched.measureIndex};
-  return activeKey(doc,position)?{kind:'key',position}:null;
+  const position={partId:matched.partId,measureIndex:matched.measureIndex,staff:matched.staff};
+  const kind=symbol.matches('.vf-keysignature')?'key':
+    symbol.matches('.vf-timesignature')?'time':'clef';
+  try{target(doc,position,kind);return {kind,position};}catch{return null;}
 }

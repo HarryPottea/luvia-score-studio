@@ -59,7 +59,9 @@ try{
   await page.locator('#score-container .vf-keysignature[transform]').first().waitFor();
   assert.match(await page.locator('#score-container .jwoo-rest-target').first()
     .getAttribute('transform'),/^translate\(/);
+  assert.equal(await page.locator('#v4-symbol-kind').inputValue(),'key');
   await page.locator('#v4-symbol-drag').check();
+  assert.equal(await page.locator('#v4-symbol-kind').isDisabled(),true);
   const rest=page.locator('#score-container .jwoo-rest-target').first();
   const beforeDrag=await rest.getAttribute('transform');
   const box=await rest.boundingBox();
@@ -70,9 +72,76 @@ try{
   await page.mouse.up();
   await page.waitForFunction(previous=>document.querySelector('#score-container .jwoo-rest-target')
     ?.getAttribute('transform')!==previous,beforeDrag);
-  assert.match(await page.locator('#v4-symbol-status').textContent(),/선택 쉼표 · 가로/);
+  assert.match(await page.locator('#v4-symbol-status').textContent(),/드롭다운 선택 없이/);
+  await page.locator('#v4-symbol-drag').uncheck();
+  assert.equal(await page.locator('#v4-symbol-kind').isEnabled(),true);
+  for(const [kind,x,y,selector] of [
+    ['time','10','5','.vf-timesignature'],['clef','8','-3','.vf-clef']]){
+    await page.selectOption('#v4-symbol-kind',kind);
+    await page.fill('#v4-symbol-x',x);
+    await page.fill('#v4-symbol-y',y);
+    await page.click('#v4-symbol-apply');
+    await page.locator('#score-container '+selector+'[transform]').first().waitFor();
+  }
+  const [extendedDownload]=await Promise.all([page.waitForEvent('download'),
+    page.click('#download-xml')]);
+  const extendedXml=await readFile(await extendedDownload.path());
+  assert.match(extendedXml.toString(),/<time relative-x="10" relative-y="5">/);
+  assert.match(extendedXml.toString(),/<clef relative-x="8" relative-y="-3">/);
+  const [extendedSvgDownload]=await Promise.all([page.waitForEvent('download'),
+    page.click('#v4-part-svg-zip')]);
+  const extendedZip=await JSZip.loadAsync(await readFile(await extendedSvgDownload.path()));
+  const extendedSvgEntry=Object.values(extendedZip.files)
+    .find(file=>file.name.endsWith('.svg'));
+  const extendedSvg=await extendedSvgEntry.async('string');
+  assert.match(extendedSvg,/class="vf-timesignature" transform="translate\(/);
+  assert.match(extendedSvg,/class="vf-clef" transform="translate\(/);
+  await page.setInputFiles('#file-input',{name:'reopen-extended.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:extendedXml});
+  await page.locator('#drop-zone strong').getByText('reopen-extended.musicxml').waitFor();
+  await page.locator('#score-container .vf-timesignature[transform]').first().waitFor();
+  await page.locator('#score-container .vf-clef[transform]').first().waitFor();
+  await page.locator('#v4-symbol-drag').check();
+  const meter=page.locator('#score-container .vf-timesignature').first();
+  const meterBefore=await meter.getAttribute('transform');
+  const meterBox=await meter.boundingBox();
+  await page.mouse.move(meterBox.x+meterBox.width/2,meterBox.y+meterBox.height/2);
+  await page.mouse.down();
+  await page.mouse.move(meterBox.x+meterBox.width/2+25,meterBox.y+meterBox.height/2+10,{steps:4});
+  await page.mouse.up();
+  await page.waitForFunction(previous=>document.querySelector('#score-container .vf-timesignature')
+    ?.getAttribute('transform')!==previous,meterBefore);
+  const clef=page.locator('#score-container .vf-clef').first();
+  const clefBefore=await clef.getAttribute('transform');
+  const clefBox=await clef.boundingBox();
+  await page.mouse.move(clefBox.x+clefBox.width/2,clefBox.y+clefBox.height/2);
+  await page.mouse.down();
+  await page.mouse.move(clefBox.x+clefBox.width/2+20,clefBox.y+clefBox.height/2+8,{steps:4});
+  await page.mouse.up();
+  await page.waitForFunction(previous=>document.querySelector('#score-container .vf-clef')
+    ?.getAttribute('transform')!==previous,clefBefore);
   assert.deepEqual(errors,[]);
-  console.log('Symbol placement: MusicXML, preview, SVG export, reload, drag passed');
+  const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  await mobile.goto(url);
+  await mobile.click('#v4-new');
+  await mobile.locator('#v4-symbol-drag').check();
+  const touch=await mobile.context().newCDPSession(mobile);
+  for(const selector of ['.vf-timesignature','.vf-clef']){
+    const symbol=mobile.locator('#score-container '+selector).first();
+    await symbol.scrollIntoViewIfNeeded();
+    const before=await symbol.getAttribute('transform'),bounds=await symbol.boundingBox();
+    const x=bounds.x+bounds.width/2,y=bounds.y+bounds.height/2;
+    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});
+    await touch.send('Input.dispatchTouchEvent',{type:'touchMove',
+      touchPoints:[{x:x+14,y:y+5,id:1}]});
+    await touch.send('Input.dispatchTouchEvent',{type:'touchMove',
+      touchPoints:[{x:x+24,y:y+10,id:1}]});
+    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await mobile.waitForFunction(({selector,before})=>document.querySelector('#score-container '+selector)
+      ?.getAttribute('transform')!==before,{selector,before});
+  }
+  await mobile.close();
+  console.log('Symbol placement: rest, key, time, clef persistence and drag passed');
 }finally{
   await browser?.close();
   server.kill('SIGTERM');
