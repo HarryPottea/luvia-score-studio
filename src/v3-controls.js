@@ -141,6 +141,18 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     state.graphicBridge?.highlight?.({...selection});
     selectionChanged({...selection});
   }
+  function captureState(){
+    return {history:history.capture(),selection:{...selection}};
+  }
+  function restoreState(snapshot){
+    if(!snapshot||!snapshot.history||!snapshot.selection)
+      throw new Error('편집 화면 복원 상태가 올바르지 않습니다.');
+    history.restore(snapshot.history);
+    selection.partId=snapshot.selection.partId;
+    selection.measureIndex=snapshot.selection.measureIndex;
+    selection.eventIndex=snapshot.selection.eventIndex;
+    refresh();
+  }
   function externalChanged(){history.clear();refresh();}
   function reset(){history.clear();selection.partId='';selection.measureIndex=0;selection.eventIndex=0;refresh();}
   function operation(action,options={}) {return {...selection,action,...options};}
@@ -279,7 +291,7 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     if(!button||button.disabled)return false;
     button.click();return true;
   }
-  return {refresh,reset,externalChanged,select,directEdit,getSelection:()=>({...selection}),
+  return {refresh,reset,externalChanged,captureState,restoreState,select,directEdit,getSelection:()=>({...selection}),
     onSelectionChange:callback=>{selectionChanged=typeof callback==='function'?callback:()=>{};},
     commitExternal,movePitch};
 }
