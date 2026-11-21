@@ -20,10 +20,23 @@ function measureWidth(row){
       .map(n=>[...text(n,'text')].length);
     const lyricsMax=Math.max(0,...lyrics),lyricsTotal=lyrics.reduce((a,b)=>a+b,0);
     const harmonies=all(bar,'harmony').length;
-    const expressions=all(bar,'direction').length;
+    const expressions=all(bar,'direction');
+    const expressionCharacters=expressions.reduce((n,d)=>
+      n+[...d.textContent].length,0);
+    const ornaments=notes.reduce((n,note)=>{
+      const notations=first(note,'notations');
+      return n+all(notations,'ornaments').reduce((m,g)=>m+g.children.length,0)+
+        all(notations,'articulations').reduce((m,g)=>m+g.children.length,0);
+    },0);
+    const accidentals=notes.filter(n=>first(n,'accidental')).length;
+    // Horizontal pressure is estimated from real lyrical, harmonic and
+    // expression markup, not only nominal note counts. The actual SVG audit
+    // below remains authoritative for supported measured collisions.
     const weight=7+3.1*actualNotes+1.4*chords+
-      1.2*harmonies+0.8*expressions+0.85*lyricsMax+
-      0.1*lyricsTotal+all(bar,'attributes').length*3;
+      1.2*harmonies+1.4*expressions.length+
+      0.28*Math.min(90,expressionCharacters)+1.1*ornaments+
+      1.15*accidentals+1.65*lyricsMax+
+      0.18*lyricsTotal+all(bar,'attributes').length*3;
     total=Math.max(total,weight);
   }
   return Math.max(8,Math.min(120,total));
@@ -107,8 +120,25 @@ export function planDensityLayout(source,{pageFormat='A4_P',
   const widths=Array.from({length:len},(_,i)=>measureWidth(rows.map(r=>r[i])));
   const capacity=pageFormat==='A4_L'?116:84;
   const maxBars=pageFormat==='A4_L'?7:6;
+  // Multiple lyric verses and above/below-staff expressions need additional
+  // vertical clearance; otherwise an A4 page may be filled on paper but clip
+  // the final OSMD glyph bounds.
+  const verticalExtra=parts.reduce((total,part)=>{
+    let verses=0,expression=0;
+    for(const bar of all(part,'measure')){
+      for(const note of all(bar,'note'))verses=Math.max(verses,all(note,'lyric').length);
+      expression=Math.max(expression,all(bar,'direction').length+
+        all(bar,'note').reduce((n,note)=>{
+          const symbols=first(note,'notations');
+          return n+all(symbols,'ornaments').length+all(symbols,'articulations').length;
+        },0));
+    }
+    return total+Math.min(3.5,Math.max(0,verses-1)*.9+
+      (verses?0.7:0)+Math.min(1.2,expression*.32));
+  },0);
+  const systemHeightUnits=Math.max(2,staves*2.5)+2+verticalExtra;
   const systemsPerPage=Math.max(1,Math.min(7,
-    Math.floor((pageFormat==='A4_L'?17:28)/(Math.max(2,staves*2.5)+2))));
+    Math.floor((pageFormat==='A4_L'?17:28)/systemHeightUnits)));
   const penalties=connectionPenalties(parts,len);
   const sourceBreaks=parts.map(breaksAt);
   const manual=Array(len).fill('none');
