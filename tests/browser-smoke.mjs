@@ -2560,6 +2560,68 @@ try {
   assert.equal(normalizeStage3Xml(stage3Reimported),normalizeStage3Xml(stage3Xml),
     'real MusicXML reimport keeps all expressions');
   console.log('BROWSER_STAGE=STAGE3_LYRICS_INDEPENDENT_EDIT_UNDO_REIMPORT');
+
+  // Stage 4: a manually authored page break is a hard boundary, not an
+  // exception or permission to erase the composer's layout instructions.
+  const stage4Manual=combinedParts.replace('<measure number="7">',
+    '<measure number="7"><print new-page="yes"/>');
+  assert.notEqual(stage4Manual,combinedParts);
+  await page.locator('#file-input').setInputFiles({name:'stage4-manual-page.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage4Manual)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.click('#v4-auto-layout');
+  await page.waitForFunction(()=>document.querySelector('#v4-auto-layout-status')?.textContent?.includes('자동 배치 적용'),
+    null,{timeout:30000});
+  const stage4FullDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage4FullXml=await fs.readFile(await (await stage4FullDownload).path(),'utf8');
+  for(const partId of ['P1','P2']){
+    const body=stage4FullXml.match(new RegExp('<part id="'+partId+'">([\\s\\S]*?)<\\/part>'))?.[1];
+    assert.ok(body,'full score contains synchronized '+partId);
+    const forced=body.match(/<measure number="7"[^>]*>([\s\S]*?)<\/measure>/)?.[1];
+    assert.match(forced,/<print new-page="yes"/,
+      'authored manual page boundary must survive in '+partId);
+  }
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const stage4UndoDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage4Undone=await fs.readFile(await (await stage4UndoDownload).path(),'utf8');
+  assert.equal((stage4Undone.match(/<print new-page="yes"/g)||[]).length,1);
+  console.log('BROWSER_STAGE=STAGE4_MANUAL_PAGE_BREAK_PRESERVED_ACROSS_FULL_SCORE_AND_UNDO');
+
+  const stage4Individual=combinedParts.replace(
+    /(<part id="P2">[\s\S]*?<measure number="8">)/,
+    '$1<print new-page="yes"/>');
+  await page.locator('#file-input').setInputFiles({name:'stage4-part-page.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage4Individual)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.click('#v4-part-layout');
+  await page.waitForFunction(()=>document.querySelector('#v4-part-layout-status')?.textContent?.includes('악기 2파트'),
+    null,{timeout:30000});
+  const stage4PartsDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage4PartsXml=await fs.readFile(await (await stage4PartsDownload).path(),'utf8');
+  const stage4Piano=stage4PartsXml.match(/<part id="P2">([\s\S]*?)<\/part>/)?.[1];
+  assert.match(stage4Piano.match(/<measure number="8"[^>]*>([\s\S]*?)<\/measure>/)?.[1],
+    /<print new-page="yes"/);
+  assert.equal((stage4PartsXml.match(/<text>반짝이는<\/text>/g)||[]).length,48);
+  console.log('BROWSER_STAGE=STAGE4_INDEPENDENT_PART_HARD_PAGE_BREAK_AND_LYRICS');
+
+  const stage4SvgView=page.locator('#score-container svg').first();
+  await stage4SvgView.waitFor({state:'visible',timeout:30000});
+  const stage4Bounds=await stage4SvgView.evaluate(svg=>{
+    const view=svg.viewBox.baseVal;
+    const box=svg.getBBox();
+    return {viewWidth:view.width,viewHeight:view.height,
+      glyphWidth:box.width,glyphHeight:box.height};
+  });
+  assert.ok(stage4Bounds.viewWidth>0&&stage4Bounds.viewHeight>0);
+  assert.ok(stage4Bounds.glyphWidth>0&&stage4Bounds.glyphHeight>0);
+  console.log('BROWSER_STAGE=STAGE4_REAL_RENDERED_PAGE_BOUNDS_MEASURED');
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
