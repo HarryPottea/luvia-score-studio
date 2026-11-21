@@ -152,7 +152,7 @@ def main() -> None:
     cache = (ROOT / args.cache).resolve()
     gate(cache.is_relative_to(ROOT), "Cache must remain inside the project workspace")
     manifest = read_manifest()
-    schemas = collect_pinned(manifest["schema"], cache / "schema", "", MAX_SCHEMA)
+    schemas = collect_pinned(manifest["schema"], cache / "schema", "schema/", MAX_SCHEMA)
     corpus = collect_pinned(manifest["corpus"], cache / "corpus", "xmlFiles/", MAX_XML)
     gate(len(schemas) == 3 and len(corpus) == 10, "W3C independent fixture count changed")
     xsd = compile_schema(cache / "schema")
