@@ -355,23 +355,8 @@
 @media print{.settings-action,.empty-score-state{display:none!important}}
 
 
-/* Mobile score header must never spill across the inspector quick links.
-   The measure composer has expanded substantially in J-WOO 4.0. Keep its
-   controls independently scrollable inside the capped sticky score panel,
-   leaving the A4 preview and the editing column accessible. */
+/* Keep the score preview clipped inside its compact mobile panel. Measure
+   editing now lives in the settings column rather than above the score. */
 @media(max-width:670px){
   .preview-column{overflow:hidden;contain:paint}
-  .preview-column .jwoo-measure-toolbar{
-    flex:0 0 auto;min-height:0;
-    max-height:clamp(94px,15dvh,125px);
-    overflow-x:hidden;overflow-y:auto;
-    overscroll-behavior:contain;
-    -webkit-overflow-scrolling:touch;
-    scrollbar-width:thin;
-  }
-  .preview-column .preview-shell{
-    min-height:0;flex:1 1 auto;
-    max-height:clamp(100px,18dvh,154px);
-  }
-  .controls .jwoo-quick-link{scroll-margin-top:385px}
 }

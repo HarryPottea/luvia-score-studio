@@ -1,4 +1,4 @@
-// Compact bar-range editing in the score preview; all mutations use V3 history.
+// Bar-range editing in detailed settings; all mutations use V3 history.
 import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
   deleteMeasureRange,insertBlankMeasureRange} from './studio-v4-measure-blocks.js';
 import {transposeMeasurePassage} from './studio-v4-passage-transpose.js';
@@ -14,7 +14,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
   host.id='jwoo-measure-toolbar';
   host.setAttribute('aria-label','악보 마디 범위 편집');
   host.innerHTML=[
-    '<div class="jwoo-measure-heading"><strong>마디 바로 편집</strong>',
+    '<div class="jwoo-measure-heading"><strong>마디 범위 편집</strong>',
     '<span id="jwoo-block-status" role="status" aria-live="polite">악보를 열면 마디를 선택할 수 있습니다.</span></div>',
     '<div id="jwoo-bar-strip" class="jwoo-bar-strip" role="group" aria-label="편집할 마디 선택"></div>',
     '<div class="jwoo-range-controls">',
@@ -49,7 +49,9 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     ' 선택 바 안에서는 Ctrl/⌘+C 복사 · Ctrl/⌘+V 붙여넣기 · Ctrl/⌘+D 복제 · Delete 삭제를 사용할 수 있습니다.',
     ' 연결 기호나 조표·박자표 변경이 위험하면 편집을 차단합니다. 한 성부를 선택하면 다른 성부 음표·박자·가사를 보존하며, 코드 기호가 있는 마디와 연결 범위 밖으로 이어지는 붙임줄은 차단합니다.</p>',
   ].join('');
-  document.querySelector('.preview-toolbar').insertAdjacentElement('afterend',host);
+  const measureSection=[...document.querySelectorAll('.v4-editor > .v4-subhead')]
+    .find(node=>node.textContent.startsWith('04 /'));
+  measureSection.insertAdjacentElement('afterend',host);
   const context=document.createElement('div');
   context.className='jwoo-measure-context';
   context.hidden=true;
@@ -63,7 +65,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     '<button type="button" data-context-act="delete">선택 마디 삭제</button>',
     '<button type="button" data-context-act="transpose">선택 구간 음정 일괄 이조</button>',
   ].join('');
-  host.appendChild(context);
+  document.body.appendChild(context);
   const $=id=>document.getElementById(id);
   let anchor=0,start=0,end=0,clipboard=null,seenDoc=null,barCount=0,selectedCount=0,playingIndex=null;
   const status=$('jwoo-block-status'),strip=$('jwoo-bar-strip');
@@ -136,12 +138,11 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
   function openContext(index,point={}){
     pick(index,false);
     if(state.showBaseline||!currentInfo())return;
-    const box=host.getBoundingClientRect();
     const width=208;
-    const x=Number.isFinite(point.x)?point.x-box.left:0;
-    const y=Number.isFinite(point.y)?point.y-box.top:55;
-    context.style.left=Math.max(0,Math.min(x,host.clientWidth-width))+'px';
-    context.style.top=Math.max(0,y)+'px';
+    const x=Number.isFinite(point.x)?point.x:0;
+    const y=Number.isFinite(point.y)?point.y:55;
+    context.style.left=Math.max(0,Math.min(x,window.innerWidth-width))+'px';
+    context.style.top=Math.max(0,Math.min(y,window.innerHeight-280))+'px';
     for(const button of context.querySelectorAll('[data-context-act]')){
       button.disabled=host.querySelector('[data-act="'+button.dataset.contextAct+'"]').disabled;
     }

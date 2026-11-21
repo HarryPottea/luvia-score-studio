@@ -93,6 +93,7 @@ export function mountSettingsAccordions(){
     ['새 악보','#v4-new'],
     ['파트','#parts-list'],
     ['음표','#v3-events'],
+    ['마디','#v4-current-total'],
     ['가사','#v4-lyrics-batch-text'],
     ['코드','#v4-chord-input'],
     ['출력','#v4-print-book'],

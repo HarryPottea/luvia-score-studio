@@ -1,6 +1,6 @@
-/* Direct measure editing above the rendered score; does not alter PDF layout. */
+/* Detailed measure editing beside the rendered score; does not alter PDF layout. */
 .jwoo-measure-toolbar{padding:13px 15px 12px;background:#283327;color:#eef5e6;
-  border:1px solid #5d7651;border-bottom:0;border-radius:4px 4px 0 0}
+  border:1px solid #5d7651;border-radius:4px;margin:12px 0}
 .jwoo-measure-heading{display:flex;align-items:baseline;justify-content:space-between;
   gap:9px;flex-wrap:wrap;margin-bottom:9px}
 .jwoo-measure-heading strong{font-size:12px;letter-spacing:.04em}
@@ -35,11 +35,11 @@
   .jwoo-bar-actions button{flex-basis:calc(50% - 8px);font-size:12px;min-height:41px}
   .jwoo-range-controls input{font-size:16px}
 }
-@media print{.jwoo-measure-toolbar{display:none!important}}
+@media print{.jwoo-measure-toolbar,.jwoo-measure-context{display:none!important}}
 
 .jwoo-measure-toolbar{position:relative}
 .jwoo-measure-context[hidden]{display:none!important}
-.jwoo-measure-context{position:absolute;z-index:50;width:208px;padding:5px;
+.jwoo-measure-context{position:fixed;z-index:50;width:208px;padding:5px;
   border:1px solid #a6bc90;border-radius:5px;box-shadow:0 8px 28px rgba(0,0,0,.4);
   background:#273526;display:grid;gap:3px}
 .jwoo-measure-context button{width:100%;text-align:left;border:0;border-radius:3px;
