@@ -134,6 +134,9 @@ export function prepareFontSvg(svg,font){
   let text='';
   const targets=[];
   for(const t of svg.querySelectorAll('text')){
+    // The fixed J-WOO software credit uses PDF's built-in WinAnsi font.
+    // Do not demand that a user-supplied music/lyric TTF contain © or ASCII branding.
+    if(t.getAttribute?.('data-jwoo-software-copyright')==='true')continue;
     if(/[^\x00-\x7f]/.test(t.textContent||'')){
       targets.push(t);text+=t.textContent||'';
     }
