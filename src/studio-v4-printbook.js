@@ -3,6 +3,7 @@
 // No new npm dependencies, no raster/JPEG conversion, no server upload.
 import {OpenSheetMusicDisplay} from 'opensheetmusicdisplay';
 import {editableScoreRenderOptions} from './osmd-render-policy.js';
+import {applySymbolOffsets} from './studio-v4-symbol-position.js';
 import {applyLayoutPreset} from './layout-profile.js';
 import {applyFixedA4Profile,fixedA4Profile} from './a4-engraving.js';
 import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
@@ -64,6 +65,8 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
       osmd.render();
       const expression=await adaptExpressionRendering(osmd,holder,{maxAttempts:2});
       const measured=await adaptLyricRendering(osmd,holder,{maxAttempts:2});
+      applySymbolOffsets(osmd,partDoc,holder,
+        [...partDoc.querySelectorAll('part')].map(part=>part.getAttribute('id')));
       const finalExpressions=inspectSvgExpressionSpacing([...holder.querySelectorAll('svg')]);
       const expressionAudit={...expression,...finalExpressions,partId:p.id};
       expressionAudits.push(expressionAudit);

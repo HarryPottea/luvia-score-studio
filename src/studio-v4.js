@@ -35,6 +35,7 @@ import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.j
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {prepareScoreAndPartExport} from './studio-v4-pdf-export-plan.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
+import {readSymbolOffset,setSymbolOffset,applySymbolOffsets,symbolAtElement} from './studio-v4-symbol-position.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
 import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
 import {planDensityLayout,applyDensityLayout,planIndependentPartLayout,applyIndependentPartLayout} from './studio-v4-auto-layout.js';
@@ -236,6 +237,15 @@ const panel=[
   '<select id="v4-key"><option value="-3">E♭ (플랫 3)</option><option value="-2">B♭ (플랫 2)</option><option value="-1">F (플랫 1)</option><option value="0" selected>C (변화표 없음)</option><option value="1">G (샤프 1)</option><option value="2">D (샤프 2)</option><option value="3">A (샤프 3)</option><option value="4">E (샤프 4)</option><option value="5">B (샤프 5)</option></select>',
   '<button id="v4-apply-key" type="button">모든 파트 조표 변경</button>',
   '<button id="v4-key-from-measure" type="button">선택 마디부터 모든 파트 조표 변경</button>',
+  '<div class="v4-symbol-position" role="group" aria-label="기호 표시 위치 조정">',
+  '<strong>기호 표시 위치</strong>',
+  '<p class="v4-tiny">박자·조성을 바꾸지 않고 표시만 이동합니다. 쉼표는 악보에서 선택하고, 조표는 해당 파트·마디를 선택하세요.</p>',
+  '<div class="v4-inline"><label for="v4-symbol-kind">기호</label><select id="v4-symbol-kind"><option value="rest">선택 쉼표</option><option value="key">선택 마디 조표</option></select></div>',
+  '<div class="v4-inline"><div><label for="v4-symbol-x">가로 (+ 오른쪽)</label><input id="v4-symbol-x" type="number" min="-40" max="40" step="0.5" value="0" /></div>',
+  '<div><label for="v4-symbol-y">세로 (+ 위쪽)</label><input id="v4-symbol-y" type="number" min="-40" max="40" step="0.5" value="0" /></div></div>',
+  '<div class="v4-inline"><button id="v4-symbol-apply" type="button">표시 위치 적용</button><button id="v4-symbol-reset" type="button">기본 위치로</button></div>',
+  '<label class="v4-timeline-move-check"><input id="v4-symbol-drag" type="checkbox" /> 악보에서 쉼표·조표 드래그</label>',
+  '<p id="v4-symbol-status" class="v4-tiny" role="status" aria-live="polite">악보를 열고 기호를 선택해 주세요. 이동 좌표는 -40~40입니다.</p></div>',
   '<label for="v4-meter">선택 마디 이후 비어 있는 구간의 박자표</label><select id="v4-meter"><option value="2/4">2/4</option><option value="3/4" selected>3/4</option><option value="4/4">4/4</option><option value="6/8">6/8</option><option value="3/8">3/8</option><option value="2/2">2/2</option></select>',
   '<div class="v4-inline"><button id="v4-meter-empty" type="button">선택 마디 이후 빈 구간 박자 변경</button>',
   '<button id="v4-meter-single" type="button">선택한 빈 마디만 박자 변경</button></div>',
@@ -413,6 +423,9 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   }
   function onRendered(){
     inlineLyrics.onRendered();
+    if(state.doc&&state.osmd&&!state.showBaseline)applySymbolOffsets(state.osmd,state.doc,
+      $('score-container'),[...state.visible]);
+    syncSymbolControls();
     syncCurrentMeasureCount();
     syncMeasureDelete();
     $('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;
@@ -436,7 +449,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;$('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;$('v4-add-part').disabled=!state.doc||state.showBaseline;void refreshDrafts();void refreshCheckpoints();}
+  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();syncSymbolControls();$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;$('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;$('v4-add-part').disabled=!state.doc||state.showBaseline;void refreshDrafts();void refreshCheckpoints();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{
@@ -706,6 +719,75 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     await v3.commitExternal(transform,label);
   }
   function selected(){return v3.getSelection();}
+  function syncSymbolControls(){
+    const kind=$('v4-symbol-kind').value,enabled=!!state.doc&&!state.showBaseline;
+    $('v4-symbol-apply').disabled=!enabled;
+    $('v4-symbol-reset').disabled=!enabled;
+    $('v4-symbol-drag').disabled=!enabled;
+    const dragMode=enabled&&$('v4-symbol-drag').checked;
+    $('score-container')?.classList.toggle('jwoo-symbol-drag-mode',dragMode);
+    for(const key of $('score-container')?.querySelectorAll('.vf-keysignature')||[]){
+      let hit=key.querySelector(':scope > .jwoo-key-hit-area');
+      if(!hit&&dragMode){
+        const box=key.getBBox();
+        hit=key.ownerDocument.createElementNS('http://www.w3.org/2000/svg','rect');
+        hit.classList.add('jwoo-key-hit-area');
+        for(const [name,value] of Object.entries({x:box.x-3,y:box.y-3,
+          width:Math.max(12,box.width+6),height:Math.max(18,box.height+6),fill:'transparent'}))
+          hit.setAttribute(name,String(value));
+        key.appendChild(hit);
+      }
+      hit?.setAttribute('pointer-events',dragMode?'all':'none');
+    }
+    if(!enabled){$('v4-symbol-status').textContent='악보를 열고 기호를 선택해 주세요.';return;}
+    try{
+      const value=readSymbolOffset(state.doc,selected(),kind);
+      $('v4-symbol-x').value=String(value.x);
+      $('v4-symbol-y').value=String(value.y);
+      $('v4-symbol-status').textContent=(kind==='rest'?'선택 쉼표':'선택 마디의 조표')+
+        ' · 가로 '+value.x+' · 세로 '+value.y+' · 실행 취소 가능';
+    }catch(error){$('v4-symbol-status').textContent=error.message;}
+  }
+  $('v4-symbol-kind').addEventListener('change',syncSymbolControls);
+  $('v4-symbol-drag').addEventListener('change',syncSymbolControls);
+  for(const [id,reset] of [['v4-symbol-apply',false],['v4-symbol-reset',true]]){
+    $(id).addEventListener('click',()=>{
+      const kind=$('v4-symbol-kind').value,position=selected();
+      const x=reset?0:Number($('v4-symbol-x').value);
+      const y=reset?0:Number($('v4-symbol-y').value);
+      void commit(doc=>setSymbolOffset(doc,{position,kind,x,y}),
+        (kind==='rest'?'쉼표':'조표')+' 표시 위치 '+(reset?'초기화':'조정'));
+    });
+  }
+  const scoreHost=$('score-container');
+  let symbolDrag=null;
+  scoreHost?.addEventListener('pointerdown',event=>{
+    if(!$('v4-symbol-drag').checked||!state.doc||state.showBaseline||event.button!==0)return;
+    const hit=symbolAtElement(state.osmd,state.doc,scoreHost,[...state.visible],event.target);
+    if(!hit)return;
+    const svg=event.target.closest('svg'),rect=svg?.getBoundingClientRect();
+    const width=svg?.viewBox?.baseVal?.width;
+    if(!rect?.width||!width)return;
+    symbolDrag={...hit,startX:event.clientX,startY:event.clientY,
+      pixelToUnit:width/rect.width/(Number(state.osmd?.zoom)||1),pointerId:event.pointerId,
+      doc:state.doc};
+    event.preventDefault();
+  },true);
+  document.addEventListener('pointerup',event=>{
+    const drag=symbolDrag;if(!drag||drag.pointerId!==event.pointerId)return;
+    symbolDrag=null;
+    if(state.doc!==drag.doc||Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY)<3)return;
+    try{
+      const prior=readSymbolOffset(state.doc,drag.position,drag.kind);
+      const x=Math.round((prior.x+(event.clientX-drag.startX)*drag.pixelToUnit)*2)/2;
+      const y=Math.round((prior.y-(event.clientY-drag.startY)*drag.pixelToUnit)*2)/2;
+      $('v4-symbol-kind').value=drag.kind;
+      v3.select({...drag.position,eventIndex:drag.position.eventIndex??0});
+      void commit(doc=>setSymbolOffset(doc,{position:drag.position,kind:drag.kind,x,y}),
+        (drag.kind==='rest'?'쉼표':'조표')+' 드래그 위치 조정');
+    }catch(error){setMessage('기호 이동 불가: '+error.message,true);}
+  });
+  document.addEventListener('pointercancel',event=>{if(symbolDrag?.pointerId===event.pointerId)symbolDrag=null;});
   measureToolbar=mountMeasureToolbar({state,v3,commit,setMessage});
   const inlineLyrics=mountInlineLyricEditor({
     state,v3,commit,setMessage,lyricVerseInput:$('v4-lyric-verse'),
@@ -1347,7 +1429,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   });
   void refreshDrafts();
   void refreshCheckpoints();
-  return {beforeOpen,onRendered,onLoaded,onMeasurePointer:(index,extend=false,context)=>context?measureToolbar?.openContext(index,context):measureToolbar?.pick(index,extend),onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();syncMeasureDelete();inlineLyrics.onSelectionChange(selected());},
+  return {beforeOpen,onRendered,onLoaded,onMeasurePointer:(index,extend=false,context)=>context?measureToolbar?.openContext(index,context):measureToolbar?.pick(index,extend),onSelectionChange:()=>{renderVoiceGrid();syncChordSelection();syncMeasureDelete();syncSymbolControls();inlineLyrics.onSelectionChange(selected());},
     lyricMode:()=>inlineLyrics.isMode(),
     openLyricFromScore:(position,element)=>inlineLyrics.openFromScore(position,element),
     stop:()=>player.stop()};
