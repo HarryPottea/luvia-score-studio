@@ -132,9 +132,11 @@ def negative_controls(schema: etree.XMLSchema, seed: Path) -> None:
     gate(not schema.validate(invalid),
          "Schema negative control did not reject invalid element")
     invalid2 = etree.fromstring(etree.tostring(root), parser=xml_parser())
-    invalid2.set("version", "invalid-version")
+    part_list = invalid2.find("part-list")
+    gate(part_list is not None, "Negative-control document is missing part-list")
+    invalid2.remove(part_list)
     gate(not schema.validate(invalid2),
-         "Schema negative control did not reject invalid version")
+         "Schema negative control did not reject missing part-list")
     try:
         parse_xml(b'''<?xml version="1.0"?><!DOCTYPE score-partwise [
         <!ENTITY attack SYSTEM "file:///etc/passwd">]>
