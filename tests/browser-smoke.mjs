@@ -6,6 +6,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import fs from 'node:fs/promises';
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
+import {validateMusicXml4Files} from './musicxml4-validator.mjs';
 
 const url = 'http://127.0.0.1:4173/';
 const output = 'artifacts/browser-smoke';
@@ -2773,7 +2774,7 @@ try {
     '21b-Chords-TwoNotes.musicxml',
     '61a-Lyrics.musicxml'
   ]){
-    const original=await fs.readFile('.ci-musicxml4-cache/corpus/'+filename,'utf8');
+    const original=await fs.readFile('tests/musicxml4-official/corpus/'+filename,'utf8');
     const normal=original.replace(/<!DOCTYPE[\s\S]*?(?:\[[\s\S]*?\]\s*)?>|<!DOCTYPE[^>]*>/gi,'');
     await page.locator('#file-input').setInputFiles({
       name:filename,mimeType:'application/vnd.recordare.musicxml+xml',
@@ -2812,6 +2813,13 @@ try {
     console.log('BROWSER_STAGE=STAGE6_W3C_INDEPENDENT_ROUNDTRIP_'+filename);
   }
   assert.deepEqual(errors,[],'no browser JavaScript exceptions during third-party import');
+  const stage6Outputs=(await fs.readdir(stage6Dir))
+    .filter(name=>name.endsWith('.musicxml')).map(name=>stage6Dir+'/'+name);
+  assert.equal(stage6Outputs.length,7,'Four edited and three independent exports required');
+  const stage6Schema=await validateMusicXml4Files(stage6Outputs,{expectAtLeast:7});
+  assert.equal(stage6Schema.files,7);
+  assert.equal(stage6Schema.status,'PASS_MUSICXML4_INDEPENDENT_XSD');
+  console.log('BROWSER_STAGE=STAGE6_SEVEN_REAL_EXPORTS_INDEPENDENT_W3C_XSD_PASS');
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
