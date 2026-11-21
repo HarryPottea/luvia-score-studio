@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Independent MusicXML 4.0 XSD conformance gate.
 
-CI only: downloads official W3C schema plus an independent W3C-hosted
-MusicXML test corpus, pinned by immutable Git blob SHA-1, using a HTTPS-only
-transport. Compiles XML Schema with lxml/libxml2 and validates real XML
+CI only: loads locally vendored, SHA-pinned W3C schema plus an independent
+MusicXML test corpus, pinned by immutable Git blob SHA-1. Compiles XML Schema with lxml/libxml2 and validates real XML
 documents, not a custom handwritten subset. No network resolution is
 permitted while parsing XML or compiling XSDs. This script is not a claim
 that the browser contains a full live XSD validator.
@@ -14,7 +13,6 @@ import hashlib
 import json
 import re
 import sys
-import urllib.request
 from pathlib import Path
 from lxml import etree
 
@@ -50,27 +48,30 @@ def read_manifest() -> dict:
 
 
 def collect_pinned(section: dict, cache: Path, prefix: str, max_bytes: int) -> list[Path]:
+    """Copy vendored, hash-pinned sources into an isolated working cache.
+
+    No CI network dependency or runtime fetch. Official copies remain untouched
+    and retain their original Git blob hashes.
+    """
     cache.mkdir(parents=True, exist_ok=True)
-    downloaded = []
+    subdir = "schema" if prefix == "schema/" else "corpus"
+    pinned = ROOT / "tests" / "musicxml4-official" / subdir
+    copied = []
     for filename, sha in section["files"].items():
-        path = cache / filename
-        if path.exists():
-            content = path.read_bytes()
-            gate(blob_sha1(content) == sha, "Pinned cached file changed: " + filename)
+        original = pinned / filename
+        gate(original.is_file(), "Missing pinned W3C resource: " + filename)
+        content = original.read_bytes()
+        gate(0 < len(content) <= max_bytes, "Pinned W3C file exceeds size bound: " + filename)
+        gate(blob_sha1(content) == sha,
+             "Vendored W3C file hash mismatch: " + filename)
+        destination = cache / filename
+        if destination.exists():
+            gate(destination.read_bytes() == content,
+                 "Prepared schema/corpus cache was altered: " + filename)
         else:
-            url = ("https://raw.githubusercontent.com/" + section["repository"] +
-                   "/" + section["ref"] + "/" + prefix + filename)
-            request = urllib.request.Request(url, headers={"User-Agent": "J-WOO-MusicXML4-CI/1"})
-            with urllib.request.urlopen(request, timeout=30) as response:
-                gate(response.url.startswith("https://raw.githubusercontent.com/"),
-                     "Schema/corpus redirected outside GitHub")
-                content = response.read(max_bytes + 1)
-            gate(0 < len(content) <= max_bytes, "Downloaded file exceeds safe bound: " + filename)
-            gate(blob_sha1(content) == sha,
-                 "W3C source hash mismatch: " + filename + " (refuse unpinned data)")
-            path.write_bytes(content)
-        downloaded.append(path)
-    return downloaded
+            destination.write_bytes(content)
+        copied.append(destination)
+    return copied
 
 
 def xml_parser() -> etree.XMLParser:
@@ -193,6 +194,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, OSError, urllib.error.URLError) as error:
+    except (RuntimeError, OSError) as error:
         print("MUSICXML_XSD_GATE=FAIL " + str(error), file=sys.stderr)
         sys.exit(1)
