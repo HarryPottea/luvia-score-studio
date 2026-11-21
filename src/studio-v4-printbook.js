@@ -7,6 +7,7 @@ import {applyLayoutPreset} from './layout-profile.js';
 import {applyFixedA4Profile,fixedA4Profile} from './a4-engraving.js';
 import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 import {adaptLyricRendering} from './studio-v4-lyric-spacing-audit.js';
+import {adaptExpressionRendering,inspectSvgExpressionSpacing} from './studio-v4-expression-spacing-audit.js';
 import {inspectSvgPageBounds} from './studio-v4-page-bounds.js';
 
 const FORMATS={A4_P:{w:'210mm',h:'297mm'},A4_L:{w:'297mm',h:'210mm'}};
@@ -32,7 +33,7 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
   onProgress=()=>{}}={}){
   if(!FORMATS[pageFormat]||!Array.isArray(parts)||parts.length<1||parts.length>MAX_PARTS)
     throw new Error('벡터 파트보는 A4 규격에서 1~12개 파트까지 출력합니다.');
-  const output=[],lyricAudits=[],boundsAudits=[];
+  const output=[],lyricAudits=[],boundsAudits=[],expressionAudits=[];
   for(const [index,p] of parts.entries()){
     if(!p||typeof p.id!=='string'||!p.id)throw new Error('인쇄 파트를 선택해 주세요.');
     const partDoc=partOnlyDocument(doc,p.id);
@@ -53,7 +54,14 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
       applyFixedA4Profile(osmd,partDoc,pageFormat);
       applyLayoutPreset(osmd,layout,partDoc);
       osmd.render();
+      const expression=await adaptExpressionRendering(osmd,holder,{maxAttempts:2});
       const measured=await adaptLyricRendering(osmd,holder,{maxAttempts:2});
+      const finalExpressions=inspectSvgExpressionSpacing([...holder.querySelectorAll('svg')]);
+      const expressionAudit={...expression,...finalExpressions,partId:p.id};
+      expressionAudits.push(expressionAudit);
+      if(finalExpressions.collisions>0)
+        throw new Error(p.name+' 표현 기호와 음표·가사 간 겹침 '+
+          finalExpressions.collisions+'건이 남아 인쇄를 차단했습니다. 줄 간격이나 페이지를 조절하세요.');
       const lyricAudit={...measured,partId:p.id,expectedLyrics,
         coverageSufficient:measured.lyricElements>=expectedLyrics&&measured.complete&&
           (expectedLyrics===0||measured.measuredNoteheads>0)};
@@ -67,6 +75,9 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
         throw new Error('벡터 파트보는 전체 80페이지까지만 한 번에 인쇄할 수 있습니다.');
       const pageBounds=inspectSvgPageBounds(rendered);
       boundsAudits.push({...pageBounds,partId:p.id});
+      if(pageBounds.overflowPages>0)
+        throw new Error(p.name+' 악보 페이지 바깥의 기보가 '+pageBounds.overflowPages+
+          '페이지에서 검출되어 출력하지 않습니다.');
       for(const svg of rendered){
         inspectPrintableSvg(svg);
         output.push({partName:String(p.name||p.id),partId:p.id,svg:svg.cloneNode(true),lyricAudit});
@@ -77,7 +88,9 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
     }
     const last=lyricAudits.at(-1);
     onProgress((index+1)+'/'+parts.length+' · '+p.name+' 렌더링 완료'+
-      (last?.attempts?' · 간격 자동 보정 '+last.attempts+'회':'')+
+      (last?.attempts?' · 가사 간격 보정 '+last.attempts+'회':'')+
+      (expressionAudits.at(-1)?.attempts?' · 표현 기호 간격 보정 '+
+        expressionAudits.at(-1).attempts+'회':'')+
       (last?.remaining?' · 가사 겹침 의심 '+last.remaining+'건'+
         (last.noteheadCollisions?' (음표와 겹침 '+last.noteheadCollisions+'건)':''):'')+
       (!last?.coverageSufficient?' · 가사 위치 검사 미완료 ('+
@@ -98,6 +111,16 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
     expectedLyrics:lyricAudits.reduce((n,a)=>n+a.expectedLyrics,0),
     measuredLyrics:lyricAudits.reduce((n,a)=>n+a.lyricElements,0),
     collisionFreeCertified:false};
+  output.expressionAudit={
+    parts:expressionAudits.length,
+    initial:expressionAudits.reduce((n,a)=>n+a.initial,0),
+    remaining:expressionAudits.reduce((n,a)=>n+a.collisions,0),
+    attempts:expressionAudits.reduce((n,a)=>n+a.attempts,0),
+    measured:expressionAudits.reduce((n,a)=>n+a.measured,0),
+    unknown:expressionAudits.reduce((n,a)=>n+a.unknown,0),
+    complete:expressionAudits.every(a=>a.complete),
+    collisionFreeCertified:false
+  };
   output.pageBoundsAudit={
     measuredPages:boundsAudits.reduce((n,a)=>n+a.measuredPages,0),
     unknownPages:boundsAudits.reduce((n,a)=>n+a.unknownPages,0),
