@@ -5,7 +5,8 @@ import {graphicalTargets} from './score-hit.js';
 
 const children=(node,name)=>node?[...node.children].filter(child=>child.localName===name):[];
 const first=(node,name)=>children(node,name)[0]||null;
-const limit=40;
+export const symbolOffsetLimit=200;
+const limit=symbolOffsetLimit;
 const valid=n=>Number.isFinite(n)&&Math.abs(n)<=limit&&Math.round(n*2)===n*2;
 const offset=node=>({x:Number(node?.getAttribute('relative-x')||0),y:Number(node?.getAttribute('relative-y')||0)});
 function partAt(doc,id){return children(doc?.documentElement,'part').find(p=>p.getAttribute('id')===id)||null;}
@@ -39,7 +40,7 @@ function target(doc,position,kind){
 }
 export function readSymbolOffset(doc,position,kind){return offset(target(doc,position,kind));}
 export function setSymbolOffset(source,{position,kind,x,y}){
-  if(!valid(x)||!valid(y))throw new Error('가로·세로 이동은 -40~40 사이의 0.5 단위로 입력해 주세요.');
+  if(!valid(x)||!valid(y))throw new Error('가로·세로 이동은 -200~200 사이의 0.5 단위로 입력해 주세요.');
   target(source,position,kind);
   const doc=source.cloneNode(true),node=target(doc,position,kind);
   for(const [name,value] of [['relative-x',x],['relative-y',y]]){

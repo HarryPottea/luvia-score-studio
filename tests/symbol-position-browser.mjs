@@ -59,8 +59,20 @@ try{
   await page.locator('#score-container .vf-keysignature[transform]').first().waitFor();
   assert.match(await page.locator('#score-container .jwoo-rest-target').first()
     .getAttribute('transform'),/^translate\(/);
+  await page.locator('#v4-symbol-drag').check();
+  const rest=page.locator('#score-container .jwoo-rest-target').first();
+  const beforeDrag=await rest.getAttribute('transform');
+  const box=await rest.boundingBox();
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+  await page.mouse.down();
+  await page.mouse.move(box.x+box.width/2+30,box.y+box.height/2+12,{steps:4});
+  assert.notEqual(await rest.evaluate(element=>element.style.translate),'');
+  await page.mouse.up();
+  await page.waitForFunction(previous=>document.querySelector('#score-container .jwoo-rest-target')
+    ?.getAttribute('transform')!==previous,beforeDrag);
+  assert.match(await page.locator('#v4-symbol-status').textContent(),/선택 쉼표 · 가로/);
   assert.deepEqual(errors,[]);
-  console.log('Symbol placement: MusicXML, preview, SVG export, reload passed');
+  console.log('Symbol placement: MusicXML, preview, SVG export, reload, drag passed');
 }finally{
   await browser?.close();
   server.kill('SIGTERM');
