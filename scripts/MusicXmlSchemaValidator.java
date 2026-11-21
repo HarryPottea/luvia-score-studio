@@ -82,10 +82,12 @@ class MusicXmlSchemaValidator {
         // Independent negative controls ensure the schema is actually used.
         File first=Path.of(args[1]).toAbsolutePath().toFile();
         Document broken=parse(first);
-        broken.getDocumentElement().setAttribute("version","broken");
+        org.w3c.dom.Node partList=broken.getElementsByTagName("part-list").item(0);
+        require(partList!=null,"Negative-control score must contain a part-list");
+        partList.getParentNode().removeChild(partList);
         boolean caught=false;
         try {valid(schema,broken);}catch(SAXException error){caught=true;}
-        require(caught,"XSD validator accepted an invalid version");
+        require(caught,"XSD validator accepted a missing required part-list");
         Document unexpected=parse(first);
         Element unknown=unexpected.createElement("not-in-musicxml");
         unexpected.getDocumentElement().insertBefore(unknown,unexpected.getDocumentElement().getFirstChild());
