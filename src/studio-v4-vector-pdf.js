@@ -8,6 +8,7 @@ import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 import {rasterizeUnicodeSvgText} from './studio-v4-unicode-svg.js';
 import {inspectGeneratedPdfObjects} from './studio-v4-pdf-object-audit.js';
 import {readLocalTrueType,prepareFontSvg,registerPdfTrueType,assertEmbeddedFontInPdf} from './studio-v4-local-font.js';
+import {FULL_SCORE_EXPORT_ID} from './studio-v4-pdf-export-plan.js';
 
 const MAX_PAGES=80,MAX_PARTS=12,MAX_FILE_BYTES=24*1024*1024;
 const FORMAT={A4_P:{w:595.2756,h:841.8898,orientation:'p'},
@@ -48,30 +49,45 @@ function nonAsciiText(svg){
   }
   return null;
 }
-export function preflightVectorPartPages(pages,pageFormat='A4_P',{allowUnicodeText=false}={}){
-  if(typeof allowUnicodeText!=='boolean')fail('글꼴 대체 처리 옵션이 올바르지 않습니다.');
+export function preflightVectorPartPages(pages,pageFormat='A4_P',{
+  allowUnicodeText=false,requireFullScore=false
+}={}){
+  if(typeof allowUnicodeText!=='boolean'||typeof requireFullScore!=='boolean')
+    fail('PDF 글꼴 또는 전체 악보 출력 설정이 올바르지 않습니다.');
   if(!FORMAT[pageFormat])fail('벡터 PDF는 A4 세로·가로 규격만 지원합니다.');
   if(!Array.isArray(pages)||pages.length<1||pages.length>MAX_PAGES)
     fail('파트별 PDF 출력은 1~80페이지로 제한합니다.');
   const order=[],groups=new Map();
+  let fullScorePages=0,fullScoreEnded=false;
   for(const page of pages){
     if(!page||typeof page.partId!=='string'||!page.partId||
       typeof page.partName!=='string'||!page.partName)
       fail('파트 ID와 이름을 확인할 수 없습니다.');
+    const isScore=page.partId===FULL_SCORE_EXPORT_ID;
+    if(isScore){
+      if(!requireFullScore||fullScoreEnded||order.length&&order[0]!==FULL_SCORE_EXPORT_ID)
+        fail('전체 악보 PDF는 가장 먼저 연속된 페이지로 작성해야 합니다.');
+      fullScorePages++;
+    }else fullScoreEnded=true;
     inspectPrintableSvg(page.svg);
     const unusual=nonAsciiText(page.svg);
     if(unusual!==null&&!allowUnicodeText)
       fail('이 벡터 PDF ZIP은 한글·특수문자 글꼴을 내장하지 않습니다. 손상 방지를 위해 중단했습니다. 브라우저의 벡터 PDF 인쇄를 사용하거나 하이브리드 텍스트 옵션을 켜세요.');
     if(!groups.has(page.partId)){
-      if(groups.size>=MAX_PARTS)fail('PDF ZIP은 최대 12개 파트까지 지원합니다.');
+      if(groups.size>=(requireFullScore?MAX_PARTS+1:MAX_PARTS))
+        fail('PDF ZIP은 전체 악보와 최대 12개 파트까지 지원합니다.');
       groups.set(page.partId,{name:page.partName,pages:[]});
       order.push(page.partId);
-    }
+    }else if(groups.get(page.partId).name!==page.partName)
+      fail('동일 파트의 이름이 출력 중 변경됐습니다.');
     groups.get(page.partId).pages.push(page.svg);
     if(groups.get(page.partId).pages.length>24)
       fail('개별 악기의 PDF 페이지가 24장을 초과합니다.');
   }
-  return {order,groups,pageFormat,parts:groups.size,pages:pages.length,
+  if(requireFullScore&&(fullScorePages<1||groups.size<2||order[0]!==FULL_SCORE_EXPORT_ID))
+    fail('전체 악보와 개별 파트 PDF가 모두 필요합니다.');
+  return {order,groups,pageFormat,parts:groups.size-(requireFullScore?1:0),
+    pages:pages.length,fullScoreIncluded:requireFullScore,fullScorePages,
     vectorIntent:true,textFontCertified:false,allowUnicodeText};
 }
 function stripEditing(svg){
@@ -92,11 +108,11 @@ function assertPdf(bytes){
 }
 export async function createVectorPartPdfZip({
   pages,filename='score.musicxml',pageFormat='A4_P',allowUnicodeText=false,
-  fontFile=null,onProgress=()=>{}
+  fontFile=null,includeFullScore=false,onProgress=()=>{}
 }={}){
   const localFont=fontFile?await readLocalTrueType(fontFile):null;
   const plan=preflightVectorPartPages(pages,pageFormat,{
-    allowUnicodeText:allowUnicodeText||!!localFont
+    allowUnicodeText:allowUnicodeText||!!localFont,requireFullScore:includeFullScore
   });
   const jsPDF=await loadLibraries();
   const format=FORMAT[pageFormat],zip=new JSZip();
@@ -138,11 +154,13 @@ export async function createVectorPartPdfZip({
     if(partVectorTextCount)assertEmbeddedFontInPdf(buffer);
     bytes+=buffer.byteLength;
     if(bytes>MAX_FILE_BYTES)fail('파트 PDF 총용량이 24MiB를 초과했습니다.');
-    const ordinal=String(index+1).padStart(2,'0');
-    zip.file(ordinal+'-'+safeFileName(part.name,'part-'+ordinal)+'.pdf',buffer);
+    const isScore=id===FULL_SCORE_EXPORT_ID;
+    const ordinal=String(isScore?0:(includeFullScore?index:index+1)).padStart(2,'0');
+    zip.file(isScore?'00-Full-Score.pdf':
+      ordinal+'-'+safeFileName(part.name,'part-'+ordinal)+'.pdf',buffer);
   }
   zip.file('README.txt',
-    'J-WOO part PDFs converted locally from OSMD SVG. No uploads. A4.\n'+
+    'J-WOO '+(includeFullScore?'full score and ':'')+'part PDFs converted locally from OSMD SVG. No uploads. A4.\n'+
     (embeddedVectorTextCount?'EMBEDDED TTF: '+embeddedVectorTextCount+
       ' Unicode text nodes use the locally selected TrueType font. Font licensing and visual quality require review.\n':
       hybridTextCount?'HYBRID: '+hybridTextCount+
@@ -152,8 +170,10 @@ export async function createVectorPartPdfZip({
     'For entirely native text/print fonts, use the browser vector PDF print option.\n');
   const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',
     compressionOptions:{level:5}});
-  return {blob,filename:baseScoreName(filename)+'-vector-part-pdfs.zip',
-    parts:plan.parts,pages:plan.pages,vectorStaffIntended:true,
+  return {blob,filename:baseScoreName(filename)+(includeFullScore?
+      '-full-score-and-parts-pdfs.zip':'-vector-part-pdfs.zip'),
+    parts:plan.parts,pages:plan.pages,fullScoreIncluded:plan.fullScoreIncluded,
+    fullScorePages:plan.fullScorePages,vectorStaffIntended:true,
     hybridTextCount,embeddedVectorTextCount,
     vectorFontEmbedded:embeddedVectorTextCount>0,glyphVerificationRequired:true,
     unicodeExportSupported:hybridTextCount>0||embeddedVectorTextCount>0};
