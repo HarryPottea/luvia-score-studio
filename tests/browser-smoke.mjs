@@ -2821,6 +2821,165 @@ try {
   assert.equal(stage6Schema.status,'PASS_MUSICXML4_INDEPENDENT_XSD');
   console.log('BROWSER_STAGE=STAGE6_SEVEN_REAL_EXPORTS_INDEPENDENT_W3C_XSD_PASS');
 
+
+  // Stage 7 final acceptance: a single composer session that spans authoring,
+  // lyric/expression edits, undo/redo, explicit recovery, browser restart,
+  // tamper-resistant project archive, musicxml XSD and vector score/part PDF.
+  await page.locator('#file-input').setInputFiles({
+    name:'stage7-integrated.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',
+    buffer:Buffer.from(stage5English)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-articulation-kind','accent');
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  await page.fill('#v4-lyric-verse','2');
+  await page.fill('#v4-lyric-text','Together');
+  await page.click('#v4-lyric-set');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('가사 입력·교체 완료'),null,{timeout:30000});
+  const stage7EditDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage7Edited=await fs.readFile(await (await stage7EditDownload).path(),'utf8');
+  assert.match(stage7Edited,/<articulations><accent\s*\/><\/articulations>/);
+  assert.match(stage7Edited,/<lyric number="2">[\s\S]*?<text>Together<\/text>/);
+  assert.match(stage7Edited,/<text>Verse<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const stage7UndoDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage7UndoXml=await fs.readFile(await (await stage7UndoDownload).path(),'utf8');
+  assert.doesNotMatch(stage7UndoXml,/<lyric number="2">[\s\S]*?<text>Together<\/text>/);
+  assert.match(stage7UndoXml,/<articulations><accent\s*\/><\/articulations>/);
+  await page.click('#v3-redo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('다시 실행 완료'),
+    null,{timeout:30000});
+  const stage7RedoDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(await fs.readFile(await (await stage7RedoDownload).path(),'utf8'),stage7Edited,
+    'Undo/Redo must be a lossless XML roundtrip');
+  console.log('BROWSER_STAGE=STAGE7_EDIT_LYRICS_EXPRESSION_UNDO_REDO');
+
+  await page.fill('#v4-checkpoint-label','7단계 최종 통합 작업');
+  await page.click('#v4-checkpoint-save');
+  await page.waitForFunction(()=>document.querySelector('#v4-checkpoint-status')?.textContent?.includes('복원 시점 저장 완료'),
+    null,{timeout:30000});
+  const stage7RecoveryId=await page.locator('#v4-checkpoint-select').inputValue();
+  assert.match(stage7RecoveryId,/^[\w-]{20,}$/);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(id=>[...document.querySelectorAll('#v4-checkpoint-select option')]
+    .some(o=>o.value===id),stage7RecoveryId,{timeout:30000});
+  await page.locator('#v4-checkpoint-select').selectOption(stage7RecoveryId);
+  await page.click('#v4-checkpoint-restore');
+  await page.waitForFunction(()=>document.querySelector('#v4-checkpoint-status')?.textContent?.includes('복원 완료'),
+    null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  const stage7RecoveredEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(await fs.readFile(await (await stage7RecoveredEvent).path(),'utf8'),stage7Edited,
+    'Restarted browser must restore every edit from the explicit SHA-256 checkpoint');
+  assert.equal(await page.locator('#v3-undo').isDisabled(),true,
+    'Session restart must not reuse unrelated in-memory undo history');
+  console.log('BROWSER_STAGE=STAGE7_BROWSER_RELOAD_SHA256_CHECKPOINT_RECOVERY');
+
+  const stage7ArchiveEvent=page.waitForEvent('download',{timeout:30000});
+  await page.click('#v4-project-export');
+  const stage7ArchiveBytes=await fs.readFile(await (await stage7ArchiveEvent).path());
+  const stage7Archive=await JSZip.loadAsync(stage7ArchiveBytes,{checkCRC32:true});
+  const stage7Manifest=JSON.parse(await stage7Archive.file('manifest.json').async('string'));
+  assert.equal(stage7Manifest.format,'J-WOO-PROJECT');
+  assert.equal(stage7Manifest.current.filename,'stage7-integrated.musicxml');
+  assert.equal(stage7Manifest.versions.length>=1,true);
+  assert.equal(await stage7Archive.file('score.musicxml').async('string'),stage7Edited);
+  const stage7Corrupted=await JSZip.loadAsync(stage7ArchiveBytes);
+  stage7Corrupted.file('score.musicxml',stage7Edited.replace('Together','Wrong text'));
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-project-file').setInputFiles({
+    name:'stage7-corrupted.jwoo',mimeType:'application/zip',
+    buffer:await stage7Corrupted.generateAsync({type:'nodebuffer'})
+  });
+  await page.waitForFunction(()=>document.querySelector('#v4-project-status')?.textContent
+    ?.includes('프로젝트 복원 차단'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-project-status').textContent(),/SHA-256|해시/);
+  const stage7TamperCheck=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(await fs.readFile(await (await stage7TamperCheck).path(),'utf8'),stage7Edited,
+    'Rejected tampered project must never overwrite the current unsaved score');
+  console.log('BROWSER_STAGE=STAGE7_TAMPERED_PROJECT_REJECTED_WITHOUT_DATA_LOSS');
+
+  // A well-formed but structurally non-renderable MusicXML should be
+  // transactional: preserve the score and the existing history.
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-articulation-kind','tenuto');
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  const stage7BeforeBadImport=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage7PreFailureXml=await fs.readFile(await (await stage7BeforeBadImport).path(),'utf8');
+  assert.equal(await page.locator('#v3-undo').isEnabled(),true);
+  const stage7BrokenXml='<?xml version="1.0"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Broken</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><note><pitch><step>Q</step><octave>4</octave></pitch>'+
+    '<duration>192</duration><type>whole</type></note></measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({
+    name:'broken-render.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',
+    buffer:Buffer.from(stage7BrokenXml)
+  });
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('기존 작업 보존'),null,{timeout:30000});
+  assert.equal(await page.locator('#v3-undo').isEnabled(),true,
+    'Rejecting render failure must preserve the previous edit history');
+  const stage7RejectedEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(await fs.readFile(await (await stage7RejectedEvent).path(),'utf8'),stage7PreFailureXml,
+    'Failed render must roll back to the exact previous score');
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('되돌리기 완료'),null,{timeout:30000});
+  const stage7UnwoundEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(await fs.readFile(await (await stage7UnwoundEvent).path(),'utf8'),stage7Edited,
+    'Undo after rejected import must still return to the pre-import checkpoint');
+  console.log('BROWSER_STAGE=STAGE7_FAILED_RENDER_IMPORT_PRESERVES_EDIT_HISTORY');
+
+  await page.locator('#v4-project-file').setInputFiles({
+    name:'stage7-recovery.jwoo',mimeType:'application/zip',buffer:stage7ArchiveBytes
+  });
+  page.once('dialog',dialog=>dialog.accept());
+  await page.waitForFunction(()=>document.querySelector('#v4-project-status')?.textContent
+    ?.includes('검증된 프로젝트 복원 완료'),null,{timeout:30000});
+  const stage7ValidImportEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(await fs.readFile(await (await stage7ValidImportEvent).path(),'utf8'),stage7Edited);
+  console.log('BROWSER_STAGE=STAGE7_PORTABLE_PROJECT_REIMPORT_EXACT_SCORE_RESTORED');
+
+  // The very same restored score must pass independent MusicXML 4.0 XSD and
+  // export full score + all parts as genuine A4 vector PDF, without raster staff.
+  await fs.writeFile(stage6Dir+'/stage7-integrated-recovery.musicxml',stage7Edited,'utf8');
+  const stage7Xsd=await validateMusicXml4Files([stage6Dir+'/stage7-integrated-recovery.musicxml']);
+  assert.equal(stage7Xsd.status,'PASS_MUSICXML4_INDEPENDENT_XSD');
+  await page.locator('#v4-pdf-local-font').setInputFiles([]);
+  await page.uncheck('#v4-pdf-unicode-raster');
+  const stage7PdfEvent=page.waitForEvent('download',{timeout:120000});
+  await page.click('#v4-score-parts-pdf-zip');
+  const stage7Pdf=(await stage7PdfEvent).path();
+  const stage7PdfZip=await JSZip.loadAsync(await fs.readFile(await stage7Pdf));
+  const stage7PdfNames=Object.keys(stage7PdfZip.files)
+    .filter(x=>x.endsWith('.pdf')).sort();
+  assert.deepEqual(stage7PdfNames,['00-Full-Score.pdf','01-Vocal.pdf','02-Piano.pdf']);
+  for(const filename of stage7PdfNames){
+    const pdf=await stage7PdfZip.file(filename).async('nodebuffer');
+    assertStage5A4(pdf,595.2756,841.8898,filename);
+    assert.doesNotMatch(pdf.toString('latin1'),/\/Subtype\s*\/Image\b/);
+  }
+  console.log('BROWSER_STAGE=STAGE7_RESTORED_SCORE_XSD_AND_FULL_PART_VECTOR_PDF_PASS');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
