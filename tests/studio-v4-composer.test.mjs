@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setNoteVerse,toggleSoundingTie} from '../src/studio-v4-composer.js';
+import {toggleSlur} from '../src/studio-v4-professional.js';
+import {toggleAdvancedArticulation} from '../src/studio-v4-articulations.js';
+import {toggleMusicXmlOrnament} from '../src/studio-v4-ornaments.js';
+import {insertGraceNote,editGraceNote,removeGraceNote} from '../src/studio-v4-grace-notes.js';
+import {assertNotationMutation,insertOrderedNotation} from '../src/studio-v4-notation-guard.js';
+import {applyBatchLyrics,planBatchLyrics} from '../src/studio-v4-lyrics-batch.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from '../src/studio-v4-meter.js';
 class E {
   constructor(localName,attrs={},children=[],raw=''){
@@ -27,6 +33,12 @@ class E {
   removeChild(child){
     const index=this.children.indexOf(child);if(index<0)throw Error('Detached child');
     this.children.splice(index,1);child.parentNode=null;return child;
+  }
+  replaceChild(next,previous){
+    const at=this.children.indexOf(previous);if(at<0)throw Error('Detached child');
+    if(next.parentNode)next.parentNode.removeChild(next);
+    this.children[at]=next;next.parentNode=this;next.assignDocument(this.ownerDocument);
+    previous.parentNode=null;return previous;
   }
   cloneNode(deep){return new E(this.localName,this.map,deep?this.children.map(x=>x.cloneNode(true)):[],this.raw);}
 }
@@ -167,4 +179,135 @@ test('composer: meter change refuses already-written score and unsupported meter
   const src=score();
   assert.throws(()=>setMeterForEmptyTail(src,{measureIndex:1,beats:3,beatType:4}),/자동 박자 변경/);
   assert.throws(()=>setMeterForEmptyTail(src,{measureIndex:0,beats:5,beatType:8}),/2\/4/);
+});
+
+test('stage3: complex symbol stack permits independent edits around two Korean lyric verses and sounding tie',()=>{
+  const original=score(),saved=serializer(original);
+  const firstPos={partId:'P1',measureIndex:0,eventIndex:1};
+  const pair={...firstPos,endEventIndex:2};
+  let output=setNoteVerse(original,{...firstPos,verse:1,text:'함께'}).doc;
+  output=setNoteVerse(output,{...firstPos,verse:2,text:'Together'}).doc;
+  output=toggleAdvancedArticulation(output,{...firstPos,kind:'accent'}).doc;
+  output=toggleMusicXmlOrnament(output,{...firstPos,kind:'trill-mark'}).doc;
+  output=toggleSlur(output,pair).doc;
+  output=toggleSoundingTie(output,pair).doc;
+  const enriched=serializer(output),n=note(output,1);
+  assert.equal(serializer(original),saved,'source must remain untouched');
+  assert.deepEqual(gets(get(n,'notations'),'tied').map(x=>x.getAttribute('type')),['start']);
+  assert.deepEqual(get(n,'notations').children.map(x=>x.localName),
+    ['tied','slur','ornaments','articulations']);
+  assert.equal(get(get(n,'notations'),'ornaments').children[0].localName,'trill-mark');
+  assert.equal(get(get(n,'notations'),'articulations').children[0].localName,'accent');
+  assert.deepEqual(gets(n,'lyric').map(l=>get(l,'text').textContent),['함께','Together']);
+
+  // Removing each independent symbol must preserve the entire neighboring stack.
+  const removedAccent=toggleAdvancedArticulation(output,{...firstPos,kind:'accent'}).doc;
+  assert.equal(get(get(note(removedAccent,1),'notations'),'articulations'),undefined);
+  assert.ok(get(get(note(removedAccent,1),'notations'),'ornaments'));
+  assert.equal(get(note(removedAccent,1),'tie').getAttribute('type'),'start');
+  assert.deepEqual(gets(note(removedAccent,1),'lyric').map(l=>get(l,'text').textContent),
+    ['함께','Together']);
+  const restoredAccent=toggleAdvancedArticulation(removedAccent,{...firstPos,kind:'accent'}).doc;
+  assert.equal(serializer(restoredAccent),enriched,'toggle off and back must be byte-structure reversible');
+
+  const removedTrill=toggleMusicXmlOrnament(output,{...firstPos,kind:'trill-mark'}).doc;
+  assert.equal(get(get(note(removedTrill,1),'notations'),'ornaments'),undefined);
+  assert.ok(get(get(note(removedTrill,1),'notations'),'articulations'));
+  assert.ok(get(get(note(removedTrill,1),'notations'),'slur'));
+  assert.ok(get(get(note(removedTrill,1),'notations'),'tied'));
+  assert.equal(serializer(toggleMusicXmlOrnament(removedTrill,
+    {...firstPos,kind:'trill-mark'}).doc),enriched);
+
+  const changedLyric=setNoteVerse(output,{...firstPos,verse:1,text:'우리'}).doc;
+  assert.deepEqual(gets(note(changedLyric,1),'lyric').map(l=>get(l,'text').textContent),
+    ['우리','Together']);
+  assert.deepEqual(get(note(changedLyric,1),'notations').children.map(x=>x.localName),
+    ['tied','slur','ornaments','articulations']);
+  assert.equal(serializer(setNoteVerse(changedLyric,{...firstPos,verse:1,text:'함께'}).doc),enriched);
+  const withoutVerse1=setNoteVerse(output,{...firstPos,verse:1,mode:'remove'}).doc;
+  assert.equal(gets(note(withoutVerse1,1),'lyric').length,1);
+  assert.equal(get(gets(note(withoutVerse1,1),'lyric')[0],'text').textContent,'Together');
+
+  const untied=toggleSoundingTie(output,pair).doc;
+  assert.equal(get(note(untied,1),'tie'),undefined);
+  assert.deepEqual(get(note(untied,1),'notations').children.map(x=>x.localName),
+    ['slur','ornaments','articulations']);
+  assert.equal(serializer(toggleSoundingTie(untied,pair).doc),enriched);
+  const unslurred=toggleSlur(output,pair).doc;
+  assert.deepEqual(get(note(unslurred,1),'notations').children.map(x=>x.localName),
+    ['tied','ornaments','articulations']);
+  assert.equal(serializer(toggleSlur(unslurred,pair).doc),enriched);
+});
+test('stage3: grace insert/edit/remove does not modify tied lyrics or stacked expressions',()=>{
+  let output=score();
+  const args={partId:'P1',measureIndex:0,eventIndex:1};
+  output=setNoteVerse(output,{...args,verse:1,text:'반짝'}).doc;
+  output=toggleMusicXmlOrnament(output,{...args,kind:'turn'}).doc;
+  output=toggleAdvancedArticulation(output,{...args,kind:'tenuto'}).doc;
+  output=toggleSlur(output,{...args,endEventIndex:2}).doc;
+  output=toggleSoundingTie(output,{...args,endEventIndex:2}).doc;
+  const original=serializer(output);
+  const withGrace=insertGraceNote(output,{...args,step:'F',octave:4,type:'eighth',slash:true}).doc;
+  const main=note(withGrace,2);
+  assert.equal(get(gets(main,'lyric')[0],'text').textContent,'반짝');
+  assert.deepEqual(get(main,'notations').children.map(x=>x.localName),
+    ['tied','slur','ornaments','articulations']);
+  const updated=editGraceNote(withGrace,{...args,step:'A',octave:4,slash:false,type:'16th'}).doc;
+  assert.equal(get(get(note(updated,1),'pitch'),'step').textContent,'A');
+  assert.equal(get(note(updated,1),'duration'),undefined,'grace remains zero-time');
+  assert.equal(get(gets(note(updated,2),'lyric')[0],'text').textContent,'반짝');
+  const restored=removeGraceNote(updated,args).doc;
+  assert.equal(serializer(restored),original,'ordinary note and entire expression stack unchanged');
+});
+test('stage3: notation isolation rejects unintended edits to adjacent note, lyric or other part',()=>{
+  const original=score();
+  const loc={partId:'P1',measureIndex:0,eventIndex:1,
+    targets:[{measureIndex:0,eventIndex:1,
+      allowed:[{name:'articulations',kind:'accent'}]}]};
+  const proper=toggleAdvancedArticulation(original,{partId:'P1',measureIndex:0,
+    eventIndex:1,kind:'accent'}).doc;
+  assert.equal(assertNotationMutation(original,proper,loc),true);
+  const bad=proper.cloneNode(true);
+  get(get(note(bad,2),'pitch'),'step').textContent='D';
+  assert.throws(()=>assertNotationMutation(original,bad,loc),/허용한 표현/);
+  const badLyric=proper.cloneNode(true);
+  const lyric=el('lyric',[text('text','유출')],{number:'1'});
+  note(badLyric,2).appendChild(lyric);
+  assert.throws(()=>assertNotationMutation(original,badLyric,loc),/허용한 표현/);
+});
+test('stage3: invalid preexisting notation order is safely blocked, never auto-rewritten',()=>{
+  const original=score(),target=note(original,1);
+  const notation=el('notations',[
+    el('articulations',[el('accent')]),el('slur',[],{number:'1',type:'start'})
+  ]);
+  target.appendChild(notation);
+  const before=serializer(original);
+  assert.throws(()=>toggleMusicXmlOrnament(original,{partId:'P1',
+    measureIndex:0,eventIndex:1,kind:'trill-mark'}),/순서/);
+  assert.equal(serializer(original),before);
+});
+
+test('stage3: smart multi-verse lyrics skip tied continuation and preserve mixed expressions',()=>{
+  const original=score(),pos={partId:'P1',measureIndex:0,eventIndex:1};
+  let result=toggleSoundingTie(original,{...pos,endEventIndex:2}).doc;
+  result=toggleSlur(result,{...pos,endEventIndex:2}).doc;
+  result=toggleMusicXmlOrnament(result,{...pos,kind:'mordent'}).doc;
+  result=toggleAdvancedArticulation(result,{...pos,kind:'tenuto'}).doc;
+  result=setNoteVerse(result,{...pos,verse:1,text:'함께'}).doc;
+  const before=serializer(result);
+  const plan=planBatchLyrics(result,{...pos,verse:2,text:'우리 함께'});
+  assert.equal(plan.syllables,4);
+  assert.equal(plan.skippedTies,1,'a sounding tied continuation is not another lyric slot');
+  assert.equal(plan.assignments[0].eventIndex,1);
+  assert.equal(plan.assignments[1].eventIndex,3);
+  assert.equal(plan.assignments[2].measureIndex,1);
+  const applied=applyBatchLyrics(result,{...pos,verse:2,text:'우리 함께'}).doc;
+  assert.equal(serializer(result),before);
+  assert.deepEqual(get(note(applied,1),'notations').children.map(x=>x.localName),
+    ['tied','slur','ornaments','articulations']);
+  assert.equal(gets(note(applied,1),'lyric').length,2);
+  assert.equal(get(gets(note(applied,1),'lyric')[0],'text').textContent,'함께');
+  assert.equal(get(gets(note(applied,1),'lyric')[1],'text').textContent,'우');
+  assert.equal(gets(note(applied,2),'lyric').length,0,'second tied note remains lyric-free');
+  assert.equal(get(note(applied,2),'tie').getAttribute('type'),'stop');
 });

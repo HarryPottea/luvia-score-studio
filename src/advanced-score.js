@@ -68,12 +68,18 @@ function inspectPartMeasure(part,index) {
     }
     if(kind!=='note')continue;
     const isChord=!!direct(node,'chord');
-    const duration=integer(value(node,'duration'));
+    const isGrace=!!direct(node,'grace');
+    const duration=isGrace?0:integer(value(node,'duration'));
     const voice=value(node,'voice')||'1',staff=value(node,'staff')||'1';
     const rest=!!direct(node,'rest'), pitch=direct(node,'pitch');
     const tuplet=!!direct(node,'time-modification');
     const startsAt=isChord?previousOnset:cursor;
-    if(!duration||duration<=0||startsAt===null||startsAt<0||startsAt+duration>max)reason='음표 또는 화음의 시간 길이가 올바르지 않습니다.';
+    if((!isGrace&&(!duration||duration<=0))||startsAt===null||
+       startsAt<0||startsAt+duration>max)
+      reason='음표 또는 화음의 시간 길이가 올바르지 않습니다.';
+    if(isGrace&&(isChord||direct(node,'duration')||all(node,'grace').length!==1||
+       !direct(node,'pitch')||direct(node,'rest')||!direct(node,'type')))
+      reason='꾸밈음은 음정이 있고 박자를 소비하지 않는 독립 음표여야 합니다.';
     if(isChord&&(voice!==previousVoice||staff!==previousStaff))reason='화음에 서로 다른 성부나 보표가 섞여 있습니다.';
     if(tuplet&&allowedTuplet(node))reason=allowedTuplet(node);
     if(!rest&&!pitch)reason='음표 음정 정보가 누락되었습니다.';
@@ -92,11 +98,13 @@ function inspectPartMeasure(part,index) {
       protectedMarkup};
     events.push(event);
     if(!isChord) {
-      if(!lanes.has(lane))lanes.set(lane,[]);
-      lanes.get(lane).push({start:startsAt,end:startsAt+(duration||0)});
-      cursor+=(duration||0);
-      previousOnset=startsAt;
-      previousVoice=voice;previousStaff=staff;
+      if(!isGrace){
+        if(!lanes.has(lane))lanes.set(lane,[]);
+        lanes.get(lane).push({start:startsAt,end:startsAt+(duration||0)});
+        cursor+=(duration||0);
+        previousOnset=startsAt;
+        previousVoice=voice;previousStaff=staff;
+      }else previousOnset=null;
     }
     else {
       const found=events.slice(0,-1).reverse().find(e=>!e.chord&&e.start===startsAt&&e.voice===voice&&e.staff===staff);
@@ -167,8 +175,28 @@ function createChordTone(measure,anchor,step,alter,octave){
   measure.insertBefore(newNote,last.nextSibling);
 }
 function deleteChordTone(measure,selected){
-  if(!direct(selected,'chord'))deny('화음의 보조 음표만 개별 삭제할 수 있습니다.');
-  if([ ...selected.children ].some(el=>['tie','notations','lyric','grace','cue'].includes(el.localName)))deny('중요 기보가 포함된 화음 음표는 삭제하지 않습니다.');
+  const notes=all(measure,'note'),at=notes.indexOf(selected);
+  if(at<0)deny('선택한 화음 음표를 찾지 못했습니다.');
+  if(direct(selected,'chord')){
+    if([...selected.children].some(el=>['tie','notations','lyric','grace','cue'].includes(el.localName)))
+      deny('중요 기보가 포함된 화음 음표는 삭제하지 않습니다.');
+    measure.removeChild(selected);return;
+  }
+  // When removing the root of a chord, promote the first following chord tone.
+  // The new root keeps the same onset, duration, voice and staff. Preserve any
+  // Korean or multi-verse lyrics on the original attack; never silently discard.
+  const successor=notes[at+1];
+  if(!successor||!direct(successor,'chord'))
+    deny('화음의 기준 음표가 아닙니다.');
+  const safeRoot=new Set(['pitch','duration','voice','type','dot','staff','lyric']);
+  if(selected.attributes?.length||[...selected.children].some(el=>!safeRoot.has(el.localName))||
+     [...successor.children].some(el=>['grace','cue','tie','notations','lyric'].includes(el.localName)))
+    deny('연결·장식·가사가 겹치는 화음은 보호합니다.');
+  const originals=all(selected,'lyric');
+  if(originals.length>12)deny('가사 절이 너무 많아 보존할 수 없습니다.');
+  const chord=direct(successor,'chord');
+  successor.removeChild(chord);
+  for(const lyric of originals)successor.appendChild(lyric.cloneNode(true));
   measure.removeChild(selected);
 }
 export function editAdvancedScore(source,operation){
@@ -190,7 +218,7 @@ export function editAdvancedScore(source,operation){
     if(event.chord||!event.editableChordTone)deny('화음의 기준 음표를 선택해 주세요.');
     createChordTone(measure,note,step,alter,octave);
   }else{
-    if(!event.chord||!event.editableChordTone)deny('화음의 보조 음표만 삭제할 수 있습니다.');
+    if(!event.editableChordTone)deny('화음의 음표를 삭제할 수 없는 보호된 기보입니다.');
     deleteChordTone(measure,note);
   }
   const post=inspectPartMeasure(part,measureIndex);

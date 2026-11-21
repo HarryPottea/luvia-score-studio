@@ -6,6 +6,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import fs from 'node:fs/promises';
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
+import {validateMusicXml4Files} from './musicxml4-validator.mjs';
 
 const url = 'http://127.0.0.1:4173/';
 const output = 'artifacts/browser-smoke';
@@ -113,6 +114,23 @@ try {
   assert.equal(await page.locator('#score-title').inputValue(),originalTitle,
     'Toggling settings must preserve edited score state');
   console.log('BROWSER_STAGE=SETTINGS_TOGGLE_DOES_NOT_REPLACE_SCORE');
+  const directRestDiagnostic=await page.evaluate(()=>({
+    mappedRests:document.querySelectorAll('#score-container .jwoo-rest-target').length,
+    noteheads:document.querySelectorAll('#score-container .vf-notehead').length,
+    stavenotes:document.querySelectorAll('#score-container .vf-stavenote').length,
+    vfRests:document.querySelectorAll('#score-container .vf-rest').length,
+    graphicHint:document.querySelector('#v3-graphic-hint')?.textContent,
+    example:[...document.querySelectorAll('#score-container .vf-stavenote')].slice(0,2)
+      .map(x=>x.outerHTML.slice(0,650))
+  }));
+  console.log('BROWSER_STAGE=V4_REST_MAP_DIAGNOSTIC',JSON.stringify(directRestDiagnostic));
+  await page.waitForFunction(()=>document.querySelectorAll('#score-container .jwoo-rest-target').length>0,
+    null,{timeout:15000});
+  const restHead=page.locator('#score-container .jwoo-rest-target').first();
+  const restBounds=await restHead.boundingBox();
+  assert.ok(restBounds?.width>0&&restBounds?.height>0,'SVG rest lacks clickable bounds');
+  await restHead.click();
+  console.log('BROWSER_STAGE=V4_CLICK_DIRECTLY_ON_NOTATED_REST');
   await page.selectOption('#v3-length','quarter');
   await page.click('#v4-insert-note');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('음표 삽입 완료'));
@@ -446,7 +464,10 @@ try {
     mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(polyphonicRhythm)});
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'));
   await page.locator('#v3-events .v3-event').first().click();
-  assert.equal(await page.locator('#v3-length').isDisabled(),true,'Legacy input is locked for polyphonic notation');
+  assert.equal(await page.locator('#v3-duration').isDisabled(),true,
+    'Legacy simple duration operation is protected for polyphony');
+  assert.equal(await page.locator('#v3-pitch').isEnabled(),true,
+    'Stage1 graphical pitch editing is enabled for supported polyphonic notes');
   await page.selectOption('#v4-pro-type','half');
   await page.click('#v4-pro-duration');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부별 음표 길이 변경 완료'));
@@ -698,7 +719,10 @@ try {
   await page.selectOption('#v3-part','P2');
   assert.equal(await page.locator('#v3-events .v3-event').count(),2);
   await page.locator('#v3-events .v3-event').nth(1).click();
-  assert.equal(await page.locator('#v3-length').isDisabled(),true);
+  assert.equal(await page.locator('#v3-pitch').isEnabled(),true,
+    'Stage1 enables direct rest insertion for a valid grand-staff voice');
+  assert.equal(await page.locator('#v3-duration').isDisabled(),true,
+    'Legacy single-voice duration change remains blocked for grand staff');
   await page.selectOption('#v4-pro-step','A');
   await page.selectOption('#v4-pro-octave','3');
   await page.selectOption('#v4-pro-type','quarter');
@@ -1375,6 +1399,47 @@ try {
   assert.match(await page.locator('#score-info').textContent(),/3개 마디/);
   console.log('BROWSER_STAGE=V4_WRITTEN_NOTES_REBARRED_INTO_3_4');
 
+  const chordRebarScore='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list><score-part id="P1">'+
+    '<part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><time><beats>4</beats>'+
+    '<beat-type>4</beat-type></time><clef><sign>G</sign>'+
+    '<line>2</line></clef></attributes>'+
+    ['C','E','G'].map((step,i)=>'<note>'+
+      (i?'<chord/>':'')+'<pitch><step>'+step+
+      '</step><octave>4</octave></pitch><duration>192</duration>'+
+      '<type>whole</type>'+
+      (!i?'<lyric number="1"><text>반짝이는</text></lyric>':'')+
+      '</note>').join('')+
+    '</measure><measure number="2">'+
+    ['D','F'].map((step,i)=>'<note>'+(i?'<chord/>':'')+
+      '<pitch><step>'+step+'</step><octave>4</octave></pitch>'+
+      '<duration>48</duration><type>quarter</type></note>').join('')+
+    '<note><rest/><duration>96</duration><type>half</type></note>'+
+    '<note><rest/><duration>48</duration><type>quarter</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'chord-rebar.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(chordRebarScore)});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'),
+    null,{timeout:30000});
+  await page.selectOption('#v4-rebar-meter','3/4');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-rebar-written');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('작성된 악보 전체 리바링 완료'),
+    null,{timeout:30000});
+  const chordRebarDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const chordRebarXml=await fs.readFile(await (await chordRebarDownload).path(),'utf8');
+  assert.equal((chordRebarXml.match(/<measure number="/g)||[]).length,3);
+  assert.equal((chordRebarXml.match(/<chord\s*\/>/g)||[]).length,5);
+  assert.equal((chordRebarXml.match(/<tie type="start"\s*\/>/g)||[]).length,3);
+  assert.equal((chordRebarXml.match(/<tie type="stop"\s*\/>/g)||[]).length,3);
+  assert.match(chordRebarXml,/<text>반짝이는<\/text>/);
+  assert.match(chordRebarXml,/<beats>3<\/beats><beat-type>4<\/beat-type>/);
+  console.log('BROWSER_STAGE=V4_SIMULTANEOUS_CHORD_TONES_REBARRED_WITH_INDEPENDENT_TIES');
+
+
   const fiveToFour='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
     '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
     '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
@@ -1409,6 +1474,44 @@ try {
   await page.waitForFunction(()=>document.querySelector('#v4-audit-result')?.textContent?.includes('기본 음악 구조 검사 통과'),null,{timeout:30000});
   assert.match(await page.locator('#v4-audit-result').textContent(),/오류 0건/);
   console.log('BROWSER_STAGE=V4_NEW_TUPLET_MUSIC_XML_STRUCTURAL_AUDIT_CLEAN');
+
+  const tupletTm='<time-modification><actual-notes>3</actual-notes>'+
+    '<normal-notes>2</normal-notes><normal-type>eighth</normal-type></time-modification>';
+  const tupletMixed='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list><score-part id="P1">'+
+    '<part-name>Vocal</part-name></score-part></part-list><part id="P1">'+
+    '<measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>16</duration>'+
+    '<type>eighth</type>'+tupletTm+
+    '<notations><tuplet number="1" type="start"/></notations>'+
+    '<lyric number="1"><text>별빛</text></lyric></note>'+
+    '<note><rest/><duration>16</duration><type>eighth</type>'+tupletTm+'</note>'+
+    '<note><pitch><step>D</step><octave>4</octave></pitch><duration>16</duration>'+
+    '<type>eighth</type>'+tupletTm+
+    '<notations><tuplet number="1" type="stop"/></notations></note>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'tuplet-rest.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(tupletMixed)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===4,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.fill('#v4-tuplet-pitches','E4 R G4');
+  await page.click('#v4-tuplet-pitches-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('기존 잇단음 그룹 음정 일괄 수정 완료'),null,{timeout:30000});
+  const mixedExport=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const mixedXml=await fs.readFile(await (await mixedExport).path(),'utf8');
+  assert.match(mixedXml,/<step>E<\/step><octave>4<\/octave>/);
+  assert.match(mixedXml,/<step>G<\/step><octave>4<\/octave>/);
+  assert.equal((mixedXml.match(/<actual-notes>3<\/actual-notes>/g)||[]).length,3);
+  assert.match(mixedXml,/<rest\s*\/><duration>16<\/duration><type>eighth<\/type>/);
+  assert.match(mixedXml,/<text>별빛<\/text>/);
+  console.log('BROWSER_STAGE=V4_MIXED_TUPLET_REST_AND_NOTES_EDIT_WITH_UNCHANGED_RHYTHM');
+
   const fullChord='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
     '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
     '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
@@ -1454,6 +1557,1438 @@ try {
   assert.match(polyRebarText,/<beats>3<\/beats><beat-type>4<\/beat-type>/);
   assert.doesNotMatch(polyRebarText,/<backup><duration>192<\/duration><\/backup>/);
   console.log('BROWSER_STAGE=V4_MULTIVOICE_GRANDSTAFF_WRITTEN_REBAR');
+
+
+  // New J-WOO 4.0 bar-block UI: actual Chromium click/serialize roundtrip.
+  // This synthetic authored score is not real Logic certification.
+  const fourBarScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1">'+['C','D','E','F'].map((step,i)=>
+      '<measure number="'+(i+1)+'">'+(i===0?
+      '<attributes><divisions>48</divisions><key><fifths>0</fifths></key>'+
+      '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+      '<clef><sign>G</sign><line>2</line></clef></attributes>':'')+
+      '<note><pitch><step>'+step+'</step><octave>4</octave></pitch>'+
+      '<duration>192</duration><type>whole</type></note></measure>').join('')+
+    '</part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'jwoo-block-actual-ui.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(fourBarScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
+    null,{timeout:30000});
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip').count(),4);
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
+  await page.locator('#jwoo-measure-toolbar [data-act="copy"]').click();
+  assert.match(await page.locator('#jwoo-block-status').textContent(),/복사했습니다/);
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(3).click();
+  await page.locator('#jwoo-measure-toolbar [data-act="paste"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===5,
+    null,{timeout:30000});
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip').count(),5);
+  console.log('BROWSER_STAGE=V4_DIRECT_MEASURE_COPY_PASTE');
+
+  const partPdfZipDownload=page.waitForEvent('download',{timeout:60000});
+  await page.click('#v4-part-pdf-zip');
+  const pdfZip=await partPdfZipDownload;
+  const vectorPartsZip=await JSZip.loadAsync(await fs.readFile(await pdfZip.path()));
+  const pdfEntries=Object.keys(vectorPartsZip.files).filter(x=>x.endsWith('.pdf'));
+  assert.equal(pdfEntries.length,1);
+  const vectorPartPdfBytes=await vectorPartsZip.file(pdfEntries[0]).async('nodebuffer');
+  assert.equal(vectorPartPdfBytes.subarray(0,5).toString(),'%PDF-');
+  assert.ok(vectorPartPdfBytes.length>1000);
+  assert.match(vectorPartPdfBytes.toString('latin1'),/\/Type\s*\/Page/);
+  await fs.writeFile(output+'/vector-parts-english.pdf',vectorPartPdfBytes);
+  console.log('BROWSER_STAGE=V4_LOCAL_VECTOR_PART_PDF_ZIP');
+
+  await page.locator('#jwoo-measure-toolbar [data-act="duplicate"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===6,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','2');
+  await page.fill('#jwoo-range-to','3');
+  await page.click('#jwoo-range-apply');
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip.is-selected').count(),2);
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#jwoo-measure-toolbar [data-act="delete"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_MEASURE_RANGE_DUPLICATE_DELETE');
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
+  await page.locator('#v4-play-range').click();
+  await page.waitForFunction(()=>document.querySelector('#v4-play-status')?.textContent?.includes('선택 마디'),
+    null,{timeout:15000});
+  await page.waitForFunction(()=>document.querySelector('#v4-playing-measure')?.textContent?.includes('2마디 재생 중'),
+    null,{timeout:15000});
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip.is-playing').count(),1);
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip.is-playing').textContent(),'2');
+  assert.equal(await page.locator('#score-container .jwoo-playback-active').count()>0,true);
+  await page.locator('#v4-stop').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip.is-playing').length===0,
+    null,{timeout:15000});
+  assert.equal(await page.locator('#score-container .jwoo-playback-active').count(),0);
+  console.log('BROWSER_STAGE=V4_SELECTED_MEASURE_AUDITION');
+  const rangeSave=page.waitForEvent('download');
+  await page.locator('#download-xml').click();
+  const rangeXml=await fs.readFile(await (await rangeSave).path(),'utf8');
+  assert.equal((rangeXml.match(/<measure number="/g)||[]).length,4);
+  assert.equal((rangeXml.match(/<part id="P1">/g)||[]).length,1);
+  assert.match(rangeXml,/<step>F<\/step>/);
+  console.log('BROWSER_STAGE=V4_BLOCK_EDIT_MUSIC_XML_SAVE');
+
+  await page.fill('#v4-checkpoint-label','마디 편집 후 기준 시점');
+  await page.click('#v4-checkpoint-save');
+  await page.waitForFunction(()=>document.querySelector('#v4-checkpoint-status')?.textContent?.includes('복원 시점 저장 완료'),
+    null,{timeout:15000});
+  const recoveryId=await page.locator('#v4-checkpoint-select').inputValue();
+  assert.ok(recoveryId.length>12);
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#jwoo-measure-toolbar [data-act="delete"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===3,
+    null,{timeout:30000});
+  await page.locator('#v4-checkpoint-select').selectOption(recoveryId);
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-checkpoint-restore').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
+    null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelector('#v4-checkpoint-status')?.textContent?.includes('복원 완료'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-checkpoint-status').textContent(),/복원 완료/);
+  console.log('BROWSER_STAGE=V4_MANUAL_CHECKPOINT_RESTORE');
+
+  const portableDownload=page.waitForEvent('download',{timeout:30000});
+  await page.click('#v4-project-export');
+  const portablePath=await (await portableDownload).path();
+  const portableFile=await fs.readFile(portablePath);
+  const portableArchive=await JSZip.loadAsync(portableFile,{checkCRC32:true});
+  const portableManifest=JSON.parse(await portableArchive.file('manifest.json').async('string'));
+  assert.equal(portableManifest.format,'J-WOO-PROJECT');
+  assert.equal(portableManifest.version,1);
+  assert.equal(portableManifest.versions.length>=1,true);
+  assert.equal((await portableArchive.file('score.musicxml').async('string')).includes('<score-partwise'),true);
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(0).click();
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#jwoo-measure-toolbar [data-act="delete"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===3,
+    null,{timeout:30000});
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-project-file').setInputFiles({
+    name:'jwoo-recovery.jwoo',mimeType:'application/zip',buffer:portableFile
+  });
+  await page.waitForFunction(()=>document.querySelector('#v4-project-status')?.textContent?.includes('검증된 프로젝트 복원 완료'),
+    null,{timeout:30000});
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip').count(),4);
+  assert.match(await page.locator('#v4-project-status').textContent(),/SHA-256 일치/);
+  console.log('BROWSER_STAGE=V4_PORTABLE_PROJECT_ARCHIVE_RESTORED_WITH_HISTORY');
+
+  await page.selectOption('#v4-add-voice-number','2');
+  await page.selectOption('#v4-add-voice-staff','1');
+  await page.click('#v4-add-voice');
+  await page.waitForFunction(()=>document.querySelector('#v4-add-voice-status')?.textContent?.includes('2성부 생성 완료'),
+    null,{timeout:30000});
+  const voiceDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const voiceXml=await fs.readFile(await (await voiceDownload).path(),'utf8');
+  assert.equal((voiceXml.match(/<voice>2<\/voice>/g)||[]).length,4);
+  assert.equal((voiceXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,4);
+  assert.equal((voiceXml.match(/<rest\s*\/>/g)||[]).length,4);
+  assert.equal((voiceXml.match(/<measure number="/g)||[]).length,4);
+  console.log('BROWSER_STAGE=V4_INDEPENDENT_SECOND_VOICE_CREATED_WITHOUT_TIMING_SHIFT');
+
+
+
+
+
+  const autoLayoutScore='<?xml version="1.0" encoding="utf-8"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1">'+Array.from({length:12},(_,i)=>
+      '<measure number="'+(i+1)+'">'+(i===0?
+      '<attributes><divisions>48</divisions><time><beats>4</beats>'+
+      '<beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>':'')+
+      Array.from({length:4},()=>'<note><pitch><step>C</step><octave>4</octave></pitch>'+
+        '<duration>48</duration><type>quarter</type><lyric number="1"><text>반짝이는</text></lyric></note>').join('')+
+      '</measure>').join('')+'</part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'auto-layout-12bars.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(autoLayoutScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.click('#v4-auto-layout');
+  await page.waitForFunction(()=>document.querySelector('#v4-auto-layout-status')?.textContent?.includes('자동 배치 적용'),
+    null,{timeout:30000});
+  const autoLayoutFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const autoLayoutXml=await fs.readFile(await (await autoLayoutFile).path(),'utf8');
+  assert.equal((autoLayoutXml.match(/<measure number="/g)||[]).length,12);
+  assert.ok(/new-system="yes"|new-page="yes"/.test(autoLayoutXml));
+  assert.equal((autoLayoutXml.match(/<text>반짝이는<\/text>/g)||[]).length,48);
+  console.log('BROWSER_STAGE=V4_DENSITY_AWARE_AUTOMATIC_MUSICXML_LAYOUT');
+
+  // Directly transpose a two-measure Korean-lyric passage in the real editor.
+  await page.fill('#jwoo-range-from','2');
+  await page.fill('#jwoo-range-to','3');
+  await page.click('#jwoo-range-apply');
+  await page.fill('#jwoo-transpose-semitones','2');
+  await page.selectOption('#jwoo-transpose-spelling','sharp');
+  await page.locator('#jwoo-measure-toolbar [data-act="transpose"]').click();
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 구간 +2반음 이조 완료'),
+    null,{timeout:30000});
+  const shiftedPassageFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const shiftedPassage=await fs.readFile(await (await shiftedPassageFile).path(),'utf8');
+  const passageBars=[...shiftedPassage.matchAll(/<measure number="(\d+)"[^>]*>([\s\S]*?)<\/measure>/g)];
+  assert.equal(passageBars.length,12);
+  for(const [,number,content] of passageBars){
+    const expected=Number(number)>=2&&Number(number)<=3?'D':'C';
+    assert.equal((content.match(new RegExp('<step>'+expected+'</step>','g'))||[]).length,4);
+  }
+  assert.equal((shiftedPassage.match(/<text>반짝이는<\/text>/g)||[]).length,48);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const undoPassageFile=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const undoPassage=await fs.readFile(await (await undoPassageFile).path(),'utf8');
+  assert.equal((undoPassage.match(/<step>D<\/step>/g)||[]).length,0);
+  console.log('BROWSER_STAGE=V4_KOREAN_LYRIC_PASSAGE_TRANSPOSE_WITH_UNDO');
+
+
+  await page.click('#v4-part-pdf-zip');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('한글·특수문자'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_UNEMBEDDED_KOREAN_FONT_VECTOR_PDF_BLOCKED_SAFELY');
+
+  await page.check('#v4-pdf-unicode-raster');
+  const hybridPdfDownload=page.waitForEvent('download',{timeout:90000});
+  await page.click('#v4-part-pdf-zip');
+  const hybridZipFile=await hybridPdfDownload;
+  const hybridZip=await JSZip.loadAsync(await fs.readFile(await hybridZipFile.path()));
+  const hybridPdfEntries=Object.keys(hybridZip.files).filter(x=>x.endsWith('.pdf'));
+  assert.equal(hybridPdfEntries.length,1);
+  const hybridPdfBytes=await hybridZip.file(hybridPdfEntries[0]).async('nodebuffer');
+  assert.equal(hybridPdfBytes.subarray(0,5).toString(),'%PDF-');
+  assert.match(hybridPdfBytes.toString('latin1'),/\/Subtype\s*\/Image/);
+  await fs.writeFile(output+'/hybrid-parts-korean.pdf',hybridPdfBytes);
+  assert.match(await page.locator('#message').textContent(),/하이브리드/);
+  console.log('BROWSER_STAGE=V4_KOREAN_HYBRID_VECTOR_STAFF_PNG_TEXT_PDF_ZIP');
+
+  const extraScorePart='<part id="P2">'+Array.from({length:12},(_,i)=>
+    '<measure number="'+(i+1)+'">'+(i===0?
+    '<attributes><divisions>48</divisions><time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>F</sign><line>4</line></clef></attributes>':'')+
+    '<note><rest/><duration>192</duration><type>whole</type></note></measure>').join('')+'</part>';
+  const combinedParts=autoLayoutScore.replace(
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>',
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part>'+
+    '<score-part id="P2"><part-name>Piano</part-name></score-part></part-list>')
+    .replace('</score-partwise>',extraScorePart+'</score-partwise>');
+  await page.locator('#file-input').setInputFiles({name:'independent-vocal-piano.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(combinedParts)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.click('#v4-part-layout');
+  await page.waitForFunction(()=>document.querySelector('#v4-part-layout-status')?.textContent?.includes('악기 2파트'),
+    null,{timeout:30000});
+  const independentDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const independentXml=await fs.readFile(await (await independentDownload).path(),'utf8');
+  const p1=independentXml.match(/<part id="P1">([\s\S]*?)<\/part>/)?.[1]||'';
+  const p2=independentXml.match(/<part id="P2">([\s\S]*?)<\/part>/)?.[1]||'';
+  const breakCount=part=>(part.match(/new-system="yes"|new-page="yes"/g)||[]).length;
+  assert.equal((p1.match(/<measure number="/g)||[]).length,12);
+  assert.equal((p2.match(/<measure number="/g)||[]).length,12);
+  assert.ok(breakCount(p1)>breakCount(p2));
+  assert.equal((p1.match(/<text>반짝이는<\/text>/g)||[]).length,48);
+  console.log('BROWSER_STAGE=V4_INDEPENDENT_VOCAL_AND_PIANO_PART_LAYOUT');
+
+
+
+
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
+  await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).focus();
+  assert.equal(await page.locator('#jwoo-bar-strip .jwoo-bar-chip.is-selected').count(),1);
+  await page.keyboard.press('ControlOrMeta+c');
+  await page.waitForFunction(()=>document.querySelector('#jwoo-block-status')?.textContent?.includes('복사했습니다'),null,{timeout:10000});
+  await page.keyboard.press('ControlOrMeta+d');
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===13,null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_KEYBOARD_COPY_DUPLICATE_MEASURE');
+
+  const harmonicScore=fourBarScore.replace(
+    '<measure number="2"><note>',
+    '<measure number="2"><harmony><root><root-step>C</root-step></root>'+
+    '<kind text="maj7">major-seventh</kind>'+
+    '<bass><bass-step>G</bass-step></bass></harmony><note>');
+  await page.locator('#file-input').setInputFiles({name:'harmonic-passage.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(harmonicScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===4,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','2');
+  await page.fill('#jwoo-range-to','2');
+  await page.click('#jwoo-range-apply');
+  await page.fill('#jwoo-transpose-semitones','2');
+  assert.equal(await page.locator('#jwoo-transpose-chords').isChecked(),true);
+  await page.locator('#jwoo-measure-toolbar [data-act="transpose"]').click();
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 구간 +2반음 이조 완료'),
+    null,{timeout:30000});
+  const chordSave=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const movedChordXml=await fs.readFile(await (await chordSave).path(),'utf8');
+  const bar2=movedChordXml.match(/<measure number="2">([\s\S]*?)<\/measure>/)?.[1]||'';
+  assert.match(bar2,/<root-step>D<\/root-step>/);
+  assert.match(bar2,/<bass-step>A<\/bass-step>/);
+  assert.match(bar2,/<step>E<\/step><octave>4<\/octave>/);
+  assert.match(bar2,/<kind text="maj7">major-seventh<\/kind>/);
+  console.log('BROWSER_STAGE=V4_CHORD_AND_NOTE_SEMITONE_TRANSPOSE_TOGETHER');
+
+
+
+
+  // Production bundles do not expose raw /src/*.js modules. Export is already
+  // exercised above; destructive comparisons are covered by the Node suite.
+  assert.match(await page.locator('#message').textContent(),/구조 검증 통과/);
+  console.log('BROWSER_STAGE=V4_MUSICXML_EXPORT_ROUNDTRIP_GUARD');
+
+
+  // Existing-score instrument management (not just a new-score template).
+  await page.fill('#v4-new-title','파트 생성 통합 검증');
+  await page.selectOption('#v4-new-template','melody');
+  await page.selectOption('#v4-new-measures','4');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.click('#v4-new');
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-part option').length===1,
+    null,{timeout:30000});
+  await page.fill('#v4-add-part-name','피아노 양손');
+  await page.selectOption('#v4-add-part-type','piano');
+  await page.click('#v4-add-part');
+  await page.waitForFunction(()=>document.querySelector('#v4-add-part-status')?.textContent?.includes('파트 추가 완료'),
+    null,{timeout:30000});
+  assert.equal(await page.locator('#v3-part option').count(),2);
+  assert.equal(await page.locator('#export-part option').count(),2);
+  assert.equal(await page.locator('#parts-list input[data-part-id="P2"]').count(),1);
+  const newPartXmlEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const newPartXml=await fs.readFile(await (await newPartXmlEvent).path(),'utf8');
+  assert.equal((newPartXml.match(/<part id="P[0-9]+">/g)||[]).length,2);
+  assert.match(newPartXml,/<staves>2<\/staves>/);
+  assert.equal((newPartXml.match(/<backup><duration>192<\/duration><\/backup>/g)||[]).length,4);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-part option').length===1&&
+    document.querySelectorAll('#export-part option').length===1,null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_ADD_PIANO_PART_AND_UNDO_WITH_SELECTOR_SYNC');
+
+
+  // Direct advanced pitch edit of a written+sounding tie across barlines,
+  // including Korean lyrics, slur markup, unrelated same-pitch reattacks and undo.
+  const tiedPitchScore='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list>'+
+    '<score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><key><fifths>0</fifths></key>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>48</duration>'+
+    '<tie type="start"/><type>quarter</type>'+
+    '<notations><tied type="start"/><slur number="1" type="start"/></notations>'+
+    '<lyric number="1"><syllabic>single</syllabic><text>반짝</text></lyric></note></measure>'+
+    '<measure number="2"><note><pitch><step>C</step><octave>4</octave></pitch>'+
+    '<duration>48</duration><tie type="stop"/><type>quarter</type>'+
+    '<notations><tied type="stop"/><slur number="1" type="stop"/></notations></note>'+
+    '<note><rest/><duration>144</duration><type>half</type><dot/></note></measure>'+
+    '<measure number="3"><note><pitch><step>C</step><octave>4</octave></pitch>'+
+    '<duration>192</duration><type>whole</type></note></measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'tied-vocal.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(tiedPitchScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===3,
+    null,{timeout:30000});
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-pro-step','D');
+  await page.selectOption('#v4-pro-octave','4');
+  await page.selectOption('#v4-pro-alter','0');
+  await page.click('#v4-connected-pitch');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('붙임줄 연결 음표 전체 음정 변경 완료'),
+    null,{timeout:30000});
+  const tiedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const tiedXml=await fs.readFile(await (await tiedDownload).path(),'utf8');
+  const tiedBars=[...tiedXml.matchAll(/<measure number="(\d+)"[^>]*>([\s\S]*?)<\/measure>/g)];
+  assert.equal(tiedBars.length,3);
+  assert.match(tiedBars[0][2],/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(tiedBars[1][2],/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(tiedBars[2][2],/<step>C<\/step><octave>4<\/octave>/);
+  assert.match(tiedBars[0][2],/<text>반짝<\/text>/);
+  assert.match(tiedBars[0][2],/<tied type="start"/);
+  assert.match(tiedBars[1][2],/<tied type="stop"/);
+  assert.match(tiedBars[0][2],/<slur number="1" type="start"/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_CROSSBAR_TIE_CHAIN_PITCH_CHANGE_AND_UNDO');
+
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-articulation-kind','accent');
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  const articulationEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const tiedNoteArticulationXml=await fs.readFile(await (await articulationEvent).path(),'utf8');
+  assert.match(tiedNoteArticulationXml,/<notations><tied type="start"\s*\/><slur number="1" type="start"\s*\/><articulations><accent\s*\/><\/articulations><\/notations>/);
+  assert.match(tiedNoteArticulationXml,/<text>반짝<\/text>/);
+  assert.match(tiedNoteArticulationXml,/<tie type="start"/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_TIED_NOTE_ARTICULATION_WITH_KOREAN_LYRIC_UNDO');
+
+  // Grace notes add no duration. The existing cross-bar tie, voice grid and
+  // Korean lyric must survive the insert/delete cycle in the actual editor.
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-pro-step','F');
+  await page.selectOption('#v4-pro-alter','1');
+  await page.selectOption('#v4-pro-octave','5');
+  await page.check('#v4-grace-slash');
+  await page.click('#v4-grace-insert');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('꾸밈음 추가 완료'),
+    null,{timeout:30000});
+  const graceDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const graceXml=await fs.readFile(await (await graceDownload).path(),'utf8');
+  assert.match(graceXml,/<grace slash="yes"\s*\/>/);
+  assert.match(graceXml,/<pitch><step>F<\/step><alter>1<\/alter><octave>5<\/octave><\/pitch>/);
+  assert.match(graceXml,/<text>반짝<\/text>/);
+  assert.match(graceXml,/<tie type="start"/);
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-pro-step','G');
+  await page.selectOption('#v4-pro-alter','-1');
+  await page.selectOption('#v4-pro-octave','4');
+  await page.uncheck('#v4-grace-slash');
+  await page.selectOption('#v4-grace-type','16th');
+  await page.click('#v4-grace-edit');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('기존 꾸밈음 음정·기호 수정 완료'),null,{timeout:30000});
+  const graceEditedEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const graceEditedXml=await fs.readFile(await (await graceEditedEvent).path(),'utf8');
+  assert.match(graceEditedXml,/<grace slash="no"\s*\/>/);
+  assert.match(graceEditedXml,/<pitch><step>G<\/step><alter>-1<\/alter><octave>4<\/octave><\/pitch>/);
+  assert.match(graceEditedXml,/<type>16th<\/type><accidental>flat<\/accidental>/);
+  assert.match(graceEditedXml,/<text>반짝<\/text>/);
+  assert.match(graceEditedXml,/<tie type="start"/);
+  console.log('BROWSER_STAGE=V4_REEDIT_EXISTING_GRACE_PITCH_SLASH_TYPE_NO_TIME_SHIFT');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.click('#v4-grace-remove');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('꾸밈음 삭제 완료'),
+    null,{timeout:30000});
+  const cleanedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const cleanedXml=await fs.readFile(await (await cleanedDownload).path(),'utf8');
+  assert.doesNotMatch(cleanedXml,/<grace\b/);
+  assert.match(cleanedXml,/<text>반짝<\/text>/);
+  console.log('BROWSER_STAGE=V4_ZERO_TIME_GRACE_INSERT_DELETE_CROSSBAR_TIE_PRESERVED');
+
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-ornament-kind','trill-mark');
+  await page.click('#v4-ornament-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('음악 장식 기호 추가 / 해제 완료'),null,{timeout:30000});
+  const trillEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const trillXml=await fs.readFile(await (await trillEvent).path(),'utf8');
+  assert.match(trillXml,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  assert.match(trillXml,/<tied type="start"/);
+  assert.match(trillXml,/<text>반짝<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('되돌리기 완료'),null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_TRILL_ORNAMENT_WITH_VOCAL_TIE_UNDO');
+
+
+
+
+
+  // A tiny originally synthesized TTF with Han/Geul glyphs validates actual
+  // embedded Unicode vector text without shipping a proprietary font.
+  const tinyLocalTTF='AAEAAAAKAIAAAwAgT1MvMkT9GlAAAAEoAAAAYGNtYXD9NYcYAAABlAAAAExnbHlmSbfnvgAAAewAAABOaGVhZGFiQ/YAAACsAAAANmhoZWEFSAH2AAAA5AAAACRobXR4ArwAlgAAAYgAAAAMbG9jYQAaADQAAAHgAAAADG1heHAABwAGAAABCAAAACBuYW1l0XA3DgAAAjwAAAE4cG9zdHTbyAoAAAN0AAAANQABAAAAAQAALhz75l8PPPUAAQPoAAAAAAAAAAAAAAAAAAAAAABGAEYCCALQAAAAAwACAAAAAAAAAAEAAAMg/zgAAAJYADIAZAH0AAEAAAAAAAAAAAAAAAAAAAABAAEAAAAFAAQAAQAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAwJYAZAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQAAAAAAAAAAAAAAPz8/PwAAACDVXAMg/zgAAAMgAMgAAAAAAAAAAAAAAAAAAAAgAAACWAAyADIAMgAyADIAAAACAAAAAwAAABQAAwABAAAAFAAEADgAAAAKAAgAAgACACAAQa4A1Vz//wAAACAAQa4A1Vz////h/8FSBCqnAAEAAAAAAAAAAAAAAAAAAAAAAA0AGgAnAAEARgBGAggC0AADAAA3ESERRgHCRgKK/XYAAQBGAEYCCALQAAMAADcRIRFGAcJGAor9dgABAEYARgIIAtAAAwAANxEhEUYBwkYCiv12AAAAAAAKAH4AAQAAAAAAAQANAAAAAQAAAAAAAgAHAA0AAQAAAAAAAwANAAAAAQAAAAAABAAVABQAAQAAAAAABgAVACkAAwABBAkAAQAaAD4AAwABBAkAAgAOAFgAAwABBAkAAwAaAD4AAwABBAkABAAqAGYAAwABBAkABgAqAJBKV09PU3ludGhldGljUmVndWxhckpXT09TeW50aGV0aWMgUmVndWxhckpXT09TeW50aGV0aWMtUmVndWxhcgBKAFcATwBPAFMAeQBuAHQAaABlAHQAaQBjAFIAZQBnAHUAbABhAHIASgBXAE8ATwBTAHkAbgB0AGgAZQB0AGkAYwAgAFIAZQBnAHUAbABhAHIASgBXAE8ATwBTAHkAbgB0AGgAZQB0AGkAYwAtAFIAZQBnAHUAbABhAHIAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAwAkAQIBAwNoYW4EZ2V1bAAAAA==';
+  const oneBarHangul='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><work><work-title>Test</work-title></work>'+
+    '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>192</duration>'+
+    '<type>whole</type><lyric number="1"><text>한글</text></lyric></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'test-hangul.ttf-score.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(oneBarHangul)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===1,
+    null,{timeout:30000});
+  await page.locator('#v4-pdf-local-font').setInputFiles({name:'synthetic.ttf',
+    mimeType:'font/ttf',buffer:Buffer.from(tinyLocalTTF,'base64')});
+  await page.uncheck('#v4-pdf-unicode-raster');
+  const embeddedVectorZipEvent=page.waitForEvent('download',{timeout:90000});
+  await page.click('#v4-part-pdf-zip');
+  const embeddedVectorZip=await JSZip.loadAsync(
+    await fs.readFile(await (await embeddedVectorZipEvent).path()));
+  const embeddedEntries=Object.keys(embeddedVectorZip.files).filter(x=>x.endsWith('.pdf'));
+  assert.equal(embeddedEntries.length,1);
+  const embeddedBytes=await embeddedVectorZip.file(embeddedEntries[0]).async('nodebuffer');
+  assert.match(embeddedBytes.toString('latin1'),/\/FontFile2\b/);
+  assert.match(embeddedBytes.toString('latin1'),/\/ToUnicode\b/);
+  assert.doesNotMatch(embeddedBytes.toString('latin1'),/\/Subtype\s*\/Image\b/);
+  assert.match(await page.locator('#message').textContent(),/TTF 벡터 글자/);
+  console.log('BROWSER_STAGE=V4_SYNTHETIC_KOREAN_TTF_EMBEDDED_VECTOR_PDF');
+
+
+  // Real work: move a quarter note into another voice's full-bar rest.
+  // Preserve 4/4 with the trailing dotted-half rest and Korean lyric.
+  const voiceSwap='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list>'+
+    '<score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><key><fifths>0</fifths></key>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><pitch><step>C</step><octave>4</octave></pitch>'+
+    '<duration>48</duration><voice>1</voice><type>quarter</type>'+
+    '<lyric number="1"><text>별빛</text></lyric></note>'+
+    '<note><rest/><duration>144</duration><voice>1</voice><type>half</type><dot/></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>192</duration><voice>2</voice><type>whole</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'two-voice.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(voiceSwap)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===3,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-transfer-voice','2');
+  await page.click('#v4-transfer-note');
+  await page.waitForFunction(()=>document.querySelector('#v4-transfer-status')?.textContent?.includes('이동 완료'),
+    null,{timeout:30000});
+  const transferXmlEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const transferXML=await fs.readFile(await (await transferXmlEvent).path(),'utf8');
+  assert.match(transferXML,/<note><rest\s*\/><duration>48<\/duration><voice>1<\/voice>/);
+  assert.match(transferXML,/<note><pitch><step>C<\/step><octave>4<\/octave><\/pitch><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type>/);
+  assert.match(transferXML,/<text>별빛<\/text>/);
+  assert.match(transferXML,/<note><rest\s*\/><duration>144<\/duration><voice>2<\/voice><type>half<\/type><dot\s*\/>/);
+  assert.equal((transferXML.match(/<backup>/g)||[]).length,1);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_MOVE_NOTE_BETWEEN_VOICES_WITH_KOREAN_LYRIC_AND_UNDO');
+
+  const secondBeatTransfer='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list>'+
+    '<score-part id="P1"><part-name>Vocal</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1">'+
+    '<attributes><divisions>48</divisions><time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    '<note><rest/><duration>48</duration><voice>1</voice><type>quarter</type></note>'+
+    '<note><pitch><step>G</step><octave>4</octave></pitch>'+
+    '<duration>48</duration><voice>1</voice><type>quarter</type>'+
+    '<lyric number="1"><text>달빛</text></lyric></note>'+
+    '<note><rest/><duration>96</duration><voice>1</voice><type>half</type></note>'+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>192</duration><voice>2</voice><type>whole</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'beat-two-voice.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(secondBeatTransfer)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===4,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-transfer-voice','2');
+  await page.click('#v4-transfer-note');
+  await page.waitForFunction(()=>document.querySelector('#v4-transfer-status')?.textContent?.includes('이동 완료'),
+    null,{timeout:30000});
+  const secondBeatXmlEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const secondBeatXml=await fs.readFile(await (await secondBeatXmlEvent).path(),'utf8');
+  assert.match(secondBeatXml,/<note><rest\s*\/><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type>/);
+  assert.match(secondBeatXml,/<note><pitch><step>G<\/step><octave>4<\/octave><\/pitch><duration>48<\/duration><voice>2<\/voice><type>quarter<\/type>/);
+  assert.match(secondBeatXml,/<note><rest\s*\/><duration>96<\/duration><voice>2<\/voice><type>half<\/type>/);
+  assert.match(secondBeatXml,/<text>달빛<\/text>/);
+  assert.equal((secondBeatXml.match(/<backup>/g)||[]).length,1);
+  console.log('BROWSER_STAGE=V4_TRANSFER_MIDMEASURE_NOTE_INTO_SURROUNDING_RESTS');
+
+  const fourNotePhrase='<?xml version="1.0" encoding="utf-8"?>'+
+    '<score-partwise version="4.0"><part-list><score-part id="P1">'+
+    '<part-name>Vocal</part-name></score-part></part-list><part id="P1">'+
+    '<measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<clef><sign>G</sign><line>2</line></clef></attributes>'+
+    ['C','D','E','F'].map((step,i)=>'<note><pitch><step>'+step+
+      '</step><octave>4</octave></pitch><duration>48</duration>'+
+      '<voice>1</voice><type>quarter</type>'+
+      (i===1?'<lyric number="1"><text>별빛</text></lyric>':'')+
+      '</note>').join('')+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>192</duration><voice>2</voice><type>whole</type></note>'+
+    '</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'four-note-phrase.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(fourNotePhrase)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===5,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-transfer-voice','2');
+  await page.fill('#v4-transfer-phrase-end','4');
+  await page.click('#v4-transfer-phrase');
+  await page.waitForFunction(()=>document.querySelector('#v4-transfer-phrase-status')?.textContent?.includes('이동 완료'),
+    null,{timeout:30000});
+  const phraseDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const phraseXML=await fs.readFile(await (await phraseDownload).path(),'utf8');
+  assert.equal((phraseXML.match(/<voice>1<\/voice><type>quarter<\/type>/g)||[]).length,4);
+  assert.equal((phraseXML.match(/<voice>2<\/voice><type>quarter<\/type>/g)||[]).length,4);
+  for(const step of ['C','D','E','F'])
+    assert.match(phraseXML,new RegExp('<step>'+step+'<\\/step><octave>4<\\/octave>'));
+  assert.match(phraseXML,/<text>별빛<\/text>/);
+  assert.equal((phraseXML.match(/<backup>/g)||[]).length,1);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_FOUR_NOTE_PHRASE_TRANSFERS_BETWEEN_VOICES_ATOMICALLY');
+
+  const secondBar='<measure number="2">'+
+    ['G','A'].map((step,i)=>'<note><pitch><step>'+step+
+      '</step><octave>4</octave></pitch><duration>96</duration>'+
+      '<voice>1</voice><type>half</type>'+
+      (i===0?'<lyric number="1"><text>달빛</text></lyric>':'')+
+      '</note>').join('')+
+    '<backup><duration>192</duration></backup>'+
+    '<note><rest/><duration>192</duration><voice>2</voice><type>whole</type></note>'+
+    '</measure>';
+  const twoBarPhrase=fourNotePhrase.replace('</measure></part></score-partwise>',
+    '</measure>'+secondBar+'</part></score-partwise>');
+  await page.locator('#file-input').setInputFiles({name:'two-bar-voice-phrase.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(twoBarPhrase)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===2,
+    null,{timeout:30000});
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-transfer-voice','2');
+  await page.fill('#v4-transfer-measures-end','2');
+  await page.click('#v4-transfer-measures');
+  await page.waitForFunction(()=>document.querySelector('#v4-transfer-measures-status')?.textContent?.includes('이동 완료'),
+    null,{timeout:30000});
+  const multiBarDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const multiBarXml=await fs.readFile(await (await multiBarDownload).path(),'utf8');
+  assert.equal((multiBarXml.match(/<voice>2<\/voice><type>(?:quarter|half)<\/type>/g)||[]).length,6);
+  assert.equal((multiBarXml.match(/<voice>1<\/voice><type>(?:quarter|half)<\/type>/g)||[]).length,6);
+  assert.equal((multiBarXml.match(/<backup>/g)||[]).length,2);
+  assert.match(multiBarXml,/<text>별빛<\/text>/);
+  assert.match(multiBarXml,/<text>달빛<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_TWO_MEASURE_VOICE_PHRASE_TRANSFER_WITH_UNDO');
+
+  // E06 scoped transposition: shift the selected melodic voice across bars,
+  // retaining the independently timed accompaniment rests and Korean lyrics.
+  await page.locator('#file-input').setInputFiles({
+    name:'polyphonic-voice-transpose.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(twoBarPhrase)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===2,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','1');
+  await page.fill('#jwoo-range-to','2');
+  await page.click('#jwoo-range-apply');
+  await page.selectOption('#jwoo-transpose-scope','voice');
+  await page.selectOption('#jwoo-transpose-voice','1');
+  await page.fill('#jwoo-transpose-semitones','2');
+  await page.selectOption('#jwoo-transpose-spelling','sharp');
+  await page.click('#jwoo-measure-toolbar [data-act="transpose"]');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('이조 완료'),
+    null,{timeout:30000});
+  const scopedDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const scopedXml=await fs.readFile(await (await scopedDownload).path(),'utf8');
+  assert.equal((scopedXml.match(/<voice>1<\/voice>/g)||[]).length,6);
+  assert.equal((scopedXml.match(/<voice>2<\/voice>/g)||[]).length,2);
+  assert.equal((scopedXml.match(/<backup>/g)||[]).length,2);
+  assert.match(scopedXml,/<step>D<\/step><octave>4<\/octave>/);
+  assert.match(scopedXml,/<step>F<\/step><alter>1<\/alter><octave>4<\/octave>/);
+  assert.match(scopedXml,/<text>별빛<\/text>/);
+  assert.match(scopedXml,/<text>달빛<\/text>/);
+  assert.equal((scopedXml.match(/<rest\s*\/>/g)||[]).length,2);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_SCOPED_VOICE_TRANSPOSITION_AND_UNDO');
+
+  // A multi-measure articulation batch is one undoable edit and preserves
+  // the other voice's rests, the original lyrics and all rhythmic offsets.
+  await page.locator('#file-input').setInputFiles({
+    name:'polyphonic-articulation-batch.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(twoBarPhrase)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===2,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','1');
+  await page.fill('#jwoo-range-to','2');
+  await page.click('#jwoo-range-apply');
+  await page.selectOption('#jwoo-batch-articulation-kind','accent');
+  await page.selectOption('#jwoo-batch-articulation-mode','add');
+  await page.selectOption('#jwoo-batch-articulation-voice','1');
+  await page.click('#jwoo-measure-toolbar [data-act="articulation"]');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('표현 기호 일괄 적용 완료'),
+    null,{timeout:30000});
+  const articulationDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const batchArticulationXml=await fs.readFile(await (await articulationDownload).path(),'utf8');
+  assert.equal((batchArticulationXml.match(/<accent\s*\/>/g)||[]).length,6);
+  assert.equal((batchArticulationXml.match(/<voice>2<\/voice>/g)||[]).length,2);
+  assert.equal((batchArticulationXml.match(/<backup>/g)||[]).length,2);
+  assert.match(batchArticulationXml,/<text>별빛<\/text>/);
+  assert.match(batchArticulationXml,/<text>달빛<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_MULTI_MEASURE_ARTICULATION_BATCH_AND_UNDO');
+
+  // Enharmonic-only edit: C#4 -> Db4 in the selected melodic voice, retaining
+  // Korean lyrics and the other voice with no sounding-pitch transposition.
+  const enharmonicSource=twoBarPhrase.replace(
+    '<step>C</step><octave>4</octave>',
+    '<step>C</step><alter>1</alter><octave>4</octave>');
+  await page.locator('#file-input').setInputFiles({
+    name:'enharmonic-vocal-score.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(enharmonicSource)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===2,
+    null,{timeout:30000});
+  await page.fill('#jwoo-range-from','1');
+  await page.fill('#jwoo-range-to','1');
+  await page.click('#jwoo-range-apply');
+  await page.selectOption('#jwoo-transpose-voice','1');
+  await page.selectOption('#jwoo-transpose-spelling','flat');
+  await page.click('#jwoo-measure-toolbar [data-act="respell"]');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('이명동음 표기 정리 완료'),
+    null,{timeout:30000});
+  const respellDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const enharmonicXML=await fs.readFile(await (await respellDownload).path(),'utf8');
+  assert.match(enharmonicXML,/<step>D<\/step><alter>-1<\/alter><octave>4<\/octave>/);
+  assert.doesNotMatch(enharmonicXML,/<step>C<\/step><alter>1<\/alter><octave>4<\/octave>/);
+  assert.equal((enharmonicXML.match(/<voice>2<\/voice>/g)||[]).length,2);
+  assert.match(enharmonicXML,/<text>별빛<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=V4_ENHARMONIC_RESPPELLING_SAME_SOUNDING_PITCH');
+
+
+
+
+
+
+
+  // Stage 1 direct graphical editing acceptance: chord root, polyphonic rest,
+  // note-time movement and Delete are connected to the same undoable XML model.
+  const s1Original=await fs.readFile('tests/fixtures/complex-voices-original.musicxml','utf8');
+  const s1OldTail='<note><pitch><step>F</step><octave>3</octave></pitch><duration>12</duration><voice>2</voice><type>quarter</type><stem>down</stem><staff>2</staff></note>';
+  const s1NewTail='<note><rest/><duration>12</duration><voice>2</voice><type>quarter</type><staff>2</staff></note>';
+  const s1Xml=s1Original.replace(s1OldTail,s1NewTail);
+  assert.notEqual(s1Xml,s1Original,'stage1 two-voice rest fixture must be constructed');
+  await page.locator('#file-input').setInputFiles({
+    name:'stage1-multi-staff-direct.musicxml',mimeType:'application/xml',
+    buffer:Buffer.from(s1Xml)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===11,
+    null,{timeout:30000});
+  const s1Targets=page.locator('#score-container .jwoo-note-target');
+  const s1TargetCount=await s1Targets.count();
+  let selectedChord=false;
+  for(let i=0;i<Math.min(s1TargetCount,8);i++){
+    const target=s1Targets.nth(i);
+    await target.focus();
+    await target.press('Enter');
+    const label=await page.locator('#v3-advanced-report').textContent();
+    if(label?.includes('화음 구성 음')){selectedChord=true;break;}
+  }
+  assert.ok(selectedChord,'a rendered chord tone must be directly selectable on the SVG');
+  console.log('BROWSER_STAGE=STAGE1_CHORD_HEAD_DIRECT_SELECTION');
+  await page.locator('#v3-events .v3-event').first().click();
+  assert.equal(await page.locator('#v3-chord-remove').isDisabled(),false,
+    'chord root is removable with safe promotion');
+  await page.click('#v3-chord-remove');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('화음 구성 음 삭제 완료'),
+    null,{timeout:30000});
+  assert.equal(await page.locator('#v3-events .v3-event').count(),10);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#v3-events')?.querySelectorAll('.v3-event').length===11,
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE1_CHORD_ROOT_REMOVE_AND_UNDO');
+
+  const s1Rest=page.locator('#score-container .jwoo-rest-target').first();
+  await s1Rest.waitFor({state:'visible',timeout:30000});
+  await s1Rest.focus();
+  await s1Rest.press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 쉼표에 성부 보존 음표 삽입 완료'),
+    null,{timeout:30000});
+  const s1InsertDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s1Inserted=await fs.readFile(await (await s1InsertDownload).path(),'utf8');
+  assert.ok(s1Inserted.includes('<voice>2</voice>'),'inserted note preserves the second voice');
+  assert.doesNotMatch(s1Inserted,/<note><rest\/><duration>12<\/duration><voice>2<\/voice><type>quarter<\/type><staff>2<\/staff><\/note>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelectorAll('#score-container .jwoo-rest-target').length>0,
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE1_SVG_REST_ENTER_INSERT_AND_UNDO');
+
+  await page.locator('#v3-events .v3-event').nth(9).click();
+  assert.equal(await page.locator('#v3-move').isDisabled(),false);
+  await page.fill('#v3-target-beat','4');
+  await page.click('#v3-move');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 음표 박자 위치 이동 완료'),
+    null,{timeout:30000});
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE1_SECOND_VOICE_TIME_MOVE_AND_UNDO');
+
+  const s1SecondVoice=page.locator('#score-container .jwoo-note-target[aria-label*="2성부"]').first();
+  await s1SecondVoice.waitFor({state:'visible',timeout:30000});
+  await s1SecondVoice.focus();
+  await s1SecondVoice.press('Delete');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('선택 성부 음표를 쉼표로 변경 완료'),
+    null,{timeout:30000});
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const s1FinalDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s1Final=await fs.readFile(await (await s1FinalDownload).path(),'utf8');
+  assert.equal((s1Final.match(/<voice>2<\/voice>/g)||[]).length,4);
+  assert.ok(s1Final.includes(s1NewTail),'undo must restore original second-voice rest');
+  await page.locator('#file-input').setInputFiles({
+    name:'stage1-roundtrip.musicxml',mimeType:'application/xml',buffer:Buffer.from(s1Final)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===11,
+    null,{timeout:30000});
+  assert.ok((await page.locator('#v3-events .v3-event').last().textContent()).includes('𝄽'),
+    'exported score re-import retains second-voice rest');
+  console.log('BROWSER_STAGE=STAGE1_SVG_DELETE_UNDO_AND_XML_ROUNDTRIP');
+
+
+  // Stage 2 actual Chromium UI -> MusicXML -> Undo -> import, with two voices.
+  const s2Note=(step,duration,type,voice,staff)=>'<note><pitch><step>'+step+
+    '</step><octave>'+(staff===2?'3':'4')+'</octave></pitch><duration>'+duration+
+    '</duration><voice>'+voice+'</voice><type>'+type+'</type><staff>'+staff+'</staff></note>';
+  const s2Rest=(duration,type,voice,staff)=>'<note><rest/><duration>'+duration+
+    '</duration><voice>'+voice+'</voice><type>'+type+'</type><staff>'+staff+'</staff></note>';
+  const s2Start='<?xml version="1.0"?><score-partwise version="4.0"><part-list>'+
+    '<score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><attributes><divisions>48</divisions>'+
+    '<time><beats>4</beats><beat-type>4</beat-type></time>'+
+    '<staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef>'+
+    '<clef number="2"><sign>F</sign><line>4</line></clef></attributes>';
+  const s2Xml=s2Start+s2Note('C',24,'eighth',1,1)+s2Note('E',24,'eighth',1,1)+
+    s2Rest(144,'half',1,1).replace('<type>half</type>','<type>half</type><dot/>')+
+    '<backup><duration>192</duration></backup>'+
+    s2Note('C',48,'quarter',2,2)+s2Rest(48,'quarter',2,2)+
+    s2Note('G',96,'half',2,2)+'</measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({name:'stage2-polyphonic.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(s2Xml)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===6,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.fill('#v4-rhythm-group-end','2');
+  await page.fill('#v4-rhythm-group-types','eighth-dotted,16th');
+  await page.click('#v4-rhythm-group-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('성부별 음표·화음 리듬 재분배 완료'),
+    null,{timeout:30000});
+  const s2Export=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s2Changed=await fs.readFile(await (await s2Export).path(),'utf8');
+  assert.match(s2Changed,/<step>C<\/step><octave>4<\/octave><\/pitch><duration>36<\/duration>/);
+  assert.match(s2Changed,/<step>E<\/step><octave>4<\/octave><\/pitch><duration>12<\/duration>/);
+  assert.match(s2Changed,/<backup><duration>192<\/duration><\/backup>/);
+  assert.match(s2Changed,/<step>C<\/step><octave>3<\/octave><\/pitch><duration>48<\/duration>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE2_POLYPHONIC_RHYTHM_AND_UNDO');
+
+  await page.selectOption('#v4-tuplet-ratio','3:2');
+  await page.selectOption('#v4-tuplet-unit','eighth');
+  await page.click('#v4-tuplet-author');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('잇단음'),
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.fill('#v4-tuplet-rhythm-types','quarter,16th,16th');
+  await page.click('#v4-tuplet-rhythm-apply');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('잇단음 그룹 리듬 구조 변경 완료'),
+    null,{timeout:30000});
+  const s2TuExport=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s2TuXml=await fs.readFile(await (await s2TuExport).path(),'utf8');
+  assert.match(s2TuXml,/<duration>32<\/duration><voice>1<\/voice><type>quarter<\/type>/);
+  assert.match(s2TuXml,/<duration>8<\/duration><voice>1<\/voice><type>16th<\/type>/);
+  assert.match(s2TuXml,/<actual-notes>3<\/actual-notes><normal-notes>2<\/normal-notes>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const s2UndoExport=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const s2Undone=await fs.readFile(await (await s2UndoExport).path(),'utf8');
+  assert.match(s2Undone,/<duration>16<\/duration><voice>1<\/voice><type>eighth<\/type>/);
+  await page.locator('#file-input').setInputFiles({name:'stage2-tupler-roundtrip.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(s2TuXml)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===7,
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE2_TUPLET_RHYTHM_UNDO_AND_MUSICXML_REIMPORT');
+
+
+  // Stage 3: compose a mixed note stack in the real Chromium UI, then toggle
+  // each expression independently. Confirm original tie, slur, multiple lyrics
+  // and cross-bar continuation survive every isolated edit and MusicXML roundtrip.
+  await page.locator('#file-input').setInputFiles({name:'stage3-tied-vocal.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(tiedPitchScore)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===2,
+    null,{timeout:30000});
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-articulation-kind','accent');
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  await page.selectOption('#v4-ornament-kind','trill-mark');
+  await page.click('#v4-ornament-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('음악 장식 기호 추가 / 해제 완료'),null,{timeout:30000});
+  await page.fill('#v4-lyric-verse','2');
+  await page.fill('#v4-lyric-text','Together');
+  await page.click('#v4-lyric-set');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('가사 입력·교체 완료'),null,{timeout:30000});
+  const stage3Export=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3Xml=await fs.readFile(await (await stage3Export).path(),'utf8');
+  assert.match(stage3Xml,/<notations><tied type="start"\s*\/><slur number="1" type="start"\s*\/><ornaments><trill-mark\s*\/><\/ornaments><articulations><accent\s*\/><\/articulations><\/notations>/);
+  assert.match(stage3Xml,/<lyric number="1"><syllabic>single<\/syllabic><text>반짝<\/text><\/lyric>/);
+  assert.match(stage3Xml,/<lyric number="2"><syllabic>single<\/syllabic><text>Together<\/text><\/lyric>/);
+  console.log('BROWSER_STAGE=STAGE3_COMPLEX_TIE_SLUR_TRILL_ACCENT_TWO_VERSES');
+
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  const stage3NoAccent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3NoAccentXml=await fs.readFile(await (await stage3NoAccent).path(),'utf8');
+  assert.doesNotMatch(stage3NoAccentXml,/<articulations><accent\s*\/><\/articulations>/);
+  assert.match(stage3NoAccentXml,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  assert.match(stage3NoAccentXml,/<text>반짝<\/text>/);
+  assert.match(stage3NoAccentXml,/<text>Together<\/text>/);
+  assert.match(stage3NoAccentXml,/<tied type="start"/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE3_ISOLATED_ARTICULATION_TOGGLE_AND_UNDO');
+
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-slur-next-measure','1');
+  await page.fill('#v4-pro-end','1');
+  await page.click('#v4-pro-slur');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('이음줄 추가·해제 완료'),null,{timeout:30000});
+  const stage3NoSlur=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3NoSlurXml=await fs.readFile(await (await stage3NoSlur).path(),'utf8');
+  assert.doesNotMatch(stage3NoSlurXml,/<slur\b/);
+  assert.match(stage3NoSlurXml,/<tied type="start"/);
+  assert.match(stage3NoSlurXml,/<articulations><accent\s*\/><\/articulations>/);
+  assert.match(stage3NoSlurXml,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE3_CROSSBAR_SLUR_TOGGLE_PRESERVES_TIE_LYRICS');
+
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.selectOption('#v4-tie-next-measure','1');
+  await page.fill('#v4-pro-end','1');
+  await page.click('#v4-tie-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('붙임줄 연결'),null,{timeout:30000});
+  const stage3NoTie=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3NoTieXml=await fs.readFile(await (await stage3NoTie).path(),'utf8');
+  assert.doesNotMatch(stage3NoTieXml,/<tie type="(?:start|stop)"/);
+  assert.match(stage3NoTieXml,/<slur number="1" type="start"/);
+  assert.match(stage3NoTieXml,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  assert.match(stage3NoTieXml,/<text>Together<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  console.log('BROWSER_STAGE=STAGE3_SOUNDING_TIE_TOGGLE_PRESERVES_SLUR_AND_EXPRESSIONS');
+
+  await page.selectOption('#v3-measure','0');
+  await page.locator('#v3-events .v3-event').nth(1).click();
+  await page.fill('#v4-lyric-verse','1');
+  await page.fill('#v4-lyric-text','우리');
+  await page.click('#v4-lyric-set');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('가사 입력·교체 완료'),
+    null,{timeout:30000});
+  const stage3LyricEdited=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3Edited=await fs.readFile(await (await stage3LyricEdited).path(),'utf8');
+  assert.match(stage3Edited,/<lyric number="1">[\s\S]*?<text>우리<\/text>/);
+  assert.match(stage3Edited,/<lyric number="2">[\s\S]*?<text>Together<\/text>/);
+  assert.match(stage3Edited,/<articulations><accent\s*\/><\/articulations>/);
+  assert.match(stage3Edited,/<ornaments><trill-mark\s*\/><\/ornaments>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const stage3Restored=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3RestoredXml=await fs.readFile(await (await stage3Restored).path(),'utf8');
+  assert.equal(stage3RestoredXml,stage3Xml,'undo must restore the exact stacked notation');
+  await page.locator('#file-input').setInputFiles({name:'stage3-complex-roundtrip.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage3Xml)});
+  await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length===2,
+    null,{timeout:30000});
+  const stage3Roundtrip=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage3Reimported=await fs.readFile(await (await stage3Roundtrip).path(),'utf8');
+  // The import/export normalizer may remove the newline between the XML
+  // declaration and score root. Compare the XML content, not header spacing.
+  const normalizeStage3Xml=xml=>xml.replace(/>\s+</g,'><');
+  assert.equal(normalizeStage3Xml(stage3Reimported),normalizeStage3Xml(stage3Xml),
+    'real MusicXML reimport keeps all expressions');
+  console.log('BROWSER_STAGE=STAGE3_LYRICS_INDEPENDENT_EDIT_UNDO_REIMPORT');
+
+  // Stage 4: a manually authored page break is a hard boundary, not an
+  // exception or permission to erase the composer's layout instructions.
+  // Render the real, expression-dense Korean vocal part through the same
+  // SVG print path used by PDF export. Known lyric/notehead/articulation
+  // collisions and page overflow now block export rather than ship bad pages.
+  await page.locator('#file-input').setInputFiles({name:'stage4-expression-print.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage3Xml)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===3,
+    null,{timeout:30000});
+  const stage4PrintEvent=page.waitForEvent('download');
+  await page.click('#v4-part-svg-zip');
+  const stage4PrintZip=await JSZip.loadAsync(
+    await fs.readFile(await (await stage4PrintEvent).path()));
+  const stage4SvgFile=Object.keys(stage4PrintZip.files).find(name=>name.endsWith('.svg'));
+  assert.ok(stage4SvgFile,'rendered vocal part must have a vector SVG page');
+  const stage4SvgSource=await stage4PrintZip.file(stage4SvgFile).async('string');
+  assert.match(stage4SvgSource,/<svg\b/);
+  assert.match(await page.locator('#message').textContent(),/SVG.*ZIP 저장 완료/);
+  console.log('BROWSER_STAGE=STAGE4_COMPLEX_KOREAN_VOCAL_VECTOR_PRINT_NO_KNOWN_COLLISION');
+
+  const stage4Manual=combinedParts.replace('<measure number="7">',
+    '<measure number="7"><print new-page="yes"/>');
+  assert.notEqual(stage4Manual,combinedParts);
+  await page.locator('#file-input').setInputFiles({name:'stage4-manual-page.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage4Manual)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.uncheck('#v4-cadence-replace');
+  await page.click('#v4-auto-layout');
+  await page.waitForFunction(()=>document.querySelector('#v4-auto-layout-status')?.textContent?.includes('자동 배치 적용'),
+    null,{timeout:30000});
+  const stage4FullDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage4FullXml=await fs.readFile(await (await stage4FullDownload).path(),'utf8');
+  for(const partId of ['P1','P2']){
+    const body=stage4FullXml.match(new RegExp('<part id="'+partId+'">([\\s\\S]*?)<\\/part>'))?.[1];
+    assert.ok(body,'full score contains synchronized '+partId);
+    const forced=body.match(/<measure number="7"[^>]*>([\s\S]*?)<\/measure>/)?.[1];
+    assert.match(forced,/<print new-page="yes"/,
+      'authored manual page boundary must survive in '+partId);
+  }
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const stage4UndoDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage4Undone=await fs.readFile(await (await stage4UndoDownload).path(),'utf8');
+  assert.equal((stage4Undone.match(/<print new-page="yes"/g)||[]).length,1);
+  console.log('BROWSER_STAGE=STAGE4_MANUAL_PAGE_BREAK_PRESERVED_ACROSS_FULL_SCORE_AND_UNDO');
+
+  const stage4Individual=combinedParts.replace(
+    /(<part id="P2">[\s\S]*?<measure number="8">)/,
+    '$1<print new-page="yes"/>');
+  await page.locator('#file-input').setInputFiles({name:'stage4-part-page.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage4Individual)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.uncheck('#v4-cadence-replace');
+  await page.click('#v4-part-layout');
+  await page.waitForFunction(()=>document.querySelector('#v4-part-layout-status')?.textContent?.includes('악기 2파트'),
+    null,{timeout:30000});
+  const stage4PartsDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage4PartsXml=await fs.readFile(await (await stage4PartsDownload).path(),'utf8');
+  const stage4Piano=stage4PartsXml.match(/<part id="P2">([\s\S]*?)<\/part>/)?.[1];
+  assert.match(stage4Piano.match(/<measure number="8"[^>]*>([\s\S]*?)<\/measure>/)?.[1],
+    /<print new-page="yes"/);
+  assert.equal((stage4PartsXml.match(/<text>반짝이는<\/text>/g)||[]).length,48);
+  console.log('BROWSER_STAGE=STAGE4_INDEPENDENT_PART_HARD_PAGE_BREAK_AND_LYRICS');
+
+  const stage4SvgView=page.locator('#score-container svg').first();
+  await stage4SvgView.waitFor({state:'visible',timeout:30000});
+  const stage4Bounds=await stage4SvgView.evaluate(svg=>{
+    const view=svg.viewBox.baseVal;
+    const box=svg.getBBox();
+    return {viewWidth:view.width,viewHeight:view.height,
+      glyphWidth:box.width,glyphHeight:box.height};
+  });
+  assert.ok(stage4Bounds.viewWidth>0&&stage4Bounds.viewHeight>0);
+  assert.ok(stage4Bounds.glyphWidth>0&&stage4Bounds.glyphHeight>0);
+  console.log('BROWSER_STAGE=STAGE4_REAL_RENDERED_PAGE_BOUNDS_MEASURED');
+
+  const assertStage5A4=(pdfBytes,w,h,label)=>{
+    const metadata=pdfBytes.toString('latin1');
+    const matches=[...metadata.matchAll(/\/MediaBox\s*\[\s*([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s*\]/g)];
+    assert.ok(matches.length>0,label+' must contain A4 MediaBox metadata');
+    for(const [,x1,y1,x2,y2] of matches){
+      assert.ok(Math.abs(Number(x1))<.1&&Math.abs(Number(y1))<.1&&
+        Math.abs(Number(x2)-w)<.6&&Math.abs(Number(y2)-h)<.6,
+        label+' must preserve the correct physical A4 dimensions');
+    }
+  };
+
+  // Stage 5: score + every independent part must be downloadable as genuine,
+  // non-raster A4 PDF pages in one deterministic ZIP. The legacy part-only
+  // export stays available without changing its file naming or behavior.
+  const stage5English=combinedParts.replaceAll('반짝이는','Verse');
+  await page.locator('#file-input').setInputFiles({
+    name:'stage5-english-duo.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',
+    buffer:Buffer.from(stage5English)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.locator('#v4-pdf-local-font').setInputFiles([]);
+  await page.uncheck('#v4-pdf-unicode-raster');
+  const stage5AllEvent=page.waitForEvent('download',{timeout:120000});
+  await page.click('#v4-score-parts-pdf-zip');
+  const stage5AllDownload=await stage5AllEvent;
+  assert.match(stage5AllDownload.suggestedFilename(),/-full-score-and-parts-pdfs\.zip$/);
+  const stage5AllZip=await JSZip.loadAsync(
+    await fs.readFile(await stage5AllDownload.path()));
+  const stage5PdfNames=Object.keys(stage5AllZip.files).filter(n=>n.endsWith('.pdf')).sort();
+  assert.deepEqual(stage5PdfNames,['00-Full-Score.pdf','01-Vocal.pdf','02-Piano.pdf']);
+  for(const name of stage5PdfNames){
+    const bytes=await stage5AllZip.file(name).async('nodebuffer');
+    assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
+    assertStage5A4(bytes,595.2756,841.8898,name);
+    assert.match(bytes.toString('latin1'),/\/Type\s*\/Page\b/);
+    assert.doesNotMatch(bytes.toString('latin1'),/\/Subtype\s*\/Image\b/,
+      name+' must preserve non-raster musical notation');
+    assert.ok(bytes.length>1000);
+  }
+  const fullScoreBytes=await stage5AllZip.file('00-Full-Score.pdf').async('nodebuffer');
+  const firstPartBytes=await stage5AllZip.file('01-Vocal.pdf').async('nodebuffer');
+  assert.notDeepEqual(fullScoreBytes,firstPartBytes,
+    'full score and extracted vocal part must be independent PDFs');
+  await fs.writeFile(output+'/stage5-full-score-and-parts-english.zip',
+    await fs.readFile(await stage5AllDownload.path()));
+  console.log('BROWSER_STAGE=STAGE5_FULL_SCORE_AND_TWO_PARTS_VECTOR_A4_PDF_ZIP');
+
+  // A4 landscape must preserve the actual PDF MediaBox, not merely change
+  // the preview aspect ratio.
+  await page.selectOption('#page-orientation','A4_L');
+  await page.waitForFunction(()=>Math.abs(
+    document.querySelector('#score-container svg')?.getBoundingClientRect().width-
+    297*96/25.4)<3,null,{timeout:30000});
+  const stage5LandscapeEvent=page.waitForEvent('download',{timeout:120000});
+  await page.click('#v4-score-parts-pdf-zip');
+  const stage5LandscapeZip=await JSZip.loadAsync(
+    await fs.readFile(await (await stage5LandscapeEvent).path()));
+  const stage5LandscapeNames=Object.keys(stage5LandscapeZip.files)
+    .filter(name=>name.endsWith('.pdf')).sort();
+  assert.deepEqual(stage5LandscapeNames,stage5PdfNames);
+  for(const name of stage5LandscapeNames){
+    const bytes=await stage5LandscapeZip.file(name).async('nodebuffer');
+    assertStage5A4(bytes,841.8898,595.2756,name);
+    assert.doesNotMatch(bytes.toString('latin1'),/\/Subtype\s*\/Image\b/);
+  }
+  console.log('BROWSER_STAGE=STAGE5_LANDSCAPE_FULL_SCORE_AND_PARTS_A4_PDF');
+  await page.selectOption('#page-orientation','A4_P');
+  await page.waitForFunction(()=>Math.abs(
+    document.querySelector('#score-container svg')?.getBoundingClientRect().width-
+    210*96/25.4)<3,null,{timeout:30000});
+
+  // User-selected, self-generated two-syllable TTF is embedded separately in
+  // both the whole score and its extracted part. No glyph-image substitutions.
+  await page.locator('#file-input').setInputFiles({
+    name:'stage5-hangul.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',
+    buffer:Buffer.from(oneBarHangul)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===1,
+    null,{timeout:30000});
+  await page.locator('#v4-pdf-local-font').setInputFiles({
+    name:'synthetic.ttf',mimeType:'font/ttf',buffer:Buffer.from(tinyLocalTTF,'base64')
+  });
+  await page.uncheck('#v4-pdf-unicode-raster');
+  const stage5HanEvent=page.waitForEvent('download',{timeout:120000});
+  await page.click('#v4-score-parts-pdf-zip');
+  const stage5HanDownload=await stage5HanEvent;
+  const stage5HanZip=await JSZip.loadAsync(
+    await fs.readFile(await stage5HanDownload.path()));
+  const stage5HanNames=Object.keys(stage5HanZip.files).filter(n=>n.endsWith('.pdf')).sort();
+  assert.deepEqual(stage5HanNames,['00-Full-Score.pdf','01-Vocal.pdf']);
+  for(const name of stage5HanNames){
+    const pdf=await stage5HanZip.file(name).async('nodebuffer');
+    const body=pdf.toString('latin1');
+    assert.match(body,/\/FontFile2\b/,'embedded TrueType is required in '+name);
+    assert.match(body,/\/ToUnicode\b/,'Unicode character mapping is required in '+name);
+    assertStage5A4(pdf,595.2756,841.8898,name);
+    assert.doesNotMatch(body,/\/Subtype\s*\/Image\b/);
+  }
+  assert.match(await page.locator('#message').textContent(),/TTF 벡터 글자/);
+  await fs.writeFile(output+'/stage5-full-score-and-parts-korean-ttf.zip',
+    await fs.readFile(await stage5HanDownload.path()));
+  console.log('BROWSER_STAGE=STAGE5_KOREAN_EMBEDDED_TRUE_TYPE_FULL_SCORE_AND_PARTS');
+
+
+  // Stage 6: independent W3C MusicXML 4.0 XSD will check these *actual*
+  // exported documents after the full Chromium test, not just hard-coded
+  // original fixtures or strings fabricated by the XSD test itself.
+  const stage6Dir=output+'/stage6';
+  await fs.mkdir(stage6Dir,{recursive:true});
+  for(const [filename,xml] of [
+    ['01-polyphonic-rest-and-undo.musicxml',s1Final],
+    ['02-tuplet-rebalance.musicxml',s2TuXml],
+    ['03-connected-notation-two-lyric-verses.musicxml',stage3Xml],
+    ['04-manual-page-break-full-score.musicxml',stage4FullXml],
+  ]){
+    assert.match(xml,/<score-partwise\s+version="4\.0"/);
+    await fs.writeFile(stage6Dir+'/'+filename,xml,'utf8');
+  }
+  console.log('BROWSER_STAGE=STAGE6_FOUR_REAL_EDITED_MUSICXML_FILES_FOR_INDEPENDENT_XSD');
+
+  // Import an outside corpus compiled by the W3C MusicXML community, with
+  // pinned hash verification completed by the independent XSD job.
+  // No editing of these external scores is needed for lossless export:
+  // unsupported extensions must remain intact or export must be blocked.
+  for(const filename of [
+    '01a-Pitches-Pitches.musicxml',
+    '21b-Chords-TwoNotes.musicxml',
+    '61a-Lyrics.musicxml'
+  ]){
+    const original=await fs.readFile('tests/musicxml4-official/corpus/'+filename,'utf8');
+    const normal=original.replace(/<!DOCTYPE[\s\S]*?(?:\[[\s\S]*?\]\s*)?>|<!DOCTYPE[^>]*>/gi,'');
+    await page.locator('#file-input').setInputFiles({
+      name:filename,mimeType:'application/vnd.recordare.musicxml+xml',
+      buffer:Buffer.from(original,'utf8')
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length>0,
+      null,{timeout:30000});
+    const exportedEvent=page.waitForEvent('download',{timeout:30000});
+    await page.click('#download-xml');
+    const exported=await fs.readFile(await (await exportedEvent).path(),'utf8');
+    // Compare canonical element/attribute/content signatures using an
+    // independent DOM traversal. Drop indentation-only whitespace, but do
+    // not drop pitch, duration, lyric, direction or extension nodes.
+    const same=await page.evaluate(({before,after})=>{
+      const parser=new DOMParser();
+      const a=parser.parseFromString(before,'application/xml');
+      const b=parser.parseFromString(after,'application/xml');
+      const canonical=node=>{
+        if(node.nodeType===8)return ['comment',node.nodeValue];
+        if(node.nodeType===3||node.nodeType===4){
+          const text=node.nodeValue||'';
+          return /^\s*$/.test(text)?null:['text',text];
+        }
+        if(node.nodeType!==1)return null;
+        return [node.localName,node.namespaceURI||'',
+          [...node.attributes].filter(x=>!x.name.startsWith('xmlns'))
+            .map(x=>[x.namespaceURI||'',x.localName,x.value])
+            .sort((x,y)=>JSON.stringify(x).localeCompare(JSON.stringify(y))),
+          [...node.childNodes].map(canonical).filter(Boolean)];
+      };
+      return JSON.stringify(canonical(a.documentElement))===
+        JSON.stringify(canonical(b.documentElement));
+    },{before:normal,after:exported});
+    assert.ok(same,'W3C third-party score must not lose XML content: '+filename);
+    await fs.writeFile(stage6Dir+'/W3C-'+filename,exported,'utf8');
+    console.log('BROWSER_STAGE=STAGE6_W3C_INDEPENDENT_ROUNDTRIP_'+filename);
+  }
+  assert.deepEqual(errors,[],'no browser JavaScript exceptions during third-party import');
+  const stage6Outputs=(await fs.readdir(stage6Dir))
+    .filter(name=>name.endsWith('.musicxml')).map(name=>stage6Dir+'/'+name);
+  assert.equal(stage6Outputs.length,7,'Four edited and three independent exports required');
+  const stage6Schema=await validateMusicXml4Files(stage6Outputs,{expectAtLeast:7});
+  assert.equal(stage6Schema.files,7);
+  assert.equal(stage6Schema.status,'PASS_MUSICXML4_INDEPENDENT_XSD');
+  console.log('BROWSER_STAGE=STAGE6_SEVEN_REAL_EXPORTS_INDEPENDENT_W3C_XSD_PASS');
+
+
+  const normalizeStage7Xml=xml=>xml
+    .replace(/^\uFEFF?\s*<\?xml[^?]*\?>\s*/i,'')
+    .replace(/>\s+</g,'><').trim();
+
+  // Stage 7 final acceptance: a single composer session that spans authoring,
+  // lyric/expression edits, undo/redo, explicit recovery, browser restart,
+  // tamper-resistant project archive, musicxml XSD and vector score/part PDF.
+  await page.locator('#file-input').setInputFiles({
+    name:'stage7-integrated.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',
+    buffer:Buffer.from(stage5English)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-articulation-kind','accent');
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  await page.fill('#v4-lyric-verse','2');
+  await page.fill('#v4-lyric-text','Together');
+  await page.click('#v4-lyric-set');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('가사 입력·교체 완료'),null,{timeout:30000});
+  const stage7EditDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage7Edited=await fs.readFile(await (await stage7EditDownload).path(),'utf8');
+  assert.match(stage7Edited,/<articulations><accent\s*\/><\/articulations>/);
+  assert.match(stage7Edited,/<lyric number="2">[\s\S]*?<text>Together<\/text>/);
+  assert.match(stage7Edited,/<text>Verse<\/text>/);
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('되돌리기 완료'),
+    null,{timeout:30000});
+  const stage7UndoDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage7UndoXml=await fs.readFile(await (await stage7UndoDownload).path(),'utf8');
+  assert.doesNotMatch(stage7UndoXml,/<lyric number="2">[\s\S]*?<text>Together<\/text>/);
+  assert.match(stage7UndoXml,/<articulations><accent\s*\/><\/articulations>/);
+  await page.click('#v3-redo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('다시 실행 완료'),
+    null,{timeout:30000});
+  const stage7RedoDownload=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(await fs.readFile(await (await stage7RedoDownload).path(),'utf8'),stage7Edited,
+    'Undo/Redo must be a lossless XML roundtrip');
+  console.log('BROWSER_STAGE=STAGE7_EDIT_LYRICS_EXPRESSION_UNDO_REDO');
+
+  await page.fill('#v4-checkpoint-label','7단계 최종 통합 작업');
+  await page.click('#v4-checkpoint-save');
+  await page.waitForFunction(()=>document.querySelector('#v4-checkpoint-status')?.textContent?.includes('복원 시점 저장 완료'),
+    null,{timeout:30000});
+  const stage7RecoveryId=await page.locator('#v4-checkpoint-select').inputValue();
+  assert.match(stage7RecoveryId,/^[\w-]{20,}$/);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(id=>[...document.querySelectorAll('#v4-checkpoint-select option')]
+    .some(o=>o.value===id),stage7RecoveryId,{timeout:30000});
+  await page.locator('#v4-checkpoint-select').selectOption(stage7RecoveryId);
+  await page.click('#v4-checkpoint-restore');
+  await page.waitForFunction(()=>document.querySelector('#v4-checkpoint-status')?.textContent?.includes('복원 완료'),
+    null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  const stage7RecoveredEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7RecoveredEvent).path(),'utf8')),
+    normalizeStage7Xml(stage7Edited),
+    'Restarted browser must restore every musical element from the SHA-256 checkpoint');
+  assert.equal(await page.locator('#v3-undo').isDisabled(),true,
+    'Session restart must not reuse unrelated in-memory undo history');
+  console.log('BROWSER_STAGE=STAGE7_BROWSER_RELOAD_SHA256_CHECKPOINT_RECOVERY');
+
+  const stage7ArchiveEvent=page.waitForEvent('download',{timeout:30000});
+  await page.click('#v4-project-export');
+  const stage7ArchiveBytes=await fs.readFile(await (await stage7ArchiveEvent).path());
+  const stage7Archive=await JSZip.loadAsync(stage7ArchiveBytes,{checkCRC32:true});
+  const stage7Manifest=JSON.parse(await stage7Archive.file('manifest.json').async('string'));
+  assert.equal(stage7Manifest.format,'J-WOO-PROJECT');
+  assert.equal(stage7Manifest.current.filename,'stage7-integrated.musicxml');
+  assert.equal(stage7Manifest.versions.length>=1,true);
+  assert.equal(normalizeStage7Xml(await stage7Archive.file('score.musicxml').async('string')),
+    normalizeStage7Xml(stage7Edited));
+  const stage7Corrupted=await JSZip.loadAsync(stage7ArchiveBytes);
+  stage7Corrupted.file('score.musicxml',stage7Edited.replace('Together','Wrong text'));
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-project-file').setInputFiles({
+    name:'stage7-corrupted.jwoo',mimeType:'application/zip',
+    buffer:await stage7Corrupted.generateAsync({type:'nodebuffer'})
+  });
+  await page.waitForFunction(()=>document.querySelector('#v4-project-status')?.textContent
+    ?.includes('프로젝트 복원 차단'),null,{timeout:30000});
+  assert.match(await page.locator('#v4-project-status').textContent(),/SHA-256|해시/);
+  const stage7TamperCheck=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7TamperCheck).path(),'utf8')),
+    normalizeStage7Xml(stage7Edited),
+    'Rejected tampered project must never overwrite the current unsaved score');
+  console.log('BROWSER_STAGE=STAGE7_TAMPERED_PROJECT_REJECTED_WITHOUT_DATA_LOSS');
+
+  // A well-formed but structurally non-renderable MusicXML should be
+  // transactional: preserve the score and the existing history.
+  await page.locator('#v3-events .v3-event').first().click();
+  await page.selectOption('#v4-articulation-kind','tenuto');
+  await page.click('#v4-articulation-toggle');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('아티큘레이션 기호 추가 / 해제 완료'),null,{timeout:30000});
+  const stage7BeforeBadImport=page.waitForEvent('download');
+  await page.click('#download-xml');
+  const stage7PreFailureXml=await fs.readFile(await (await stage7BeforeBadImport).path(),'utf8');
+  assert.equal(await page.locator('#v3-undo').isEnabled(),true);
+  const stage7BrokenXml='<?xml version="1.0"?><score-partwise version="4.0">'+
+    '<part-list><score-part id="P1"><part-name>Broken</part-name></score-part></part-list>'+
+    '<part id="P1"><measure number="1"><note><pitch><step>Q</step><octave>4</octave></pitch>'+
+    '<duration>192</duration><type>whole</type></note></measure></part></score-partwise>';
+  await page.locator('#file-input').setInputFiles({
+    name:'broken-render.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',
+    buffer:Buffer.from(stage7BrokenXml)
+  });
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('기존 작업 보존'),null,{timeout:30000});
+  assert.equal(await page.locator('#v3-undo').isEnabled(),true,
+    'Rejecting render failure must preserve the previous edit history');
+  const stage7RejectedEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7RejectedEvent).path(),'utf8')),
+    normalizeStage7Xml(stage7PreFailureXml),
+    'Failed render must roll back to the exact previous score');
+  await page.click('#v3-undo');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent
+    ?.includes('되돌리기 완료'),null,{timeout:30000});
+  const stage7UnwoundEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7UnwoundEvent).path(),'utf8')),
+    normalizeStage7Xml(stage7Edited),
+    'Undo after rejected import must still return to the pre-import checkpoint');
+  console.log('BROWSER_STAGE=STAGE7_FAILED_RENDER_IMPORT_PRESERVES_EDIT_HISTORY');
+
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#v4-project-file').setInputFiles({
+    name:'stage7-recovery.jwoo',mimeType:'application/zip',buffer:stage7ArchiveBytes
+  });
+  await page.waitForFunction(()=>document.querySelector('#v4-project-status')?.textContent
+    ?.includes('검증된 프로젝트 복원 완료'),null,{timeout:30000});
+  const stage7ValidImportEvent=page.waitForEvent('download');
+  await page.click('#download-xml');
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7ValidImportEvent).path(),'utf8')),
+    normalizeStage7Xml(stage7Edited));
+  console.log('BROWSER_STAGE=STAGE7_PORTABLE_PROJECT_REIMPORT_EXACT_SCORE_RESTORED');
+
+  // The very same restored score must pass independent MusicXML 4.0 XSD and
+  // export full score + all parts as genuine A4 vector PDF, without raster staff.
+  await fs.writeFile(stage6Dir+'/stage7-integrated-recovery.musicxml',stage7Edited,'utf8');
+  const stage7Xsd=await validateMusicXml4Files([stage6Dir+'/stage7-integrated-recovery.musicxml']);
+  assert.equal(stage7Xsd.status,'PASS_MUSICXML4_INDEPENDENT_XSD');
+  await page.locator('#v4-pdf-local-font').setInputFiles([]);
+  await page.uncheck('#v4-pdf-unicode-raster');
+  const stage7PdfEvent=page.waitForEvent('download',{timeout:120000});
+  await page.click('#v4-score-parts-pdf-zip');
+  const stage7Pdf=(await stage7PdfEvent).path();
+  const stage7PdfZip=await JSZip.loadAsync(await fs.readFile(await stage7Pdf));
+  const stage7PdfNames=Object.keys(stage7PdfZip.files)
+    .filter(x=>x.endsWith('.pdf')).sort();
+  assert.deepEqual(stage7PdfNames,['00-Full-Score.pdf','01-Vocal.pdf','02-Piano.pdf']);
+  for(const filename of stage7PdfNames){
+    const pdf=await stage7PdfZip.file(filename).async('nodebuffer');
+    assertStage5A4(pdf,595.2756,841.8898,filename);
+    assert.doesNotMatch(pdf.toString('latin1'),/\/Subtype\s*\/Image\b/);
+  }
+  console.log('BROWSER_STAGE=STAGE7_RESTORED_SCORE_XSD_AND_FULL_PART_VECTOR_PDF_PASS');
 
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,

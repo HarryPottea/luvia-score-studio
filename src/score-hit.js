@@ -43,23 +43,54 @@ function staffOffsets(doc,visibleParts) {
   }
   return {offsets,total};
 }
-const signature=e=>e&&e.step&&Number.isInteger(e.alter)&&Number.isInteger(e.octave)&&Number.isInteger(e.start)&&Number.isInteger(e.duration)
-  ?[e.start,e.duration,e.step,e.alter,e.octave].join('/') : null;
-// Do not infer voice identities from sequence order: duplicated identities stay read-only.
+const signature=e=>{
+  if(!e||!Number.isInteger(e.start)||!Number.isInteger(e.duration))return null;
+  if(e.rest===true)return ['rest',e.start,e.duration].join('/');
+  return e.step&&Number.isInteger(e.alter)&&Number.isInteger(e.octave)
+    ?['note',e.start,e.duration,e.step,e.alter,e.octave].join('/') : null;
+};
+// Match OSMD's explicit voice identity when available. Unresolved unisons stay read-only.
+const laneSignature=e=>{
+  const base=signature(e),voice=e?.voice,staff=e?.staff;
+  return base!==null&&voice!==undefined&&voice!==null&&String(voice)!==''&&
+    staff!==undefined&&staff!==null&&String(staff)!==''
+    ?base+'@voice='+String(voice)+'@staff='+String(staff):null;
+};
 export function matchScoreEvents(events,graphics) {
   const source=new Map(),visual=new Map();
-  for(const [list,store] of [[events,source],[graphics,visual]]) {
-    for(const e of list) {
-      const key=signature(e);
-      if(key){const items=store.get(key)||[];items.push(e);store.set(key,items);}
+  for(const [list,store] of [[events,source],[graphics,visual]]){
+    for(const event of list){
+      const key=signature(event);
+      if(key===null)continue;
+      const found=store.get(key)||[];found.push(event);store.set(key,found);
     }
   }
-  const matches=[];
-  for(const [key,items] of source) {
-    const seen=visual.get(key)||[];
-    if(items.length===1&&seen.length===1)matches.push({event:items[0],graphic:seen[0]});
+  const pairs=[];
+  for(const [key,group] of source){
+    const rendered=visual.get(key)||[];
+    if(group.length===1&&rendered.length===1){
+      pairs.push({event:group[0],graphic:rendered[0]});continue;
+    }
+    // Duplicated simultaneous pitches/rests need complete, unambiguous voice
+    // evidence. Never pair only a subset: OSMD could renumber voices.
+    if(group.length<2||group.length!==rendered.length)continue;
+    const byLane=new Map();
+    let valid=true;
+    for(const item of group){
+      const id=laneSignature(item);
+      if(id===null||byLane.has(id)){valid=false;break;}
+      byLane.set(id,item);
+    }
+    if(!valid)continue;
+    const seen=new Set(),candidate=[];
+    for(const item of rendered){
+      const id=laneSignature(item),original=id===null?null:byLane.get(id);
+      if(!original||seen.has(id)){valid=false;break;}
+      seen.add(id);candidate.push({event:original,graphic:item});
+    }
+    if(valid&&seen.size===group.length)pairs.push(...candidate);
   }
-  return matches;
+  return pairs;
 }
 function sourcePitch(source) {
   // OSMD Pitch.ts uses octXmlDiff=3; serialized MusicXML octaves are 3 higher.
@@ -83,6 +114,23 @@ function noteHead(gn,host) {
   if(live?.length>1&&Number.isInteger(idx)&&valid(live[idx]))return live[idx];
   return null;
 }
+function restGlyph(gn,host) {
+  const group=gn?.getSVGGElement?.();
+  if(!group?.isConnected||!host.contains(group))return null;
+  const stave=group.closest?.('.vf-stavenote')||group;
+  if(!host.contains(stave))return null;
+  // VexFlow 5 renders ordinary rests inside a .vf-notehead group too.
+  // This is a rest only because the OSMD sourceNote confirmed isRest().
+  const glyphs=stave.querySelectorAll?.('.vf-notehead')||[];
+  if(glyphs.length===1)return glyphs[0];
+  if(glyphs.length>1)return null;
+  const restMarks=stave.querySelectorAll?.('.vf-rest')||[];
+  if(restMarks.length===1)return restMarks[0];
+  // OSMD and VexFlow expose ordinary rests as a single stavenote group.
+  // Unknown or multiple glyphs are not bound to avoid ambiguous hit regions.
+  return stave.matches?.('.vf-stavenote')&&
+    stave.querySelectorAll?.('.vf-stavenote')?.length===0?stave:null;
+}
 export function graphicalTargets(osmd,doc,visibleParts,host) {
   if(!osmd?.GraphicSheet||!doc||!Array.isArray(visibleParts)||!host)return [];
   const layout=staffOffsets(doc,visibleParts);
@@ -99,23 +147,30 @@ export function graphicalTargets(osmd,doc,visibleParts,host) {
       for(let staff=1;staff<=location.count;staff++) {
         const staffEntries=row[location.offset+staff-1]?.staffEntries;
         if(!Array.isArray(staffEntries))continue;
-        const expected=measure.events.filter(e=>Number(e.staff)===staff&&e.editablePitch&&!e.protectedMarkup);
+        const expected=measure.events.filter(e=>Number(e.staff)===staff&&
+          e.duration>0&&(e.rest||!!e.step));
         const drawn=[];
         for(const entry of staffEntries)for(const voice of entry.graphicalVoiceEntries||[])for(const gn of voice.notes||[]) {
           const src=gn?.sourceNote;
-          if(!src||src.isRest?.()!==false)continue;
-          const pitch=sourcePitch(src),time=src.ParentVoiceEntry?.Timestamp?.RealValue,duration=src.Length?.RealValue;
-          if(!pitch||!Number.isFinite(time)||!Number.isFinite(duration))continue;
+          if(!src||typeof src.isRest!=='function')continue;
+          const rest=src.isRest()===true;
+          const pitch=rest?null:sourcePitch(src);
+          const time=src.ParentVoiceEntry?.Timestamp?.RealValue,duration=src.Length?.RealValue;
+          if(!rest&&!pitch||!Number.isFinite(time)||!Number.isFinite(duration))continue;
           const start=Math.round(time*measure.divisions*4),length=Math.round(duration*measure.divisions*4);
           if(!close(start/(measure.divisions*4),time)||!close(length/(measure.divisions*4),duration))continue;
-          drawn.push({...pitch,start,duration:length,gn});
+          const rawVoice=src.ParentVoiceEntry?.ParentVoice?.VoiceId;
+           const voice=(typeof rawVoice==='number'||typeof rawVoice==='string')&&
+             String(rawVoice)!==''?String(rawVoice):undefined;
+           drawn.push({...pitch,start,duration:length,rest,gn,voice,staff:String(staff)});
         }
         for(const pair of matchScoreEvents(expected,drawn)) {
-          const element=noteHead(pair.graphic.gn,host);
+          const rest=pair.event.rest===true;
+          const element=rest?restGlyph(pair.graphic.gn,host):noteHead(pair.graphic.gn,host);
           if(!element||used.has(element))continue;
           used.add(element);
           found.push({partId:part.id,measureIndex:measure.index,eventIndex:pair.event.eventIndex,
-            voice:pair.event.voice,staff,element});
+            voice:pair.event.voice,staff,element,rest});
         }
       }
     }
@@ -136,7 +191,7 @@ function addHitArea(element) {
 // OSMD autoResize replaces SVG nodes. Rebind after a DOM replacement instead of
 // assuming one-off graphical objects survive responsive re-rendering.
 export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,announce,
-  isLyricMode=()=>false,editLyric=()=>false}) {
+  isLyricMode=()=>false,editLyric=()=>false,onMeasurePointer=()=>{},onDirectEdit=()=>false}) {
   const host=document.getElementById('score-container');
   let targets=[],cleanups=[],selected=null,drag=null,disposed=false;
   const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
@@ -161,7 +216,16 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     ring.classList.add('jwoo-selection-ring');
     el.insertBefore(ring,el.firstChild);
   }
-  function highlight(){for(const item of targets)markSelected(item,!!same(selected,item));}
+  let activeRange=null,playbackMeasure=null;
+  function highlightPlayback(){
+    for(const item of targets)item.element.classList.toggle('jwoo-playback-active',
+      playbackMeasure!==null&&item.measureIndex===playbackMeasure);
+  }
+  function highlightRange(){
+    for(const item of targets)item.element.classList.toggle('jwoo-measure-selected',
+      !!activeRange&&item.measureIndex>=activeRange.start&&item.measureIndex<=activeRange.end);
+  }
+  function highlight(){for(const item of targets)markSelected(item,!!same(selected,item));highlightRange();highlightPlayback();}
   function up(event) {
     if(disposed||!drag||drag.pointerId!==event.pointerId)return;
     const {item,unit,y}=drag;
@@ -173,18 +237,24 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   function clearHandlers(){for(const off of cleanups)off();cleanups=[];drag=null;}
   function attach(item){
     const el=item.element;
-    el.classList.add('jwoo-note-target');el.setAttribute('tabindex','0');
+    el.classList.add(item.rest?'jwoo-rest-target':'jwoo-note-target');el.setAttribute('tabindex','0');
     el.setAttribute('role','button');
-    el.setAttribute('aria-label',(item.measureIndex+1)+'마디 '+item.voice+'성부 '+item.staff+'보표 음표');
+    el.setAttribute('aria-label',(item.measureIndex+1)+'마디 '+item.voice+'성부 '+item.staff+'보표 '+(item.rest?'쉼표':'음표'));
     addHitArea(el);
     el.setAttribute('aria-pressed','false');
     function key(event) {
-      if(!['Enter',' ','ArrowUp','ArrowDown'].includes(event.key))return;
-      event.preventDefault();selected=item;select(item);highlight();
-      if(isLyricMode()&&(event.key==='Enter'||event.key===' ')){
+      if(!['Enter',' ','ArrowUp','ArrowDown','Delete','Backspace'].includes(event.key))return;
+      event.preventDefault();selected=item;onMeasurePointer(item.measureIndex,!!event.shiftKey);select(item);highlight();
+      if((event.key==='Delete'||event.key==='Backspace')&&!item.rest){
+        onDirectEdit(item,'delete');return;
+      }
+      if(item.rest&&(event.key==='Enter'||event.key===' ')&&!isLyricMode()){
+        onDirectEdit(item,'insert');return;
+      }
+      if(!item.rest&&isLyricMode()&&(event.key==='Enter'||event.key===' ')){
         editLyric(item,el);return;
       }
-      if(!isLyricMode()&&(event.key==='ArrowUp'||event.key==='ArrowDown'))
+      if(!item.rest&&!isLyricMode()&&(event.key==='ArrowUp'||event.key==='ArrowDown'))
         movePitch(item,event.key==='ArrowUp'?1:-1);
     }
     el.addEventListener('keydown',key);
@@ -226,7 +296,12 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       if(ranked.length===1||ranked[1].distance-ranked[0].distance>=3)item=ranked[0].candidate;
     }
     if(!item)return;
-    selected=item;select(item);highlight();
+    selected=item;onMeasurePointer(item.measureIndex,!!event.shiftKey);select(item);highlight();
+    if(item.rest){
+      drag=null;
+      event.preventDefault();event.stopPropagation();
+      return;
+    }
     if(isLyricMode()){
       drag=null;
       editLyric(item,item.element);
@@ -240,7 +315,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   function rootDouble(event){
     if(disposed||!selected)return;
     const item=targets.find(item=>same(item,selected));
-    if(!item||item.element.closest?.('.vf-stavenote')!==event.target?.closest?.('.vf-stavenote'))return;
+    if(!item||item.rest||item.element.closest?.('.vf-stavenote')!==event.target?.closest?.('.vf-stavenote'))return;
     const box=item.element.getBoundingClientRect(),pad=5;
     if(event.clientX<box.left-pad||event.clientX>box.right+pad||
       event.clientY<box.top-pad||event.clientY>box.bottom+pad)return;
@@ -248,6 +323,18 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     event.preventDefault();event.stopPropagation();
     editLyric(item,item.element);
   }
+  function rootContext(event){
+    if(disposed||isLyricMode())return;
+    const matched=targets.filter(item=>item.element===event.target||
+      item.element.contains?.(event.target));
+    if(matched.length!==1)return;
+    const item=matched[0];
+    event.preventDefault();event.stopPropagation();
+    drag=null;selected=item;
+    onMeasurePointer(item.measureIndex,false,{x:event.clientX,y:event.clientY});
+    select(item);highlight();
+  }
+  host?.addEventListener('contextmenu',rootContext,true);
   host?.addEventListener('pointerdown',rootDown,true);
   host?.addEventListener('dblclick',rootDouble,true);
   document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancel);
@@ -257,6 +344,14 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   observer?.observe(host,{childList:true,subtree:true});
   remap();
   return {get count(){return targets.length;},highlight(next){selected=next;highlight();},
+    highlightMeasureRange(start,end){
+      activeRange=Number.isSafeInteger(start)&&Number.isSafeInteger(end)?{start,end}:null;
+      highlightRange();
+    },
+    highlightPlaybackMeasure(measureIndex){
+      playbackMeasure=Number.isSafeInteger(measureIndex)&&measureIndex>=0?measureIndex:null;
+      highlightPlayback();
+    },
     rectFor(next){
       const item=targets.find(item=>same(item,next));
       return item?.element?.getBoundingClientRect?.()||null;
@@ -264,7 +359,8 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
     dispose(){
       if(disposed)return;disposed=true;
       observer?.disconnect();clearHandlers();
-      for(const item of targets)markSelected(item,false);
+      for(const item of targets){markSelected(item,false);item.element.classList.remove('jwoo-playback-active');}
+      host?.removeEventListener('contextmenu',rootContext,true);
       host?.removeEventListener('pointerdown',rootDown,true);
       host?.removeEventListener('dblclick',rootDouble,true);
       document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);

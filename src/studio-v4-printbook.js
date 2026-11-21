@@ -5,6 +5,11 @@ import {OpenSheetMusicDisplay} from 'opensheetmusicdisplay';
 import {editableScoreRenderOptions} from './osmd-render-policy.js';
 import {applyLayoutPreset} from './layout-profile.js';
 import {applyFixedA4Profile,fixedA4Profile} from './a4-engraving.js';
+import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
+import {adaptLyricRendering} from './studio-v4-lyric-spacing-audit.js';
+import {adaptExpressionRendering,inspectSvgExpressionSpacing} from './studio-v4-expression-spacing-audit.js';
+import {inspectSvgPageBounds} from './studio-v4-page-bounds.js';
+import {FULL_SCORE_EXPORT_ID,prepareScoreAndPartExport} from './studio-v4-pdf-export-plan.js';
 
 const FORMATS={A4_P:{w:'210mm',h:'297mm'},A4_L:{w:'297mm',h:'210mm'}};
 const MAX_PARTS=12,MAX_PAGES=80,MAX_PART_PAGES=24;
@@ -24,28 +29,23 @@ export function partOnlyDocument(source,partId){
   }
   return document;
 }
-export function inspectPrintableSvg(svg){
-  if(!svg||svg.localName!=='svg')throw new Error('악보 SVG 페이지가 유효하지 않습니다.');
-  if(svg.querySelector('script, foreignObject, iframe, image'))
-    throw new Error('원격 이미지나 실행 요소가 포함된 SVG는 인쇄하지 않습니다.');
-  for(const node of [svg,...svg.querySelectorAll('*')]){
-    for(const attr of [...node.attributes]){
-      if(/^on/i.test(attr.name))throw new Error('악보 SVG에 이벤트 실행 속성이 있습니다.');
-      if(['href','xlink:href','src'].includes(attr.name.toLowerCase())&&
-        /^(?:https?:|\/\/|data:|javascript:)/i.test(attr.value.trim()))
-        throw new Error('외부 리소스가 참조된 악보 SVG는 인쇄하지 않습니다.');
-    }
-  }
-  return true;
-}
+export {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='auto',measureNumbers=true,
   onProgress=()=>{}}={}){
-  if(!FORMATS[pageFormat]||!Array.isArray(parts)||parts.length<1||parts.length>MAX_PARTS)
-    throw new Error('벡터 파트보는 A4 규격에서 1~12개 파트까지 출력합니다.');
-  const output=[];
+  const fullScore=parts?.[0]?.id===FULL_SCORE_EXPORT_ID&&parts[0].fullScore===true;
+  if(!FORMATS[pageFormat]||!Array.isArray(parts)||parts.length<1||
+     parts.length>(fullScore?MAX_PARTS+1:MAX_PARTS)||
+     parts.slice(fullScore?1:0).some(p=>p?.id===FULL_SCORE_EXPORT_ID||p?.fullScore))
+    throw new Error('벡터 악보 출력은 A4 규격에서 전체 악보와 최대 12개 파트를 지원합니다.');
+  if(fullScore)prepareScoreAndPartExport(doc,parts.slice(1));
+  const output=[],lyricAudits=[],boundsAudits=[],expressionAudits=[];
   for(const [index,p] of parts.entries()){
     if(!p||typeof p.id!=='string'||!p.id)throw new Error('인쇄 파트를 선택해 주세요.');
-    const partDoc=partOnlyDocument(doc,p.id);
+    // A reserved virtual group renders the original concert/full score;
+    // ordinary groups retain their existing, independently formatted parts.
+    const partDoc=fullScore&&index===0?doc.cloneNode(true):partOnlyDocument(doc,p.id);
+    const expectedLyrics=[...partDoc.querySelectorAll('note > lyric > text')]
+      .filter(n=>String(n.textContent||'').trim()).length;
     const holder=document.createElement('div');
     const profile=fixedA4Profile(partDoc,pageFormat);
     holder.style.cssText='position:fixed;left:-100000px;top:0;visibility:hidden;pointer-events:none;'+
@@ -61,21 +61,80 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
       applyFixedA4Profile(osmd,partDoc,pageFormat);
       applyLayoutPreset(osmd,layout,partDoc);
       osmd.render();
+      const expression=await adaptExpressionRendering(osmd,holder,{maxAttempts:2});
+      const measured=await adaptLyricRendering(osmd,holder,{maxAttempts:2});
+      const finalExpressions=inspectSvgExpressionSpacing([...holder.querySelectorAll('svg')]);
+      const expressionAudit={...expression,...finalExpressions,partId:p.id};
+      expressionAudits.push(expressionAudit);
+      if(finalExpressions.collisions>0)
+        throw new Error(p.name+' 표현 기호와 음표·가사 간 겹침 '+
+          finalExpressions.collisions+'건이 남아 인쇄를 차단했습니다. 줄 간격이나 페이지를 조절하세요.');
+      const lyricAudit={...measured,partId:p.id,expectedLyrics,
+        coverageSufficient:measured.lyricElements>=expectedLyrics&&measured.complete&&
+          (expectedLyrics===0||measured.measuredNoteheads>0)};
+      if(!lyricAudit.coverageSufficient)
+        lyricAudit.status='LYRIC_MEASUREMENT_INCOMPLETE';
+      lyricAudits.push(lyricAudit);
       const rendered=[...holder.querySelectorAll('svg')];
       if(rendered.length<1||rendered.length>MAX_PART_PAGES)
         throw new Error('파트별 페이지가 없거나 너무 많아 벡터 출력이 중단됐습니다.');
       if(output.length+rendered.length>MAX_PAGES)
         throw new Error('벡터 파트보는 전체 80페이지까지만 한 번에 인쇄할 수 있습니다.');
+      const pageBounds=inspectSvgPageBounds(rendered);
+      boundsAudits.push({...pageBounds,partId:p.id});
+      if(pageBounds.overflowPages>0)
+        throw new Error(p.name+' 악보 페이지 바깥의 기보가 '+pageBounds.overflowPages+
+          '페이지에서 검출되어 출력하지 않습니다.');
       for(const svg of rendered){
         inspectPrintableSvg(svg);
-        output.push({partName:String(p.name||p.id),partId:p.id,svg:svg.cloneNode(true)});
+        output.push({partName:String(p.name||p.id),partId:p.id,svg:svg.cloneNode(true),lyricAudit});
       }
     }finally{
       try{osmd?.clear?.();}catch{}
       holder.remove();
     }
-    onProgress((index+1)+'/'+parts.length+' · '+p.name+' 렌더링 완료');
+    const last=lyricAudits.at(-1);
+    onProgress((index+1)+'/'+parts.length+' · '+p.name+' 렌더링 완료'+
+      (last?.attempts?' · 가사 간격 보정 '+last.attempts+'회':'')+
+      (expressionAudits.at(-1)?.attempts?' · 표현 기호 간격 보정 '+
+        expressionAudits.at(-1).attempts+'회':'')+
+      (last?.remaining?' · 가사 겹침 의심 '+last.remaining+'건'+
+        (last.noteheadCollisions?' (음표와 겹침 '+last.noteheadCollisions+'건)':''):'')+
+      (!last?.coverageSufficient?' · 가사 위치 검사 미완료 ('+
+        last?.lyricElements+'/'+last?.expectedLyrics+')':'')+
+      (boundsAudits.at(-1)?.overflowPages?' · 페이지 외부 기보 의심 '+
+        boundsAudits.at(-1).overflowPages+'면':'')+
+      (boundsAudits.at(-1)?.unknownPages?' · 경계 측정 불가 '+
+        boundsAudits.at(-1).unknownPages+'면':'') );
   }
+  output.lyricAudit={parts:lyricAudits.length,
+    initial:lyricAudits.reduce((n,a)=>n+a.initial,0),
+    remaining:lyricAudits.reduce((n,a)=>n+a.remaining,0),
+    attempts:lyricAudits.reduce((n,a)=>n+a.attempts,0),
+    noteheadCollisions:lyricAudits.reduce((n,a)=>n+(a.noteheadCollisions||0),0),
+    measuredNoteheads:lyricAudits.reduce((n,a)=>n+(a.measuredNoteheads||0),0),
+    unknownNoteheads:lyricAudits.reduce((n,a)=>n+(a.unknownNoteheads||0),0),
+    complete:lyricAudits.every(a=>a.coverageSufficient),
+    expectedLyrics:lyricAudits.reduce((n,a)=>n+a.expectedLyrics,0),
+    measuredLyrics:lyricAudits.reduce((n,a)=>n+a.lyricElements,0),
+    collisionFreeCertified:false};
+  output.expressionAudit={
+    parts:expressionAudits.length,
+    initial:expressionAudits.reduce((n,a)=>n+a.initial,0),
+    remaining:expressionAudits.reduce((n,a)=>n+a.collisions,0),
+    attempts:expressionAudits.reduce((n,a)=>n+a.attempts,0),
+    measured:expressionAudits.reduce((n,a)=>n+a.measured,0),
+    unknown:expressionAudits.reduce((n,a)=>n+a.unknown,0),
+    complete:expressionAudits.every(a=>a.complete),
+    collisionFreeCertified:false
+  };
+  output.pageBoundsAudit={
+    measuredPages:boundsAudits.reduce((n,a)=>n+a.measuredPages,0),
+    unknownPages:boundsAudits.reduce((n,a)=>n+a.unknownPages,0),
+    overflowPages:boundsAudits.reduce((n,a)=>n+a.overflowPages,0),
+    complete:boundsAudits.every(a=>a.complete),
+    overflowFreeCertified:false
+  };
   return output;
 }
 export function populateVectorPrintWindow(win,{pages,title='J-WOO Score Studio',pageFormat='A4_P'}={}){

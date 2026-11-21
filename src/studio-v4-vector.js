@@ -14,8 +14,8 @@ export async function createVectorPageZip({svgs,filename='score.musicxml',onProg
     const clone=node.cloneNode(true);
     // Editing-only overlays must never be burned into exported score pages.
     for(const overlay of clone.querySelectorAll('.jwoo-selection-ring,.jwoo-hit-area'))overlay.remove();
-    for(const mark of clone.querySelectorAll('.jwoo-note-target,.jwoo-note-selected')){
-      mark.classList.remove('jwoo-note-target','jwoo-note-selected');
+    for(const mark of clone.querySelectorAll('.jwoo-note-target,.jwoo-rest-target,.jwoo-note-selected,.jwoo-measure-selected,.jwoo-playback-active')){
+      mark.classList.remove('jwoo-note-target','jwoo-rest-target','jwoo-note-selected','jwoo-measure-selected','jwoo-playback-active');
       for(const attr of ['tabindex','role','aria-pressed','aria-label'])mark.removeAttribute(attr);
     }
     clone.setAttribute('xmlns','http://www.w3.org/2000/svg');

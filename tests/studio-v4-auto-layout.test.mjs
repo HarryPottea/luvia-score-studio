@@ -1,0 +1,238 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {planDensityLayout,applyDensityLayout,planIndependentPartLayout,applyIndependentPartLayout} from '../src/studio-v4-auto-layout.js';
+import {assertScopedScoreMutation} from '../src/studio-v4-structural-guard.js';
+
+class Element{
+  constructor(localName,children=[],props={},value=''){
+    this.localName=localName;this._attributes={...props};this._value=String(value);
+    this.children=[];this.parentNode=null;this.nodeType=1;this.ownerDocument=this;
+    for(const node of children)this.appendChild(node);
+  }
+  get firstChild(){return this.children[0]||null;}
+  get attributes(){return Object.entries(this._attributes).map(([name,value])=>({name,value}));}
+  get textContent(){return this.children.length?this.children.map(n=>n.textContent).join(''):this._value;}
+  set textContent(value){this._value=String(value);this.children=[];}
+  getAttribute(name){return this._attributes[name]??null;}
+  setAttribute(name,value){this._attributes[name]=String(value);}
+  removeAttribute(name){delete this._attributes[name];}
+  appendChild(node){return this.insertBefore(node,null);}
+  insertBefore(node,before){
+    if(node.parentNode)node.parentNode.removeChild(node);
+    const i=before?this.children.indexOf(before):-1;
+    this.children.splice(i===-1?this.children.length:i,0,node);node.parentNode=this;return node;
+  }
+  removeChild(node){
+    const i=this.children.indexOf(node);if(i===-1)throw new Error('detached');
+    this.children.splice(i,1);node.parentNode=null;return node;
+  }
+  cloneNode(deep=false){
+    return new Element(this.localName,deep?this.children.map(x=>x.cloneNode(true)):[],this._attributes,this._value);
+  }
+  createElementNS(ns,tag){return new Element(tag);}
+  createElement(tag){return new Element(tag);}
+}
+const el=(tag,children=[],attrs={},value='')=>new Element(tag,children,attrs,value);
+const text=(tag,v)=>el(tag,[],{},v);
+const first=(node,tag)=>node.children.find(x=>x.localName===tag);
+const bars=part=>part.children.filter(x=>x.localName==='measure');
+const printed=bar=>first(bar,'print')?.getAttribute('new-system')||first(bar,'print')?.getAttribute('new-page')||'none';
+function score({parts=2,count=12,notes=4,lyrics=false}={}){
+  const root=el('score-partwise',Array.from({length:parts},(_,p)=>
+    el('part',Array.from({length:count},(_,i)=>{
+      const events=Array.from({length:notes},(_,k)=>el('note',[
+        el('pitch',[text('step','C'),text('octave',4)]),text('duration',48),
+        text('type','quarter'),
+        ...(lyrics?[el('lyric',[text('text',i%2===0?'매우긴노랫말':'안녕')])]:[])
+      ]));
+      return el('measure',[
+        ...(i===0?[el('attributes',[text('divisions','48'),
+          el('time',[text('beats',4),text('beat-type',4)]),
+          ...(p===1?[text('staves','2')]:[])])]:[]),...events
+      ],{number:String(i+1)});
+    }),{id:'P'+p})));
+  return {documentElement:root,cloneNode(){return copy(root.cloneNode(true));}};
+}
+function copy(root){return {documentElement:root,cloneNode(){return copy(root.cloneNode(true));}};}
+function marks(doc){return doc.documentElement.children.map(p=>bars(p).map(printed));}
+
+test('automatic layout is deterministic and has matching break indices in each part',()=>{
+  const source=score();
+  const plan=planDensityLayout(source);
+  assert.ok(plan.systems>=2);
+  assert.ok(plan.systemsPerPage>=1);
+  assert.equal(plan.expected.length,12);
+  const changed=applyDensityLayout(source);
+  const a=marks(changed.doc);
+  assert.deepEqual(a[0],a[1]);
+  assert.ok(a[0].some(x=>x!=='none'));
+  assert.equal(changed.change.collisionVerified,false);
+  assert.deepEqual(marks(source)[0],Array(12).fill('none'));
+  assert.equal(plan.expected[0],'none');
+});
+test('lyrics increase calculated horizontal space, encouraging additional systems',()=>{
+  const plain=planDensityLayout(score({lyrics:false}));
+  const vocal=planDensityLayout(score({lyrics:true}));
+  assert.ok(vocal.systems>=plain.systems);
+  assert.ok(vocal.widths.some((n,i)=>n>plain.widths[i]));
+});
+test('larger landscape capacity keeps at least as many bars per system',()=>{
+  const source=score({count:16});
+  const portrait=planDensityLayout(source,{pageFormat:'A4_P'});
+  const landscape=planDensityLayout(source,{pageFormat:'A4_L'});
+  assert.ok(landscape.systems<=portrait.systems);
+  assert.ok(landscape.capacity>portrait.capacity);
+});
+test('manual page break is hard-preserved in every full-score part, replace can override',()=>{
+  const source=score();
+  bars(source.documentElement.children[0])[1].insertBefore(
+    el('print',[],{'new-page':'yes'}),bars(source.documentElement.children[0])[1].firstChild);
+  const plan=planDensityLayout(source);
+  assert.equal(plan.expected[1],'page');
+  assert.ok(plan.systemStarts.includes(1));
+  assert.deepEqual(plan.manualBreaks,[1]);
+  const kept=applyDensityLayout(source).doc;
+  assert.equal(first(bars(kept.documentElement.children[0])[1],'print').getAttribute('new-page'),'yes');
+  assert.equal(first(bars(kept.documentElement.children[1])[1],'print').getAttribute('new-page'),'yes');
+  assert.equal(first(bars(source.documentElement.children[0])[1],'print').getAttribute('new-page'),'yes');
+  const replace=applyDensityLayout(source,{replaceExisting:true});
+  assert.equal(marks(replace.doc)[0][1],'none');
+});
+test('unbalanced measures and unsupported document never mutate input',()=>{
+  const source=score();
+  const part=source.documentElement.children[1];
+  part.removeChild(bars(part).at(-1));
+  assert.throws(()=>planDensityLayout(source),/동일 길이/);
+  assert.equal(bars(source.documentElement.children[0]).length,12);
+  assert.equal(bars(source.documentElement.children[1]).length,11);
+  assert.throws(()=>planDensityLayout(score(),{pageFormat:'LETTER'}),/용지 방향/);
+});
+
+
+test('part-by-part layout produces different page turns for dense vocal and sparse instrument',()=>{
+  const source=score({parts:2,count:16,notes:4,lyrics:true});
+  const instrumental=source.documentElement.children[1];
+  for(const bar of bars(instrumental)){
+    const notes=bar.children.filter(x=>x.localName==='note');
+    for(const note of notes.slice(1))bar.removeChild(note);
+    // Remove the lyric from the remaining simple instrumental note.
+    const lyric=first(notes[0],'lyric');if(lyric)notes[0].removeChild(lyric);
+  }
+  const plan=planIndependentPartLayout(source);
+  assert.equal(plan.parts,2);
+  assert.ok(plan.partPlans[0].systems>plan.partPlans[1].systems);
+  const result=applyIndependentPartLayout(source);
+  assert.notDeepEqual(marks(result.doc)[0],marks(result.doc)[1]);
+  assert.deepEqual(marks(source)[0],Array(16).fill('none'));
+  assert.deepEqual(marks(source)[1],Array(16).fill('none'));
+  assert.equal(result.change.collisionVerified,false);
+});
+test('independent part layout preserves a manual page on only its own instrument',()=>{
+  const source=score({parts:2,count:12,notes:4});
+  const bar=bars(source.documentElement.children[1])[1];
+  bar.insertBefore(el('print',[],{'new-page':'yes'}),bar.firstChild);
+  const plan=planIndependentPartLayout(source);
+  assert.equal(plan.partPlans[0].expected[1],'none');
+  assert.equal(plan.partPlans[1].expected[1],'page');
+  const result=applyIndependentPartLayout(source).doc;
+  assert.equal(first(bars(result.documentElement.children[0])[1],'print'),undefined);
+  assert.equal(first(bars(result.documentElement.children[1])[1],'print').getAttribute('new-page'),'yes');
+  assert.equal(applyIndependentPartLayout(source,{replaceExisting:true}).change.parts,2);
+});
+
+
+test('pitch-only structural guard rejects modified lyrics and protected parts',()=>{
+  const source=score({parts:2,count:4,notes:2,lyrics:true});
+  const target=source.cloneNode(true),bar=bars(target.documentElement.children[0])[1];
+  const note=first(bar,'note');
+  first(first(note,'pitch'),'step').textContent='D';
+  assert.equal(assertScopedScoreMutation(source,target,{
+    partIds:['P0'],start:1,end:1,kind:'pitches'
+  }).guardPassed,true);
+  const unsafe=target.cloneNode(true);
+  const lyric=first(first(bars(unsafe.documentElement.children[0])[1],'note'),'lyric');
+  first(lyric,'text').textContent='다른 가사';
+  assert.throws(()=>assertScopedScoreMutation(source,unsafe,{
+    partIds:['P0'],start:1,end:1,kind:'pitches'
+  }),/보존 대상/);
+  const cross=target.cloneNode(true);
+  first(first(first(bars(cross.documentElement.children[1])[1],'note'),'pitch'),'step').textContent='E';
+  assert.throws(()=>assertScopedScoreMutation(source,cross,{
+    partIds:['P0'],start:1,end:1,kind:'pitches'
+  }),/보존 대상/);
+});
+test('layout-only structural guard prohibits changes to rhythm or metadata',()=>{
+  const source=score({parts:2,count:8,notes:4,lyrics:true});
+  const candidate=applyIndependentPartLayout(source).doc;
+  assert.equal(assertScopedScoreMutation(source,candidate,{
+    partIds:['P0','P1'],start:0,end:7,kind:'layout'
+  }).guardPassed,true);
+  const corrupted=candidate.cloneNode(true);
+  const firstNote=first(bars(corrupted.documentElement.children[0])[2],'note');
+  first(firstNote,'duration').textContent='12';
+  assert.throws(()=>assertScopedScoreMutation(source,corrupted,{
+    partIds:['P0','P1'],start:0,end:7,kind:'layout'
+  }),/보존 대상/);
+});
+
+
+test('density layout recognizes tie connections and charges a protected seam',()=>{
+  const source=score({parts:1,count:8,notes:4});
+  const part=source.documentElement.children[0],barsOfPart=bars(part);
+  const tiedA=first(barsOfPart[2],'note'),tiedB=first(barsOfPart[3],'note');
+  tiedA.appendChild(el('tie',[],{type:'start'}));
+  tiedB.appendChild(el('tie',[],{type:'stop'}));
+  tiedA.appendChild(el('notations',[el('tied',[],{type:'start'})]));
+  tiedB.appendChild(el('notations',[el('tied',[],{type:'stop'})]));
+  const plan=planDensityLayout(source);
+  assert.ok(plan.breakPenaltyTotal>=140);
+  assert.match(plan.balancePolicy,/BALANCED_WIDTH/);
+  assert.equal(plan.totalMeasures,8);
+  const result=applyDensityLayout(source);
+  assert.equal(result.change.collisionVerified,false);
+  assert.equal(first(tiedA,'tie').getAttribute('type'),'start');
+  assert.equal(first(tiedB,'tie').getAttribute('type'),'stop');
+  assert.equal(first(first(bars(result.doc.documentElement.children[0])[2],'note'),'tie').getAttribute('type'),'start');
+});
+
+test('stage4: two conflicting manual break types must never silently overwrite one another',()=>{
+  const source=score({parts:2,count:10,notes:3});
+  for(const [index,type] of ['new-page','new-system'].entries()){
+    const bar=bars(source.documentElement.children[index])[4];
+    bar.insertBefore(el('print',[],{[type]:'yes'}),bar.firstChild);
+  }
+  assert.throws(()=>planDensityLayout(source),/수동 줄·페이지 지시가 파트마다/);
+  const firstBreak=first(bars(source.documentElement.children[0])[4],'print');
+  assert.equal(firstBreak.getAttribute('new-page'),'yes');
+  const result=applyDensityLayout(source,{replaceExisting:true});
+  assert.equal(result.change.collisionVerified,false);
+});
+test('stage4: explicit manual system boundaries constrain balanced planning without deleting source print',()=>{
+  const source=score({parts:2,count:18,notes:3,lyrics:true});
+  const m=bars(source.documentElement.children[0])[7];
+  m.insertBefore(el('print',[],{'new-system':'yes','staff-spacing':'16'}),m.firstChild);
+  const plan=planDensityLayout(source);
+  assert.ok(plan.systemStarts.includes(7));
+  assert.equal(plan.expected[7],'system');
+  const candidate=applyDensityLayout(source).doc;
+  assert.equal(first(bars(candidate.documentElement.children[0])[7],'print').getAttribute('staff-spacing'),'16');
+  assert.equal(first(bars(candidate.documentElement.children[0])[7],'print').getAttribute('new-system'),'yes');
+  assert.equal(first(bars(candidate.documentElement.children[1])[7],'print').getAttribute('new-system'),'yes');
+  assert.deepEqual(marks(source)[1],Array(18).fill('none'));
+});
+test('stage4: two lyric verses and sustained expression need extra page height reserve',()=>{
+  const src=score({parts:1,count:18,notes:4,lyrics:true});
+  const ordinary=planDensityLayout(src);
+  for(const bar of bars(src.documentElement.children[0])){
+    for(const note of bar.children.filter(n=>n.localName==='note')){
+      note.appendChild(el('lyric',[text('text','Together')],{number:'2'}));
+      note.appendChild(el('notations',[el('ornaments',[el('trill-mark')])]));
+    }
+    bar.insertBefore(el('direction',[el('direction-type',[
+      el('words',[],{},'crescendo molto')])]),bar.firstChild);
+  }
+  const dense=planDensityLayout(src);
+  assert.ok(dense.systemsPerPage<=ordinary.systemsPerPage);
+  assert.ok(dense.widths.every((width,i)=>width>=ordinary.widths[i]));
+  assert.ok(dense.pages>=ordinary.pages);
+});

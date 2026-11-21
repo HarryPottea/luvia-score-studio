@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {inspectAdvancedMeasure} from '../src/advanced-score.js';
 import {authorTupletGroup} from '../src/studio-v4-tuplet-groups.js';
 import {rebarWrittenScore} from '../src/studio-v4-rebar-written.js';
+import {redistributeVoiceRhythm,reshapeTupletRhythm,parseRhythmTypes} from '../src/studio-v4-rhythm-group.js';
 import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
 import {transposeChordChromatically} from '../src/studio-v4-chord-transpose.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
@@ -883,4 +884,142 @@ test('tuplets: preserve MusicXML type–accidental–time-modification–staff o
   assert.ok(tags.indexOf('time-modification')<tags.indexOf('staff'));
   assert.equal(first(first(revised,'pitch'),'alter').textContent,'1');
   assert.equal(first(revised,'accidental').textContent,'sharp');
+});
+
+
+// STAGE 2 — atomic rhythm editing in independent voices, chords and tuplets.
+test('stage2: multi-voice rhythmic reallocation retains other piano voice and segment endpoint',()=>{
+  const original=fixture(),saved=serialize(original),other=secondVoice(original);
+  const result=redistributeVoiceRhythm(original,{...params(0),endEventIndex:1,
+    types:'eighth-dotted,16th'});
+  const ev=values(result.doc).events;
+  assert.equal(serialize(original),saved);
+  assert.deepEqual(secondVoice(result.doc),other);
+  assert.deepEqual(ev.slice(0,2).map(e=>[e.start,e.duration,e.voice,e.staff]),
+    [[0,36,'1','1'],[36,12,'1','1']]);
+  assert.equal(ev[2].start,48,'following note/rest must retain the same onset');
+  assert.equal(first(notes(result.doc)[0],'type').textContent,'eighth');
+  assert.equal(children(notes(result.doc)[0],'dot').length,1);
+  assert.equal(result.change.beforeTicks,48);
+  assert.equal(result.change.afterTicks,48);
+});
+test('stage2: redistribute a second-voice note and rest without touching first voice',()=>{
+  const source=fixture(),saved=serialize(source),before=values(source).events.slice(0,4);
+  const {doc}=redistributeVoiceRhythm(source,{...params(4),endEventIndex:5,
+    types:['quarter-dotted','eighth']});
+  assert.equal(serialize(source),saved);
+  assert.deepEqual(values(doc).events.slice(0,4),before);
+  assert.deepEqual(secondVoice(doc).map(e=>e.slice(0,2)),
+    [[0,72],[72,24],[96,96]]);
+  assert.equal(first(children(measure(doc),'backup')[0],'duration').textContent,'192');
+});
+test('stage2: rebalance chord durations atomically and keep each chord tone synchronized',()=>{
+  const source=fixture(),m=measure(source),anchor=notes(source)[0];
+  const tone=E('note',[E('chord'),E('pitch',[T('step','G'),T('octave',4)]),
+    T('duration',24),T('voice','1'),T('type','eighth'),T('staff','1')]);
+  m.insertBefore(tone,anchor.nextSibling);
+  const other=secondVoice(source),saved=serialize(source);
+  const result=redistributeVoiceRhythm(source,{...params(0),endEventIndex:2,
+    types:'eighth-dotted,16th'});
+  const after=values(result.doc).events;
+  assert.equal(serialize(source),saved);
+  assert.equal(after[0].duration,36);
+  assert.equal(after[1].chord,true);assert.equal(after[1].duration,36);
+  assert.equal(after[1].start,0);
+  assert.equal(after[2].start,36);assert.equal(after[2].duration,12);
+  assert.deepEqual(secondVoice(result.doc),other);
+  assert.equal(first(notes(result.doc)[1],'duration').textContent,'36');
+});
+test('stage2: reject meter mismatch, cross-voice span, ties and incomplete chord selection without source mutation',()=>{
+  const source=fixture(),saved=serialize(source);
+  assert.throws(()=>redistributeVoiceRhythm(source,{...params(0),endEventIndex:1,
+    types:'quarter,quarter'}),/총 박자값/);
+  assert.throws(()=>redistributeVoiceRhythm(source,{...params(3),endEventIndex:4,
+    types:'quarter,quarter'}),/성부|연속/);
+  assert.throws(()=>redistributeVoiceRhythm(source,{...params(0),endEventIndex:1,
+    types:'64th,quarter'}),/리듬/);
+  assert.equal(serialize(source),saved);
+  const tied=fixture();
+  notes(tied)[0].appendChild(E('tie',[],{type:'start'}));
+  assert.throws(()=>redistributeVoiceRhythm(tied,{...params(0),endEventIndex:1,
+    types:'eighth-dotted,16th'}),/붙임줄|보호/);
+  const chord=fixture(),m=measure(chord),note=notes(chord)[0];
+  m.insertBefore(E('note',[E('chord'),E('pitch',[T('step','G'),T('octave',4)]),
+    T('duration',24),T('voice','1'),T('type','eighth'),T('staff','1')]),note.nextSibling);
+  assert.throws(()=>redistributeVoiceRhythm(chord,{...params(0),endEventIndex:1,
+    types:'eighth-dotted,16th'}),/완전한 화음/);
+});
+for(const [ratio,types,expected] of [
+  ['3:2','eighth,32nd,32nd',[16,4,4]],
+  ['5:4','eighth,32nd,32nd,16th,16th',[96,24,24,48,48]],
+  ['6:4','eighth,16th,16th,16th,32nd,32nd',[16,8,8,8,4,4]],
+  ['7:4','eighth,16th,16th,16th,16th,32nd,32nd',[96,48,48,48,48,24,24]],
+]){
+  test('stage2: reshape existing '+ratio+' tuplet with exact note ticks and frozen other voices',()=>{
+    const source=groupedTupletFixture('16th');
+    const made=authorTupletGroup(source,{...params(),ratio,type:'16th',step:'D',octave:5}).doc;
+    const saved=serialize(made);
+    const before=values(made),other=before.events.filter(e=>e.voice==='2');
+    const result=reshapeTupletRhythm(made,{...params(),types});
+    const after=values(result.doc);
+    assert.equal(serialize(made),saved);
+    assert.equal(after.reason,null);
+    assert.deepEqual(after.events.slice(0,expected.length).map(e=>e.duration),expected);
+    assert.deepEqual(after.events.filter(e=>e.voice==='2'),other);
+    assert.equal(after.events[expected.length].start,
+      before.events[expected.length].start,'following onset must be unchanged');
+    assert.equal(result.change.beforeTicks,result.change.afterTicks);
+    assert.ok(after.events.slice(0,expected.length).every(e=>e.tuplet));
+    const newNodes=notes(result.doc).slice(0,expected.length);
+    assert.equal(first(first(newNodes[0],'time-modification'),'normal-type').textContent,'eighth');
+    assert.equal(first(first(newNodes[0],'notations'),'tuplet').getAttribute('type'),'start');
+    assert.equal(first(first(newNodes.at(-1),'notations'),'tuplet').getAttribute('type'),'stop');
+  });
+}
+test('stage2: tuplet rhythm alteration protects malformed lengths, tie and wrong token count',()=>{
+  const source=authorTupletGroup(groupedTupletFixture('16th'),
+    {...params(),ratio:'5:4',type:'16th',step:'D',octave:5}).doc;
+  const saved=serialize(source);
+  assert.throws(()=>reshapeTupletRhythm(source,{...params(),
+    types:'eighth,16th,16th,16th,16th'}),/총 박자값/);
+  assert.throws(()=>reshapeTupletRhythm(source,{...params(),
+    types:'16th,16th'}),/5개/);
+  assert.equal(serialize(source),saved);
+  const damaged=source.cloneNode(true);
+  first(notes(damaged)[1],'duration').textContent='999';
+  assert.throws(()=>reshapeTupletRhythm(damaged,{...params(),
+    types:'eighth,32nd,32nd,16th,16th'}),/시간|원래|길이|범위|박자/);
+});
+test('stage2: parsing has a narrow explicit vocabulary',()=>{
+  assert.deepEqual(parseRhythmTypes('eighth-dotted, 16th'),['eighth-dotted','16th']);
+  assert.throws(()=>parseRhythmTypes('eighth, 64th'),/리듬/);
+});
+
+test('stage2: rebarring a newly redistributed polyphonic score preserves absolute onsets and ties',()=>{
+  const source=fixture(),saved=serialize(source);
+  const modified=redistributeVoiceRhythm(source,{...params(0),endEventIndex:1,
+    types:'eighth-dotted,16th'}).doc;
+  const result=rebarWrittenScore(modified,{meter:'3/4'});
+  const bars=children(part(result.doc),'measure');
+  assert.equal(serialize(source),saved);
+  assert.equal(bars.length,2);
+  const actual=[];
+  for(const [index] of bars.entries()){
+    const bar=inspectAdvancedMeasure(result.doc,'P1',index);
+    assert.equal(bar.reason,null);
+    for(const e of bar.events.filter(e=>!e.rest))
+      actual.push({name:e.step+e.octave,voice:e.voice,abs:index*144+e.start,
+        duration:e.duration,measure:index});
+  }
+  assert.ok(actual.some(e=>e.name==='C4'&&e.voice==='1'&&e.abs===0&&e.duration===36));
+  assert.ok(actual.some(e=>e.name==='E4'&&e.voice==='1'&&e.abs===36&&e.duration===12));
+  assert.ok(actual.some(e=>e.name==='C3'&&e.voice==='2'&&e.abs===0&&e.duration===48));
+  assert.ok(actual.some(e=>e.name==='G3'&&e.voice==='2'&&e.abs===96&&e.duration===48));
+  assert.ok(actual.some(e=>e.name==='G3'&&e.voice==='2'&&e.abs===144&&e.duration===48));
+  const start=children(bars[0],'note').find(n=>first(first(n,'pitch')||E('none'),'step')?.textContent==='G'&&
+    first(first(n,'pitch')||E('none'),'octave')?.textContent==='3');
+  const stop=children(bars[1],'note').find(n=>first(first(n,'pitch')||E('none'),'step')?.textContent==='G'&&
+    first(first(n,'pitch')||E('none'),'octave')?.textContent==='3');
+  assert.equal(first(start,'tie')?.getAttribute('type'),'start');
+  assert.equal(first(stop,'tie')?.getAttribute('type'),'stop');
 });

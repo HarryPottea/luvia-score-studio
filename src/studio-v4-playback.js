@@ -136,20 +136,60 @@ export function buildPlaybackTimeline(doc,{defaultBpm=100,maxNotes=3000}={}){
   }));
   const durationSeconds=Math.max(0,...events.map(n=>n.start+n.duration));
   if(durationSeconds>900)fail('15분을 초과하는 악보는 간이 재생에서 지원하지 않습니다.');
-  return {events,durationSeconds,tempoChanges:marks.map(x=>({quarter:x.quarter,bpm:x.bpm})),
-    warnings:[...warnings]};
+  const measureSeconds=[...starts.map(secondsAt),secondsAt(absolute)];
+  return {events,durationSeconds,measureSeconds,
+    tempoChanges:marks.map(x=>({quarter:x.quarter,bpm:x.bpm})),warnings:[...warnings]};
 }
-export function createAuditionPlayer({onState=()=>{}}={}){
-  let context=null,timer=null,events=[],index=0,base=0,active=[],playing=false;
+export function clipPlaybackToMeasures(timeline,{start,end}={}){
+  if(!Array.isArray(timeline?.events)||!Array.isArray(timeline?.measureSeconds)||
+    timeline.measureSeconds.length<2||!Number.isSafeInteger(start)||
+    !Number.isSafeInteger(end)||start<0||end<start||
+    end+1>=timeline.measureSeconds.length)
+    fail('재생할 마디 범위를 다시 선택해 주세요.');
+  const left=timeline.measureSeconds[start],right=timeline.measureSeconds[end+1];
+  if(!Number.isFinite(left)||!Number.isFinite(right)||right<=left||
+    right-left>900)fail('선택 구간의 재생 시간표가 유효하지 않습니다.');
+  const events=[];
+  for(const note of timeline.events){
+    const nStart=note.start,nEnd=note.start+note.duration;
+    if(!Number.isFinite(nStart)||!Number.isFinite(nEnd)||nEnd<=left||nStart>=right)
+      continue;
+    const from=Math.max(left,nStart),to=Math.min(right,nEnd);
+    if(to-from<.04)continue;
+    events.push({...note,start:round(from-left),duration:round(to-from)});
+  }
+  return {events,durationSeconds:round(right-left),
+    warnings:[...new Set(timeline.warnings||[])],
+    selectedMeasures:{start,end},tempoChanges:timeline.tempoChanges||[],
+    measureSeconds:timeline.measureSeconds.slice(start,end+2).map(n=>round(n-left))};
+}
+// Locate the musical bar by its measured time, never by synthesizer note count.
+export function measureAtPlaybackSecond(timeline,seconds){
+  const times=timeline?.measureSeconds;
+  if(!Array.isArray(times)||times.length<2||!Number.isFinite(seconds)||seconds<0)
+    return null;
+  if(times.some((v,i)=>!Number.isFinite(v)||(i>0&&v<times[i-1])))return null;
+  if(seconds>=times.at(-1))return times.length-2;
+  let low=0,high=times.length-2;
+  while(low<=high){
+    const mid=Math.floor((low+high)/2);
+    if(times[mid]<=seconds&&seconds<times[mid+1])return mid;
+    if(times[mid]>seconds)high=mid-1;else low=mid+1;
+  }
+  return null;
+}
+export function createAuditionPlayer({onState=()=>{},onPosition=()=>{}}={}){
+  let context=null,timer=null,events=[],index=0,base=0,active=[],playing=false,repeat=false;
   function stop(){
     if(timer!==null){clearInterval(timer);timer=null;}
     for(const osc of active){try{osc.stop();}catch{}try{osc.disconnect();}catch{}}
-    active=[];events=[];playing=false;
+    active=[];events=[];playing=false;repeat=false;
     const old=context;context=null;
     if(old)void old.close().catch(()=>{});
     onState(false);
+    onPosition(null);
   }
-  async function play(timeline){
+  async function play(timeline,{loop=false}={}){
     stop();
     const Audio=globalThis.AudioContext||globalThis.webkitAudioContext;
     if(!Audio)throw new Error('현재 브라우저는 Web Audio 재생을 지원하지 않습니다.');
@@ -158,7 +198,9 @@ export function createAuditionPlayer({onState=()=>{}}={}){
     await context.resume();
     events=timeline.events.slice().sort((a,b)=>a.start-b.start);
     base=context.currentTime+.13;
-    index=0;playing=true;onState(true);
+    index=0;playing=true;repeat=loop===true;onState(true);
+    onPosition({measureIndex:(timeline.selectedMeasures?.start||0),seconds:0,loopCycle:0});
+    let loopCycle=0,lastMeasureIndex=null;
     const schedule=()=>{
       if(!context||context.state==='closed')return;
       const now=context.currentTime, horizon=now+1.2;
@@ -178,7 +220,19 @@ export function createAuditionPlayer({onState=()=>{}}={}){
         osc.onended=()=>{try{osc.disconnect();gain.disconnect();}catch{}active=active.filter(x=>x!==osc);};
         active.push(osc);
       }
-      if(index===events.length&&now>base+timeline.durationSeconds+.3)stop();
+      const elapsed=Math.max(0,Math.min(timeline.durationSeconds,now-base));
+      const inRange=measureAtPlaybackSecond(timeline,elapsed);
+      if(inRange!==null){
+        const measureIndex=inRange+(timeline.selectedMeasures?.start||0);
+        if(measureIndex!==lastMeasureIndex){
+          lastMeasureIndex=measureIndex;
+          onPosition({measureIndex,seconds:elapsed,loopCycle});
+        }
+      }
+      if(index===events.length&&now>base+timeline.durationSeconds+.3){
+        if(repeat){index=0;base=now+.14;loopCycle++;lastMeasureIndex=null;}
+        else stop();
+      }
     };
     timer=setInterval(schedule,100);
     schedule();

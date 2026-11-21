@@ -1,0 +1,104 @@
+/* Direct measure editing above the rendered score; does not alter PDF layout. */
+.jwoo-measure-toolbar{padding:13px 15px 12px;background:#283327;color:#eef5e6;
+  border:1px solid #5d7651;border-bottom:0;border-radius:4px 4px 0 0}
+.jwoo-measure-heading{display:flex;align-items:baseline;justify-content:space-between;
+  gap:9px;flex-wrap:wrap;margin-bottom:9px}
+.jwoo-measure-heading strong{font-size:12px;letter-spacing:.04em}
+#jwoo-block-status{font-size:11px;color:#d1e7bd}
+.jwoo-bar-strip{display:flex;align-items:center;gap:5px;overflow-x:auto;
+  scrollbar-width:thin;padding:4px 0 9px;overscroll-behavior-x:contain}
+.jwoo-bar-chip{flex:none;min-width:35px;height:32px;border:1px solid #63795a;
+  border-radius:4px;background:#354432;color:#f0f7e9;font:inherit;font-size:12px;font-weight:600;
+  cursor:pointer}
+.jwoo-bar-chip.is-selected{background:#d9ff7a;color:#1e271a;border-color:#d9ff7a}
+.jwoo-bar-chip:focus-visible,.jwoo-bar-actions button:focus-visible,
+.jwoo-range-controls button:focus-visible{outline:2px solid #d9ff7a;outline-offset:2px}
+.jwoo-bar-chip:disabled,.jwoo-bar-actions button:disabled,
+.jwoo-range-controls button:disabled{opacity:.42;cursor:not-allowed}
+.jwoo-range-controls{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:0 0 8px}
+.jwoo-range-controls label{font-size:11px;color:#bdcfb4}
+.jwoo-range-controls input{display:block;width:68px;min-height:32px;border:1px solid #6f8668;
+  background:#202d1f;color:#f5ffed;padding:5px 7px;border-radius:3px;font:inherit;font-size:13px}
+.jwoo-range-controls button{min-height:32px;padding:5px 12px;border:1px solid #9bb58e;
+  background:#334530;color:#f0f5e9;border-radius:3px;font-weight:700;cursor:pointer}
+.jwoo-bar-actions{display:flex;gap:7px;flex-wrap:wrap}
+.jwoo-bar-actions button{flex:1 1 110px;min-height:36px;border:1px solid #8cac76;
+  color:#eef9e7;background:#32462d;border-radius:3px;font-size:11px;
+  font-weight:700;padding:7px 9px;cursor:pointer}
+.jwoo-bar-actions button:hover:not(:disabled){background:#49633f}
+.jwoo-bar-actions button.jwoo-danger{background:#49362f;border-color:#b18e7c;color:#fff3e8}
+.jwoo-bar-actions button.jwoo-danger:hover:not(:disabled){background:#68483a}
+.jwoo-bar-hint{margin:8px 0 0;font-size:10px;line-height:1.65;color:#b9c6b0}
+#score-container .jwoo-measure-selected .jwoo-hit-area{stroke:#b3f277;stroke-width:2;fill:#d9ff7a;fill-opacity:.20}
+@media(max-width:650px){
+  .jwoo-measure-toolbar{padding:11px}
+  .jwoo-bar-actions button{flex-basis:calc(50% - 8px);font-size:12px;min-height:41px}
+  .jwoo-range-controls input{font-size:16px}
+}
+@media print{.jwoo-measure-toolbar{display:none!important}}
+
+.jwoo-measure-toolbar{position:relative}
+.jwoo-measure-context[hidden]{display:none!important}
+.jwoo-measure-context{position:absolute;z-index:50;width:208px;padding:5px;
+  border:1px solid #a6bc90;border-radius:5px;box-shadow:0 8px 28px rgba(0,0,0,.4);
+  background:#273526;display:grid;gap:3px}
+.jwoo-measure-context button{width:100%;text-align:left;border:0;border-radius:3px;
+  padding:10px 11px;background:transparent;color:#eff9e8;font:inherit;
+  font-size:12px;cursor:pointer}
+.jwoo-measure-context button:hover:not(:disabled),.jwoo-measure-context button:focus-visible{
+  background:#496640;outline:1px solid #b5dd8b}
+.jwoo-measure-context button:disabled{opacity:.38;cursor:not-allowed}
+
+/* The current audio position is intentionally distinct from edit selection. */
+.jwoo-bar-chip.is-playing{
+  box-shadow:0 0 0 3px #ffba57 inset;
+  border-color:#ffba57;
+}
+#score-container .jwoo-playback-active .jwoo-hit-area{
+  fill:#ffba57;fill-opacity:.32;stroke:#d07912;stroke-width:2.5;
+}
+@media (prefers-reduced-motion:reduce){
+  .jwoo-bar-chip.is-playing{transition:none}
+}
+
+.jwoo-transpose-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-top:9px;
+  padding-top:9px;border-top:1px solid #63795a}
+.jwoo-transpose-controls label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#c9d7bd}
+.jwoo-transpose-controls input,.jwoo-transpose-controls select{
+  min-height:34px;max-width:144px;border:1px solid #8cac76;background:#202d1f;
+  color:#f0f5e9;padding:5px 7px;border-radius:3px;font-size:13px}
+.jwoo-transpose-controls input{width:78px}
+.jwoo-transpose-controls button{min-height:34px;padding:6px 12px;
+  background:#d9ff7a;border:1px solid #d9ff7a;border-radius:3px;
+  color:#152014;font-weight:700;font-size:11px;cursor:pointer}
+.jwoo-transpose-controls button:disabled{opacity:.4;cursor:not-allowed}
+.jwoo-transpose-controls button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+@media(max-width:650px){
+  .jwoo-transpose-controls button{min-height:42px;flex:1 1 100%}
+  .jwoo-transpose-controls input,.jwoo-transpose-controls select{font-size:16px}
+}
+
+.jwoo-transpose-controls .jwoo-transpose-chords{
+  flex-direction:row;align-items:center;gap:7px;min-height:35px;font-size:11px;
+}
+.jwoo-transpose-controls .jwoo-transpose-chords input{
+  width:16px;height:16px;min-height:16px;accent-color:#d9ff7a;
+}
+
+
+.jwoo-articulation-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap;
+  margin-top:10px;padding-top:10px;border-top:1px solid #63795a}
+.jwoo-articulation-controls label{display:flex;flex-direction:column;gap:4px;
+  font-size:11px;color:#c9d7bd}
+.jwoo-articulation-controls select{min-height:34px;max-width:166px;
+  border:1px solid #8cac76;background:#202d1f;color:#f0f5e9;
+  padding:5px 7px;border-radius:3px;font-size:13px}
+.jwoo-articulation-controls button{min-height:34px;padding:6px 12px;
+  color:#152014;background:#d9ff7a;border:1px solid #d9ff7a;
+  border-radius:3px;font-weight:700;font-size:11px;cursor:pointer}
+.jwoo-articulation-controls button:disabled{opacity:.4;cursor:not-allowed}
+.jwoo-articulation-controls button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+@media(max-width:650px){
+  .jwoo-articulation-controls button{min-height:42px;flex:1 1 100%}
+  .jwoo-articulation-controls select{font-size:16px}
+}

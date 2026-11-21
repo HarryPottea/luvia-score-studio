@@ -11,6 +11,8 @@ import { midiToMusicXml } from './midi-import.js';
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { editableScoreRenderOptions } from './osmd-render-policy.js';
 import { mountStudioV4 } from './studio-v4.js';
+import { assertMusicXmlRoundTrip } from './studio-v4-xml-roundtrip.js';
+import { stripExternalMusicXmlDoctype } from './studio-v4-safe-xml-prolog.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
 import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
@@ -83,8 +85,9 @@ function directChild(parent, tag) { return [...parent.children].find(el => el.lo
 function childText(parent, tag) { return directChild(parent, tag)?.textContent?.trim() ?? ''; }
 function ensureChild(parent, tag) { let child = directChild(parent, tag); if (!child) { child = parent.ownerDocument.createElement(tag); parent.appendChild(child); } return child; }
 function parseXml(raw) {
-  // MusicXML exports commonly contain a DTD. Strip it before DOMParser so a file never fetches external references.
-  const safe = raw.replace(/<!DOCTYPE[\s\S]*?(?:\[[\s\S]*?\]\s*)?>|<!DOCTYPE[^>]*>/gi, '');
+  // Preserve the MusicXML content exactly; strip only safe external DTD prologs.
+  // Internal entities and ambiguous declarations are denied, not silently changed.
+  const safe = stripExternalMusicXmlDoctype(raw);
   const doc = new DOMParser().parseFromString(safe, 'application/xml');
   if (doc.querySelector('parsererror')) throw new Error('MusicXML 내용을 읽지 못했습니다. 파일이 손상되었는지 확인해주세요.');
   if (doc.documentElement.localName !== 'score-partwise') throw new Error('현재는 MusicXML partwise 악보만 지원합니다. Logic Pro에서 다시 내보내주세요.');
@@ -258,11 +261,13 @@ function attachScoreInteractions(osmd){
   state.graphicBridge = bindGraphicalEditor({
     osmd, doc:state.doc, visibleParts:[...state.visible],
     select:position=>v3.select(position),
+    onMeasurePointer:(measureIndex,extend,context)=>v4?.onMeasurePointer?.(measureIndex,extend,context),
     movePitch:(position,steps)=>v3.movePitch(position,steps),
+    onDirectEdit:(position,action)=>v3.directEdit(position,action),
     isLyricMode:()=>v4?.lyricMode?.()===true,
     editLyric:(position,element)=>v4?.openLyricFromScore?.(position,element),
     announce:count=>{ const el=document.getElementById('v3-graphic-hint');
-      if (el) el.textContent = count ? `악보 화면에서 음표 ${count}개를 직접 선택할 수 있습니다. 음표를 위아래로 움직이거나 ↑↓ 키를 사용하세요.` : '악보에서 안전하게 연결된 음표가 없습니다. 보호된 붙임줄·중복 성부·숨겨진 음표는 편집하지 않습니다.';
+      if (el) el.textContent = count ? `악보 화면에서 음표·쉼표 ${count}개를 직접 선택할 수 있습니다. 음표는 드래그·↑↓ 키로 음정을 변경하고, 쉼표는 선택해 음표 입력 도구를 사용하세요.` : '악보에서 안전하게 연결된 음표·쉼표가 없습니다. 보호된 연결 기보·중복 성부·숨겨진 표기는 편집하지 않습니다.';
     },
   });
   state.graphicBridge.highlight(v3.getSelection());
@@ -294,8 +299,21 @@ function requestPreviewUpdate(){
   }
   previewUpdater.request();
 }
+function syncPartControlsAfterStructuralEdit(){
+  const current=scoreParts().map(p=>p.id);
+  const listed=[...$('export-part').options].map(option=>option.value);
+  if(JSON.stringify(current)===JSON.stringify(listed))return;
+  const prior=new Set(listed),available=new Set(current);
+  for(const id of current)if(!prior.has(id))state.visible.add(id);
+  for(const id of [...state.visible])if(!available.has(id))state.visible.delete(id);
+  if(!state.visible.size&&current.length)state.visible.add(current[0]);
+  renderPartInputs();
+}
 async function renderScore() {
   if (!state.doc) return false;
+  // A new or removed instrument must refresh part selection/visibility before
+  // OSMD renders. Preserve hidden-part preferences for unchanged IDs.
+  syncPartControlsAfterStructuralEdit();
   previewUpdater?.cancel();
   const token=++state.renderToken;
   renderInFlight++;
@@ -359,18 +377,72 @@ previewUpdater=createCoalescedPreviewUpdate({
   onPending:()=>markPreviewBusy(true),
 });
 
+// A failed import must not replace unsaved work or erase undo/redo history.
+let openSequence=0;
 async function openScore(raw, filename) {
+  const ticket=++openSequence;
+  const prior={
+    doc:state.doc,originalDoc:state.originalDoc,filename:state.filename,
+    undoRhythmDoc:state.undoRhythmDoc,showBaseline:state.showBaseline,
+    visible:new Set(state.visible),editor:v3.captureState(),
+    controlsHidden:$('editor-controls').hidden
+  };
+  let parsed=null,switched=false;
   try {
-    const parsed = parseXml(raw);
+    parsed=parseXml(raw);
     v4?.beforeOpen?.();
-    state.doc = parsed; state.originalDoc = state.doc.cloneNode(true); state.filename = filename; state.undoRhythmDoc = null; state.showBaseline = false; v2.invalidateUndo();
+    if(ticket!==openSequence)return false;
+    state.doc=parsed;
+    state.originalDoc=parsed.cloneNode(true);
+    state.filename=filename;
+    state.undoRhythmDoc=null;
+    state.showBaseline=false;
+    switched=true;
     showLoaded();
-    const rendered = await renderScore();
-    if (!rendered) return false;
-    $('workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const rendered=await renderScore();
+    if(ticket!==openSequence||state.doc!==parsed)return false;
+    if(!rendered)throw new Error('불러온 MusicXML 악보를 렌더링할 수 없습니다.');
+    v2.invalidateUndo();
+    $('workspace').scrollIntoView({behavior:'smooth',block:'start'});
     v4?.onLoaded?.();
     return true;
-  } catch (error) { setMessage(error.message || '파일을 열지 못했습니다.', true); return false; }
+  }catch(error){
+    // If another open began, it owns the new document. Never roll it back.
+    if(switched&&ticket===openSequence&&state.doc===parsed){
+      state.doc=prior.doc;
+      state.originalDoc=prior.originalDoc;
+      state.filename=prior.filename;
+      state.undoRhythmDoc=prior.undoRhythmDoc;
+      state.showBaseline=prior.showBaseline;
+      state.visible=new Set(prior.visible);
+      if(prior.doc){
+        showLoaded();
+        state.visible=new Set(prior.visible);
+        renderPartInputs();
+        v3.restoreState(prior.editor);
+        $('editor-controls').hidden=prior.controlsHidden;
+        syncSettingsToggle();
+        // The old SVG remains until a successful replacement render; bring
+        // the canvas and side panels back to the same restored document.
+        await renderScore();
+        v4?.onLoaded?.();
+      }else{
+        document.querySelector('.site-shell')?.classList.remove('has-active-score');
+        $('editor-controls').hidden=true;
+        $('output-actions').hidden=true;
+        $('empty-preview').hidden=false;
+        $('drop-zone').classList.remove('has-file');
+        $('drop-zone').querySelector('strong').textContent='파일을 선택하세요';
+        $('drop-zone').querySelector('.drop-link').textContent='파일 열기';
+        $('score-info').textContent='파일을 열면 악보가 표시됩니다';
+        syncSettingsToggle();
+        v3.reset();
+      }
+    }
+    setMessage('악보 불러오기 차단 · 기존 작업 보존: '+
+      (error.message||'파일을 열지 못했습니다.'),true);
+    return false;
+  }
 }
 
 async function handleFile(file) {
@@ -474,6 +546,7 @@ function serializeXmlDocument(doc) {
 }
 function downloadXmlDocument(doc, filename) {
   const xml = serializeXmlDocument(doc);
+  assertMusicXmlRoundTrip(doc,xml);
   const url = URL.createObjectURL(new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' }));
   const link = document.createElement('a');
   link.href = url; link.download = filename; link.click();
@@ -481,18 +554,22 @@ function downloadXmlDocument(doc, filename) {
 }
 $('download-xml').addEventListener('click', () => {
   if (!state.doc) return;
-  const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
-  downloadXmlDocument(state.doc, `${safeFileName(base)}-정리.musicxml`);
-  setMessage('전체 MusicXML 파일을 저장했습니다.');
+  try{
+    const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
+    downloadXmlDocument(state.doc, `${safeFileName(base)}-정리.musicxml`);
+    setMessage('전체 MusicXML 직렬화·재파싱 구조 검증 통과 · 파일을 저장했습니다.');
+  }catch(error){setMessage('MusicXML 저장 차단: '+(error.message||'구조 보존 검사 실패'),true);}
 });
 $('download-part-xml').addEventListener('click', () => {
   if (!state.doc) return;
-  const id = $('export-part').value;
-  const part = scoreParts().find(item => item.id === id);
-  if (!part) { setMessage('내보낼 파트를 선택해주세요.', true); return; }
-  const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
-  downloadXmlDocument(filteredDocument(new Set([id])), `${safeFileName(base)}-${safeFileName(part.name)}.musicxml`);
-  setMessage(`${part.name} 파트를 MusicXML로 저장했습니다. 인쇄하려면 ‘선택 파트 보기’ 후 PDF로 인쇄를 누르세요.`);
+  try{
+    const id = $('export-part').value;
+    const part = scoreParts().find(item => item.id === id);
+    if (!part) { setMessage('내보낼 파트를 선택해주세요.', true); return; }
+    const base = state.filename.replace(/\.(musicxml|xml|mxl)$/i, '') || 'score';
+    downloadXmlDocument(filteredDocument(new Set([id])), `${safeFileName(base)}-${safeFileName(part.name)}.musicxml`);
+    setMessage(`${part.name} 파트 MusicXML 구조 검증 후 저장 완료. 인쇄하려면 ‘선택 파트 보기’ 후 PDF로 인쇄를 누르세요.`);
+  }catch(error){setMessage('파트 MusicXML 저장 차단: '+(error.message||'구조 보존 검사 실패'),true);}
 });
 let partZipInProgress = false;
 $('download-all-parts-zip').addEventListener('click', async () => {
@@ -506,7 +583,12 @@ $('download-all-parts-zip').addEventListener('click', async () => {
   try {
     const blob = await buildPartZip({
       parts, scoreFilename: state.filename,
-      serializePart: (id) => serializeXmlDocument(filteredDocument(new Set([id]))),
+      serializePart: (id) => {
+        const partDoc=filteredDocument(new Set([id]));
+        const xml=serializeXmlDocument(partDoc);
+        assertMusicXmlRoundTrip(partDoc,xml);
+        return xml;
+      },
       onProgress: (percent) => setMessage(`파트별 악보 압축 중… ${percent}%`),
     });
     const url = URL.createObjectURL(blob);

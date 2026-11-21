@@ -2,7 +2,7 @@
 // This does not claim to generate or validate vector PDF files.
 import JSZip from 'jszip';
 import {baseScoreName,safeFileName} from './part-export.js';
-import {inspectPrintableSvg} from './studio-v4-printbook.js';
+import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 
 const MAX_PAGES=80,MAX_CHARS=35*1024*1024;
 export async function createPartSvgZip({pages,filename='score.musicxml',onProgress=()=>{}}={}){
@@ -16,8 +16,8 @@ export async function createPartSvgZip({pages,filename='score.musicxml',onProgre
     inspectPrintableSvg(page.svg);
     const clone=page.svg.cloneNode(true);
     for(const overlay of clone.querySelectorAll('.jwoo-selection-ring,.jwoo-hit-area'))overlay.remove();
-    for(const mark of clone.querySelectorAll('.jwoo-note-target,.jwoo-note-selected')){
-      mark.classList.remove('jwoo-note-target','jwoo-note-selected');
+    for(const mark of clone.querySelectorAll('.jwoo-note-target,.jwoo-rest-target,.jwoo-note-selected,.jwoo-measure-selected,.jwoo-playback-active')){
+      mark.classList.remove('jwoo-note-target','jwoo-rest-target','jwoo-note-selected','jwoo-measure-selected','jwoo-playback-active');
       for(const attr of ['tabindex','role','aria-pressed','aria-label'])mark.removeAttribute(attr);
     }
     clone.setAttribute('xmlns','http://www.w3.org/2000/svg');

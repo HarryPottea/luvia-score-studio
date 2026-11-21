@@ -4,7 +4,7 @@ import {
   createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,
   appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount,
 } from '../src/studio-v4-core.js';
-import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
+import {buildPlaybackTimeline,clipPlaybackToMeasures,measureAtPlaybackSecond} from '../src/studio-v4-playback.js';
 import {parseBatchLyrics,planBatchLyrics,applyBatchLyrics} from '../src/studio-v4-lyrics-batch.js';
 
 // Minimal deterministic XML DOM with the operations used by the pure editor.
@@ -322,4 +322,63 @@ test('invalid verse and missing part are rejected',()=>{
   assert.throws(()=>planBatchLyrics(lyricVocalScore(),lyricInput('봄',{verse:13})),/절 번호/);
   assert.throws(()=>planBatchLyrics(lyricVocalScore(),lyricInput('봄',{partId:'other'})),/파트/);
   assert.throws(()=>planBatchLyrics(lyricVocalScore(),lyricInput(' ')),/가사를/);
+});
+
+
+function threeBarAuditionScore({tie=false}={}){
+  const measures=[
+    el('measure',[attrs(),note(64,'whole',tie?[el('tie',[],{type:'start'})]:[])],{number:'1'}),
+    el('measure',[
+      el('direction',[el('sound',[],{tempo:'60'})]),
+      note(64,'whole',tie?[el('tie',[],{type:'stop'})]:[])
+    ],{number:'2'}),
+    el('measure',[note(64,'whole')],{number:'3'}),
+  ];
+  return new Document(el('score-partwise',[el('part',measures,{id:'P1'})]));
+}
+test('measure audition uses live score tempo for accurate bar boundaries',()=>{
+  const original=threeBarAuditionScore();
+  const timeline=buildPlaybackTimeline(original,{defaultBpm:120});
+  assert.deepEqual(timeline.measureSeconds.map(v=>Math.round(v*100)/100),[0,2,6,10]);
+  const portion=clipPlaybackToMeasures(timeline,{start:1,end:1});
+  assert.equal(portion.durationSeconds,4);
+  assert.deepEqual(portion.selectedMeasures,{start:1,end:1});
+  assert.equal(portion.events.length,1);
+  assert.equal(portion.events[0].start,0);
+  assert.equal(portion.events[0].duration,4);
+  assert.equal(timeline.events.length,3);
+});
+test('selected audition trims a tied note entering from the previous measure',()=>{
+  const timeline=buildPlaybackTimeline(threeBarAuditionScore({tie:true}),{defaultBpm:120});
+  const excerpt=clipPlaybackToMeasures(timeline,{start:1,end:1});
+  assert.equal(excerpt.events.length,1);
+  assert.equal(excerpt.events[0].start,0);
+  assert.equal(excerpt.events[0].duration,4);
+  assert.equal(timeline.events.length,2);
+});
+test('audition only accepts valid score measure ranges',()=>{
+  const timeline=buildPlaybackTimeline(threeBarAuditionScore(),{defaultBpm:120});
+  for(const [start,end] of [[-1,0],[2,3],[1,0],[0,3],[1.2,2]])
+    assert.throws(()=>clipPlaybackToMeasures(timeline,{start,end}),/범위/);
+  assert.deepEqual(timeline.measureSeconds,[0,2,6,10]);
+});
+
+
+test('playhead maps a tempo-changing score to the exact current bar',()=>{
+  const whole=buildPlaybackTimeline(threeBarAuditionScore(),{defaultBpm:120});
+  assert.deepEqual(whole.measureSeconds,[0,2,6,10]);
+  for(const [time,bar] of [[0,0],[1.99,0],[2,1],[5.99,1],[6,2],[9.99,2],[10,2]]){
+    assert.equal(measureAtPlaybackSecond(whole,time),bar);
+  }
+  const excerpt=clipPlaybackToMeasures(whole,{start:1,end:2});
+  assert.deepEqual(excerpt.measureSeconds,[0,4,8]);
+  assert.equal(excerpt.selectedMeasures.start,1);
+  assert.equal(measureAtPlaybackSecond(excerpt,0.1)+excerpt.selectedMeasures.start,1);
+  assert.equal(measureAtPlaybackSecond(excerpt,4.1)+excerpt.selectedMeasures.start,2);
+});
+test('playhead refuses corrupt time boundaries and negative timestamps',()=>{
+  assert.equal(measureAtPlaybackSecond({measureSeconds:[]},1),null);
+  assert.equal(measureAtPlaybackSecond({measureSeconds:[0,3,2]},1),null);
+  assert.equal(measureAtPlaybackSecond({measureSeconds:[0,3]},-1),null);
+  assert.equal(measureAtPlaybackSecond({measureSeconds:[0,3]},Number.NaN),null);
 });

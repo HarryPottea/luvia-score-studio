@@ -1,6 +1,7 @@
 import { inspectScore, editScoreEvent, EDIT_TYPES } from './editor-core.js';
 import { createEditorHistory } from './editor-history.js';
 import { inspectAdvancedMeasure, editAdvancedScore } from './advanced-score.js';
+import {editVoiceRhythm,relocateVoiceNote,replaceVoiceNoteWithRest} from './studio-v4-professional.js';
 const TEMPLATE = [
   '<section class="control-group v3-editor" aria-label="악보 직접 편집">',
   '<div class="control-heading"><span>음표·쉼표 직접 편집</span><span>09</span></div>',
@@ -24,6 +25,9 @@ const TEMPLATE = [
   '<div class="v3-actions"><button id="v3-pitch" type="button">음정 변경 · 쉼표에 음표 넣기</button>',
   '<button id="v3-duration" type="button">길이 변경</button><button id="v3-delete" type="button">선택 음표를 쉼표로 바꾸기</button>',
   '<button id="v3-tie" type="button">인접 음표 붙임줄 연결·해제</button></div>',
+  '<div class="v3-note-tools"><label for="v3-target-beat">같은 성부 안에서 이동할 박자 위치</label>',
+  '<input id="v3-target-beat" type="number" min="1" step="0.25" value="1" />',
+  '<button id="v3-move" type="button">선택 음표를 지정 박자로 이동</button></div>',
   '<label for="v3-lyric">선택 음표의 가사</label><input id="v3-lyric" type="text" maxlength="80" placeholder="가사 한 음절" />',
   '<button id="v3-lyric-save" class="v3-save-lyric" type="button">가사 수정</button>',
   '<div class="v3-actions v3-history-actions"><button id="v3-undo" type="button" disabled>↶ 되돌리기</button>',
@@ -92,26 +96,32 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
       list.append(button);
     }
     const {event}=chosen(model);
-    const editable=!!event?.editable&&!measure?.reason&&!state.showBaseline;
-    for(const id of ['v3-step','v3-alter','v3-octave','v3-length','v3-lyric'])$(id).disabled=!editable;
-    $('v3-pitch').disabled=!editable;
-    $('v3-duration').disabled=!editable||event.rest;
-    $('v3-delete').disabled=!editable||event.rest||!!event.lyric;
-    $('v3-lyric-save').disabled=!editable||event.rest;
-    const next=measure?.events[selection.eventIndex+1];
-    const samePitch=!!event&&!event.rest&&!!next&&!next.rest&&event.step===next.step&&event.alter===next.alter&&event.octave===next.octave;
-    $('v3-tie').disabled=!!busy||!!state.showBaseline||!!measure?.reason||!samePitch;
-    // The lightweight V3 clock can accumulate simultaneous voices as if they
-    // were sequential. In multi-voice bars show the accurate backup/forward
-    // timing from the advanced score inspector instead of misleading onsets.
     let advanced=null;
     if(measure&&state.doc){
       try{
         const candidate=inspectAdvancedMeasure(state.doc,selection.partId,selection.measureIndex);
-        if(!candidate.reason&&candidate.events.length===measure.events.length&&
-          (measure.reason||candidate.voices.length>1))advanced=candidate;
+        if(candidate.events.length===measure.events.length)advanced=candidate;
       }catch{}
     }
+    const note=advanced&&!advanced.reason?advanced.events[selection.eventIndex]:null;
+    const simpleEditable=!!event?.editable&&!measure?.reason&&!state.showBaseline;
+    const advancedEditable=!!note&&!state.showBaseline;
+    const editable=simpleEditable||(advancedEditable&&(note.rest||note.editablePitch));
+    for(const id of ['v3-step','v3-alter','v3-octave','v3-length'])$(id).disabled=!editable;
+    $('v3-lyric').disabled=!simpleEditable;
+    $('v3-pitch').disabled=!editable;
+    $('v3-duration').disabled=!simpleEditable||event.rest;
+    $('v3-delete').disabled=!(simpleEditable&&!event.rest&&!event.lyric) &&
+      !(advancedEditable&&!note.rest&&!note.tuplet&&!note.protectedMarkup);
+    $('v3-lyric-save').disabled=!simpleEditable||event.rest;
+    const next=measure?.events[selection.eventIndex+1];
+    const samePitch=!!event&&!event.rest&&!!next&&!next.rest&&
+      event.step===next.step&&event.alter===next.alter&&event.octave===next.octave;
+    $('v3-tie').disabled=!!busy||!!state.showBaseline||!!measure?.reason||!samePitch;
+    $('v3-move').disabled=!advancedEditable||note.rest||note.chord||note.tuplet||note.protectedMarkup;
+    $('v3-target-beat').disabled=$('v3-move').disabled;
+    if(note&&advanced?.divisions&&document.activeElement!==$('v3-target-beat'))
+      $('v3-target-beat').value=String(1+note.start/advanced.divisions);
     const scoreEvent=advanced?.events[selection.eventIndex]||event;
     $('v3-selection').textContent=event?
       (selection.eventIndex+1)+'번째 '+(scoreEvent.rest?'쉼표':'음표')+
@@ -131,6 +141,18 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     state.graphicBridge?.highlight?.({...selection});
     selectionChanged({...selection});
   }
+  function captureState(){
+    return {history:history.capture(),selection:{...selection}};
+  }
+  function restoreState(snapshot){
+    if(!snapshot||!snapshot.history||!snapshot.selection)
+      throw new Error('편집 화면 복원 상태가 올바르지 않습니다.');
+    history.restore(snapshot.history);
+    selection.partId=snapshot.selection.partId;
+    selection.measureIndex=snapshot.selection.measureIndex;
+    selection.eventIndex=snapshot.selection.eventIndex;
+    refresh();
+  }
   function externalChanged(){history.clear();refresh();}
   function reset(){history.clear();selection.partId='';selection.measureIndex=0;selection.eventIndex=0;refresh();}
   function operation(action,options={}) {return {...selection,action,...options};}
@@ -149,17 +171,20 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
         setMessage('변경 후 악보 렌더링 실패: 원본 상태로 복원했습니다.',true);return;
       }
       history.record(before,result.doc,label);
-      // Preserve the actual selected note when an immutable edit inserts,
-      // removes or reorders rests before it. Legacy transforms omit this hint.
-      if(Number.isSafeInteger(result.change?.nextEventIndex)&&
-        result.change.nextEventIndex>=0&&
-        result.change.partId===selection.partId&&
-        result.change.measureIndex===selection.measureIndex){
-        if(Number.isSafeInteger(result.change.nextMeasureIndex)&&
-          result.change.nextMeasureIndex>=0)
-          selection.measureIndex=result.change.nextMeasureIndex;
-        selection.eventIndex=result.change.nextEventIndex;
+      // Structural measure operations can remap a bar even when no note-level
+      // hint exists. Clamp to a surviving measure after the immutable commit.
+      if(Number.isSafeInteger(result.change?.nextMeasureIndex)&&
+         result.change.nextMeasureIndex>=0&&
+         (result.change.partId===undefined||result.change.partId===selection.partId)){
+        const parts=[...result.doc.documentElement.children].filter(n=>n.localName==='part');
+        const selectedPart=parts.find(n=>n.getAttribute('id')===selection.partId)||parts[0];
+        const length=selectedPart?[...selectedPart.children].filter(n=>n.localName==='measure').length:0;
+        if(length)selection.measureIndex=Math.min(result.change.nextMeasureIndex,length-1);
       }
+      if(Number.isSafeInteger(result.change?.nextEventIndex)&&
+         result.change.nextEventIndex>=0&&
+         (result.change.partId===undefined||result.change.partId===selection.partId))
+        selection.eventIndex=result.change.nextEventIndex;
       invalidateRhythmUndo();refreshRhythmReport();refreshV2();
       setMessage(label+' 완료. 악보와 원본 비교를 확인한 뒤 저장하세요.');
     }catch(error){
@@ -222,12 +247,34 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
   }
   $('v3-part').addEventListener('change',()=>{selection.partId=$('v3-part').value;selection.measureIndex=0;selection.eventIndex=0;refresh();});
   $('v3-measure').addEventListener('change',()=>{selection.measureIndex=Number($('v3-measure').value);selection.eventIndex=0;refresh();});
+  const currentPitch=()=>({step:$('v3-step').value,alter:Number($('v3-alter').value),
+    octave:Number($('v3-octave').value)});
+  const currentAdvanced=()=>inspectAdvancedMeasure(state.doc,selection.partId,selection.measureIndex);
   $('v3-pitch').addEventListener('click',()=>{
     const e=chosen(inspect()).event;if(!e)return;
-    commit(e.rest?'from-rest':'pitch',{step:$('v3-step').value,alter:Number($('v3-alter').value),octave:Number($('v3-octave').value)},e.rest?'쉼표에 음표 넣기':'음정 변경');
+    const advanced=currentAdvanced(),a=advanced.events[selection.eventIndex];
+    if(!advanced.reason&&a&&(!e.editable||a.chord||a.voice!=='1'||a.staff!=='1')){
+      if(a.rest)void commitExternal(doc=>editVoiceRhythm(doc,{...selection,mode:'insert',
+        type:$('v3-length').value,...currentPitch()}),'선택 쉼표에 성부 보존 음표 삽입');
+      else void commitExternal(doc=>editAdvancedScore(doc,{...selection,action:'pitch',...currentPitch()}),
+        '선택 화음·성부 음표 변경');
+    }else void commit(e.rest?'from-rest':'pitch',currentPitch(),e.rest?'쉼표에 음표 넣기':'음정 변경');
   });
   $('v3-duration').addEventListener('click',()=>commit('duration',{type:$('v3-length').value},'음표 길이 편집'));
-  $('v3-delete').addEventListener('click',()=>commit('to-rest',{},'음표를 쉼표로 대체'));
+  $('v3-delete').addEventListener('click',()=>{
+    const e=chosen(inspect()).event;if(!e)return;
+    const advanced=currentAdvanced(),a=advanced.events[selection.eventIndex];
+    if(!advanced.reason&&a&&(!e.editable||a.chord||a.voice!=='1'||a.staff!=='1')){
+      const following=advanced.events[selection.eventIndex+1];
+      if(a.chord||(following?.chord&&following.voice===a.voice&&following.staff===a.staff))
+        void commitExternal(doc=>editAdvancedScore(doc,{...selection,action:'chord-remove'}),
+          '선택 화음음 삭제');
+      else void commitExternal(doc=>replaceVoiceNoteWithRest(doc,selection),'선택 성부 음표를 쉼표로 변경');
+    }else void commit('to-rest',{},'음표를 쉼표로 대체');
+  });
+  $('v3-move').addEventListener('click',()=>void commitExternal(doc=>
+    relocateVoiceNote(doc,{...selection,targetBeat:Number($('v3-target-beat').value),grid:'16th'}),
+    '선택 음표 박자 위치 이동'));
   $('v3-tie').addEventListener('click',()=>commit('tie',{},'인접 음표 붙임줄 연결/해제'));
   $('v3-lyric-save').addEventListener('click',()=>commit('lyric',{text:$('v3-lyric').value},'가사 수정'));
   $('v3-undo').addEventListener('click',()=>travel('undo'));
@@ -238,7 +285,13 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
     if(!state.doc||!document.activeElement?.closest?.('.site-shell'))return;
     ev.preventDefault();travel(ev.shiftKey?'redo':'undo');
   });
-  return {refresh,reset,externalChanged,select,getSelection:()=>({...selection}),
+  function directEdit(position,action){
+    if(!select(position)||busy||state.showBaseline)return false;
+    const button=action==='insert'?$('v3-pitch'):action==='delete'?$('v3-delete'):null;
+    if(!button||button.disabled)return false;
+    button.click();return true;
+  }
+  return {refresh,reset,externalChanged,captureState,restoreState,select,directEdit,getSelection:()=>({...selection}),
     onSelectionChange:callback=>{selectionChanged=typeof callback==='function'?callback:()=>{};},
     commitExternal,movePitch};
 }

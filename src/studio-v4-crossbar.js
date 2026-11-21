@@ -1,6 +1,7 @@
 // Professional cross-barline note continuation and slur editing.
 // Operates on a cloned MusicXML DOM and never re-times unrelated voices.
 import {inspectAdvancedMeasure} from './advanced-score.js';
+import {assertNotationMutation,insertOrderedNotation} from './studio-v4-notation-guard.js';
 
 const all=(n,name)=>n?[...n.children].filter(c=>c.localName===name):[];
 const one=(n,name)=>all(n,name)[0]||null;
@@ -196,11 +197,16 @@ export function toggleSlurAcrossBarline(source,{partId,measureIndex,eventIndex,
       }
       const n=make(notation,'slur');n.setAttribute('type',kind);
       n.setAttribute('number',String(number));
-      notation.appendChild(n);
+      insertOrderedNotation(notation,n);
     }
   }
   assertPreserved(source,candidate,partId,measureIndex,lane(start.event));
   assertPreserved(source,candidate,partId,nextMeasureIndex,lane(start.event));
+  assertNotationMutation(source,candidate,{partId,targets:[
+    {measureIndex,eventIndex,allowed:[{name:'slur',type:'start'}]},
+    {measureIndex:nextMeasureIndex,eventIndex:endEventIndex,
+      allowed:[{name:'slur',type:'stop'}]}
+  ]});
   return {doc:candidate,change:{action:matched?'crossbar-slur-remove':'crossbar-slur-add',
     partId,measureIndex,eventIndex,endMeasureIndex:nextMeasureIndex,
     endMeasureOffset,endEventIndex}};

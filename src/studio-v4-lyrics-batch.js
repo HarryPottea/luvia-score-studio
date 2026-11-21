@@ -2,6 +2,7 @@
 // Each Hangul syllable occupies one melodic note. A standalone '_' extends the
 // previous syllable by one more note; spaces separate words, not note slots.
 import {inspectAdvancedMeasure} from './advanced-score.js';
+import {assertNotationMutation} from './studio-v4-notation-guard.js';
 
 const children=(node,name)=>node?[...node.children].filter(n=>n.localName===name):[];
 const child=(node,name)=>children(node,name)[0]||null;
@@ -164,6 +165,10 @@ export function applyBatchLyrics(source,options){
     if(!note)error('일괄 입력 중 음표 위치가 변경되어 적용하지 않았습니다.');
     writeLyric(note,String(plan.verse),item.token);
   }
+  assertNotationMutation(source,result,{partId:plan.partId,targets:plan.assignments.map(item=>({
+    measureIndex:item.measureIndex,eventIndex:item.eventIndex,
+    allowed:[{name:'lyric',number:String(plan.verse)}]
+  }))});
   return {doc:result,change:{action:'batch-lyrics',partId:plan.partId,verse:plan.verse,
     count:plan.tokens,syllables:plan.syllables,extensions:plan.extensions}};
 }
