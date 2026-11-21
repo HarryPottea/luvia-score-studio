@@ -145,6 +145,9 @@ function syncSettingsToggle(){
 }
 function showLoaded() {
   document.querySelector('.site-shell')?.classList.add('has-active-score');
+  // Once a score exists, editing takes priority over the long create/backup form.
+  const create=document.querySelector('.v4-create');
+  if(create) $('editor-controls').insertAdjacentElement('afterend',create);
   $('editor-controls').hidden = false;
   syncSettingsToggle();
   $('output-actions').hidden = false;
@@ -431,6 +434,8 @@ async function openScore(raw, filename) {
         v4?.onLoaded?.();
       }else{
         document.querySelector('.site-shell')?.classList.remove('has-active-score');
+        const create=document.querySelector('.v4-create');
+        if(create) document.querySelector('.settings-action')?.insertAdjacentElement('afterend',create);
         $('editor-controls').hidden=true;
         $('output-actions').hidden=true;
         $('empty-preview').hidden=false;

@@ -4,6 +4,7 @@ const icons={
   note:'<path d="M14 3v13.5a3.5 3.5 0 1 1-2-3.35V6l8-2v8.5a3.5 3.5 0 1 1-2-3.35V2z"/>',
   lyric:'<path d="M4 5h16M7 5v14m10-14v14M5 19h4m6 0h4"/>',
   move:'<path d="M12 2v20M2 12h20m-10-10-3 3m3-3 3 3m-3 17-3-3m3 3 3-3M2 12l3-3m-3 3 3 3m17-3-3-3m3 3-3 3"/>',
+  erase:'<path d="M4 14 14 4a2 2 0 0 1 3 0l4 4a2 2 0 0 1 0 3L11 21H7l-4-4a2 2 0 0 1 0-3Zm4 7h13M7 11l6 6"/>',
   measure:'<path d="M4 3v18m16-18v18M4 7h16M4 17h16m-10-10v10"/>',
 };
 
@@ -13,10 +14,27 @@ export function mountScoreToolstrip(){
   const host=document.createElement('div');
   host.id='jwoo-score-tools';host.className='jwoo-score-tools';
   host.setAttribute('role','toolbar');host.setAttribute('aria-label','악보 편집 도구');
+  const caption=document.createElement('span');
+  caption.className='jwoo-score-tools-caption';
+  caption.textContent='편집 도구 · 길게 눌러 설명';
+  host.append(caption);
+  const mobileHelp=document.createElement('p');
+  mobileHelp.className='jwoo-score-tools-help';
+  mobileHelp.setAttribute('role','status');
+  mobileHelp.hidden=true;
+  let helpTimer=null;
+  const showMobileHelp=message=>{
+    if(!window.matchMedia('(max-width:670px)').matches)return;
+    mobileHelp.textContent=message;
+    mobileHelp.hidden=false;
+    clearTimeout(helpTimer);
+    helpTimer=setTimeout(()=>{mobileHelp.hidden=true;},2800);
+  };
   const definitions=[
     ['note','음표 입력','선택한 쉼표에 현재 설정의 음표를 입력합니다.'],
     ['lyric','가사 입력','악보의 음표를 눌러 가사를 입력하는 모드를 켜거나 끕니다.'],
     ['move','기호 이동','쉼표·조표·박자표·음자리표를 직접 끌어 옮깁니다.'],
+    ['erase','기호 표시 지우기','기호를 누르면 표기만 숨깁니다. 박자·조성·음자리의 의미는 유지됩니다.'],
     ['measure','마디 작업','세부 설정의 마디 범위 도구로 이동합니다.'],
   ];
   for(const [kind,name,description] of definitions){
@@ -25,12 +43,16 @@ export function mountScoreToolstrip(){
     button.dataset.tool=kind;button.dataset.help=name+' — '+description;
     button.setAttribute('aria-label',name+'. '+description);
     button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+icons[kind]+'</svg>';
-    if(kind==='lyric'||kind==='move')button.setAttribute('aria-pressed','false');
+    if(kind==='lyric'||kind==='move'||kind==='erase')button.setAttribute('aria-pressed','false');
     let hold=null,longPress=false;
     button.addEventListener('pointerdown',event=>{
       if(event.pointerType==='mouse')return;
       longPress=false;
-      hold=setTimeout(()=>{longPress=true;button.classList.add('show-help');},650);
+      hold=setTimeout(()=>{
+        longPress=true;
+        button.classList.add('show-help');
+        showMobileHelp(button.dataset.help);
+      },650);
     });
     for(const type of ['pointerup','pointercancel','pointerleave'])button.addEventListener(type,()=>{
       if(hold!==null)clearTimeout(hold);
@@ -45,30 +67,36 @@ export function mountScoreToolstrip(){
         const check=document.getElementById('v4-symbol-drag');
         if(check&&!check.disabled){check.checked=!check.checked;check.dispatchEvent(new Event('change',{bubbles:true}));}
       }
+      if(kind==='erase'){
+        const check=document.getElementById('v4-symbol-hide');
+        if(check&&!check.disabled){check.checked=!check.checked;check.dispatchEvent(new Event('change',{bubbles:true}));}
+      }
       if(kind==='measure')document.querySelector('.jwoo-quick-link[aria-label="마디 설정으로 이동"]')?.click();
       sync();
-      if(event.pointerType==='touch'){
-        button.classList.add('show-help');
-        setTimeout(()=>button.classList.remove('show-help'),1800);
-      }
+      showMobileHelp(button.dataset.help);
     });
     host.append(button);
   }
+  host.append(mobileHelp);
   preview.insertAdjacentElement('afterend',host);
   const $=kind=>host.querySelector('[data-tool="'+kind+'"]');
   function sync(){
     const drag=document.getElementById('v4-symbol-drag');
+    const erase=document.getElementById('v4-symbol-hide');
     const lyric=document.getElementById('v4-lyric-mode-button');
     const open=!!document.querySelector('#score-container svg');
     $('note').disabled=!open;
     $('lyric').disabled=!open||!!lyric?.disabled;
     $('move').disabled=!open||!!drag?.disabled;
+    $('erase').disabled=!open||!!erase?.disabled;
     $('measure').disabled=!open;
     $('lyric').setAttribute('aria-pressed',String(lyric?.getAttribute('aria-pressed')==='true'));
     $('move').setAttribute('aria-pressed',String(!!drag?.checked));
+    $('erase').setAttribute('aria-pressed',String(!!erase?.checked));
   }
   document.addEventListener('jwoo:score-updated',sync);
   document.getElementById('v4-symbol-drag')?.addEventListener('change',sync);
+  document.getElementById('v4-symbol-hide')?.addEventListener('change',sync);
   const lyric=document.getElementById('v4-lyric-mode-button');
   if(lyric)new MutationObserver(sync).observe(lyric,{attributes:true,attributeFilter:['aria-pressed','disabled']});
   sync();

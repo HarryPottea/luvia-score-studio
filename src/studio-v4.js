@@ -35,7 +35,7 @@ import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.j
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
 import {prepareScoreAndPartExport} from './studio-v4-pdf-export-plan.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
-import {readSymbolOffset,setSymbolOffset,applySymbolOffsets,symbolAtElement,symbolOffsetLimit} from './studio-v4-symbol-position.js';
+import {readSymbolOffset,readSymbolHidden,setSymbolOffset,setSymbolHidden,applySymbolOffsets,symbolAtElement,symbolOffsetLimit} from './studio-v4-symbol-position.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
 import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
 import {planDensityLayout,applyDensityLayout,planIndependentPartLayout,applyIndependentPartLayout} from './studio-v4-auto-layout.js';
@@ -241,11 +241,14 @@ const panel=[
   '<strong>기호 표시 위치</strong>',
   '<p class="v4-tiny">박자·조성·음자리의 의미는 바꾸지 않고 표시만 이동합니다.</p>',
   '<label class="v4-timeline-move-check jwoo-tool-source"><input id="v4-symbol-drag" type="checkbox" /> 직접 드래그 켜기 · 기호 선택 불필요</label>',
+  '<label class="v4-timeline-move-check jwoo-tool-source"><input id="v4-symbol-hide" type="checkbox" /> 기호 표시 지우기</label>',
+  '<p class="v4-tiny">악보 위 지우개 도구로 기호를 누르면 표기만 숨깁니다. 쉼표의 박자와 조표·박자표·음자리표의 음악적 의미는 보존되며 실행 취소할 수 있습니다. 한 속성의 반복 표시는 함께 숨겨질 수 있습니다.</p>',
   '<p class="v4-tiny">악보 위 네 방향 화살표 도구를 켜면 쉼표·조표·박자표·음자리표를 바로 끌어 옮길 수 있습니다. 아래 기호 선택은 수치로 정밀 조정할 때만 사용합니다.</p>',
   '<div class="v4-inline"><label for="v4-symbol-kind">기호</label><select id="v4-symbol-kind"><option value="rest">선택 쉼표</option><option value="key">선택 마디 조표</option><option value="time">선택 마디 박자표</option><option value="clef">선택 보표 음자리표</option></select></div>',
   '<div class="v4-inline"><div><label for="v4-symbol-x">가로 (+ 오른쪽)</label><input id="v4-symbol-x" type="number" min="-200" max="200" step="0.5" value="0" /></div>',
   '<div><label for="v4-symbol-y">세로 (+ 위쪽)</label><input id="v4-symbol-y" type="number" min="-200" max="200" step="0.5" value="0" /></div></div>',
   '<div class="v4-inline"><button id="v4-symbol-apply" type="button">표시 위치 적용</button><button id="v4-symbol-reset" type="button">기본 위치로</button></div>',
+  '<button id="v4-symbol-show" type="button" disabled>선택 기호 다시 표시</button>',
   '<p id="v4-symbol-status" class="v4-tiny" role="status" aria-live="polite">악보를 열고 기호를 선택해 주세요. 이동 좌표는 -200~200입니다.</p></div>',
   '<label for="v4-meter">선택 마디 이후 비어 있는 구간의 박자표</label><select id="v4-meter"><option value="2/4">2/4</option><option value="3/4" selected>3/4</option><option value="4/4">4/4</option><option value="6/8">6/8</option><option value="3/8">3/8</option><option value="2/2">2/2</option></select>',
   '<div class="v4-inline"><button id="v4-meter-empty" type="button">선택 마디 이후 빈 구간 박자 변경</button>',
@@ -725,14 +728,17 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   function syncSymbolControls(){
     const kind=$('v4-symbol-kind').value,enabled=!!state.doc&&!state.showBaseline;
     $('v4-symbol-drag').disabled=!enabled;
+    $('v4-symbol-hide').disabled=!enabled;
     const dragMode=enabled&&$('v4-symbol-drag').checked;
+    const hideMode=enabled&&$('v4-symbol-hide').checked;
     for(const id of ['v4-symbol-kind','v4-symbol-x','v4-symbol-y',
-      'v4-symbol-apply','v4-symbol-reset'])$(id).disabled=!enabled||dragMode;
+      'v4-symbol-apply','v4-symbol-reset'])$(id).disabled=!enabled||dragMode||hideMode;
     $('score-container')?.classList.toggle('jwoo-symbol-drag-mode',dragMode);
+    $('score-container')?.classList.toggle('jwoo-symbol-hide-mode',hideMode);
     for(const symbol of $('score-container')?.querySelectorAll(
       '.vf-keysignature,.vf-timesignature,.vf-clef')||[]){
       let hit=symbol.querySelector(':scope > .jwoo-symbol-hit-area');
-      if(!hit&&dragMode){
+      if(!hit&&(dragMode||hideMode)){
         const box=symbol.getBBox();
         hit=symbol.ownerDocument.createElementNS('http://www.w3.org/2000/svg','rect');
         hit.classList.add('jwoo-symbol-hit-area');
@@ -741,23 +747,42 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
           hit.setAttribute(name,String(value));
         symbol.appendChild(hit);
       }
-      hit?.setAttribute('pointer-events',dragMode?'all':'none');
+      hit?.setAttribute('pointer-events',dragMode||hideMode?'all':'none');
     }
-    if(!enabled){$('v4-symbol-status').textContent='악보를 열고 기호를 선택해 주세요.';return;}
+    if(!enabled){$('v4-symbol-show').disabled=true;$('v4-symbol-status').textContent='악보를 열고 기호를 선택해 주세요.';return;}
+    if(hideMode){
+      $('v4-symbol-show').disabled=true;
+      $('v4-symbol-status').textContent='기호 표시 지우기 중 · 악보의 쉼표·조표·박자표·음자리표를 누르세요.';
+      return;
+    }
     if(dragMode){
+      $('v4-symbol-show').disabled=true;
       $('v4-symbol-status').textContent='직접 드래그 중 · 드롭다운 선택 없이 악보의 기호를 바로 끌어 옮기세요.';
       return;
     }
     try{
       const value=readSymbolOffset(state.doc,selected(),kind);
+      const hidden=readSymbolHidden(state.doc,selected(),kind);
       $('v4-symbol-x').value=String(value.x);
       $('v4-symbol-y').value=String(value.y);
+      $('v4-symbol-show').disabled=!hidden;
       $('v4-symbol-status').textContent='선택 '+symbolName[kind]+
-        ' · 가로 '+value.x+' · 세로 '+value.y+' · 실행 취소 가능';
-    }catch(error){$('v4-symbol-status').textContent=error.message;}
+        ' · 가로 '+value.x+' · 세로 '+value.y+(hidden?' · 현재 표시 숨김':'')+' · 실행 취소 가능';
+    }catch(error){$('v4-symbol-show').disabled=true;$('v4-symbol-status').textContent=error.message;}
   }
   $('v4-symbol-kind').addEventListener('change',syncSymbolControls);
-  $('v4-symbol-drag').addEventListener('change',syncSymbolControls);
+  $('v4-symbol-drag').addEventListener('change',()=>{
+    if($('v4-symbol-drag').checked)$('v4-symbol-hide').checked=false;
+    syncSymbolControls();
+  });
+  $('v4-symbol-hide').addEventListener('change',()=>{
+    if($('v4-symbol-hide').checked)$('v4-symbol-drag').checked=false;
+    syncSymbolControls();
+  });
+  $('v4-symbol-show').addEventListener('click',()=>{
+    const kind=$('v4-symbol-kind').value,position=selected();
+    void commit(doc=>setSymbolHidden(doc,{position,kind,hidden:false}),symbolName[kind]+' 표시 복원');
+  });
   for(const [id,reset] of [['v4-symbol-apply',false],['v4-symbol-reset',true]]){
     $(id).addEventListener('click',()=>{
       const kind=$('v4-symbol-kind').value,position=selected();
@@ -769,6 +794,17 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   }
   const scoreHost=$('score-container');
   let symbolDrag=null;
+  scoreHost?.addEventListener('click',event=>{
+    if(!$('v4-symbol-hide').checked||!state.doc||state.showBaseline)return;
+    const hit=symbolAtElement(state.osmd,state.doc,scoreHost,[...state.visible],event.target);
+    if(!hit)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    try{
+      v3.select({...hit.position,eventIndex:hit.position.eventIndex??0});
+      void commit(doc=>setSymbolHidden(doc,{position:hit.position,kind:hit.kind,hidden:true}),
+        symbolName[hit.kind]+' 표시 숨김');
+    }catch(error){setMessage('기호 표시 지우기 불가: '+error.message,true);}
+  },true);
   scoreHost?.addEventListener('pointerdown',event=>{
     if(!$('v4-symbol-drag').checked||!state.doc||state.showBaseline||event.button!==0)return;
     const hit=symbolAtElement(state.osmd,state.doc,scoreHost,[...state.visible],event.target);

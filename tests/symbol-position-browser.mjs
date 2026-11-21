@@ -28,6 +28,7 @@ try{
   await page.goto(url);
   await page.click('#v4-new');
   await page.locator('#score-container .jwoo-rest-target').first().waitFor();
+  await page.locator('.jwoo-quick-link[aria-label="마디 설정으로 이동"]').click();
   await page.fill('#v4-symbol-x','12');
   await page.fill('#v4-symbol-y','8');
   await page.click('#v4-symbol-apply');

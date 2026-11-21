@@ -64,6 +64,21 @@ function target(doc,position,kind){
   throw new Error('지원하지 않는 기호입니다.');
 }
 export function readSymbolOffset(doc,position,kind){return offset(target(doc,position,kind));}
+export function readSymbolHidden(doc,position,kind){return target(doc,position,kind).getAttribute('print-object')==='no';}
+export function setSymbolHidden(source,{position,kind,hidden}){
+  const original=target(source,position,kind);
+  if(kind!=='rest'){
+    const part=partAt(source,position.partId);
+    const measure=children(part,'measure')[position.measureIndex];
+    let owner=original.parentNode;
+    while(owner&&owner.localName!=='measure')owner=owner.parentNode;
+    if(owner!==measure)throw new Error('다른 줄에서 다시 표시된 기호는 이 위치에서 독립적으로 지울 수 없습니다. 원래 변경 마디에서 조정해 주세요.');
+  }
+  const doc=source.cloneNode(true),node=target(doc,position,kind);
+  if(hidden)node.setAttribute('print-object','no');
+  else node.removeAttribute('print-object');
+  return {doc,change:{action:'symbol-visibility',kind,position,hidden}};
+}
 export function setSymbolOffset(source,{position,kind,x,y}){
   if(!valid(x)||!valid(y))throw new Error('가로·세로 이동은 -200~200 사이의 0.5 단위로 입력해 주세요.');
   target(source,position,kind);
@@ -127,6 +142,7 @@ export function applySymbolOffsets(osmd,doc,holder,visibleParts){
   for(const item of targets){
     if(!item.rest)continue;
     const note=noteAt(doc,item),shift=offset(note);
+    if(note?.getAttribute('print-object')==='no')item.element.setAttribute('display','none');
     if(!shift.x&&!shift.y)continue;
     svgShift(item.element,shift,scale);rests++;
   }
@@ -135,6 +151,10 @@ export function applySymbolOffsets(osmd,doc,holder,visibleParts){
       ['clef','.vf-clef']]){
       let node=null;
       try{node=target(doc,item,kind);}catch{continue;}
+      if(node.getAttribute('print-object')==='no'){
+        for(const element of group.querySelectorAll(':scope > '+selector))element.setAttribute('display','none');
+        continue;
+      }
       const shift=offset(node);if(!shift.x&&!shift.y)continue;
       for(const element of group.querySelectorAll(':scope > '+selector)){
         svgShift(element,shift,scale);

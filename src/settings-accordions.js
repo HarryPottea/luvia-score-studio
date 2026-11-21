@@ -1,6 +1,6 @@
 // Progressive disclosure for the long inspector. All existing controls remain in
 // the DOM with their listeners, values, and undo history intact.
-const STORAGE_KEY='jwoo-score-settings-fold-v1';
+const STORAGE_KEY='jwoo-score-settings-fold-v2';
 export function mountSettingsAccordions(){
   const host=document.getElementById('editor-controls');
   if(!host||host.dataset.accordionsReady==='true')return;
@@ -35,7 +35,8 @@ export function mountSettingsAccordions(){
     };
     button.addEventListener('click',()=>update(!body.hidden));
     toggles.push({update,key,button,body});
-    update(memory[key]===true);
+    // A clean inspector starts compact; choices made after opening persist.
+    update(memory[key]!==false);
   }
   // Top-level panel accordions. Moving existing nodes preserves event listeners.
   const groups=[...host.querySelectorAll('.control-group')];

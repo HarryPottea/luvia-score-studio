@@ -208,3 +208,4 @@
 .v4-symbol-position #v4-symbol-status{min-height:22px;color:#d7e8cc}
 .jwoo-symbol-drag-mode .vf-keysignature,.jwoo-symbol-drag-mode .vf-timesignature,.jwoo-symbol-drag-mode .vf-clef,.jwoo-symbol-drag-mode .jwoo-rest-target{cursor:grab;touch-action:none}
 .jwoo-symbol-drag-mode .jwoo-symbol-hit-area{touch-action:none}
+.jwoo-symbol-hide-mode .vf-keysignature,.jwoo-symbol-hide-mode .vf-timesignature,.jwoo-symbol-hide-mode .vf-clef,.jwoo-symbol-hide-mode .jwoo-rest-target{cursor:crosshair;touch-action:manipulation}

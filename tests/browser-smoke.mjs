@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import fs from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
 import {validateMusicXml4Files} from './musicxml4-validator.mjs';
@@ -25,7 +26,9 @@ async function ready() {
 }
 try {
   await ready();
-  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  browser=await chromium.launch({headless:true,args:['--no-sandbox'],
+    ...(existsSync(chrome)?{executablePath:chrome}:{})});
   page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
   const errors=[];
   page.on('pageerror',error=>errors.push(String(error)));
@@ -100,6 +103,9 @@ try {
   await page.fill('#v4-new-title','통합 검증');
   await page.selectOption('#v4-new-measures','4');
   await page.click('#v4-new');
+  // CI exercises every advanced control, while the user-facing inspector now
+  // starts compact. Keep this test's editing controls available throughout.
+  await page.locator('.jwoo-fold-all button').getByText('모두 펼치기').click();
   await page.locator('#v3-events .v3-event').first().waitFor();
   assert.match(await page.locator('#score-title').inputValue(),/통합 검증/);
   assert.equal(await page.locator('#score-container svg text[data-jwoo-software-copyright]').count()>0,true,'Score page must display software copyright');
@@ -135,7 +141,7 @@ try {
   await restHead.click();
   console.log('BROWSER_STAGE=V4_CLICK_DIRECTLY_ON_NOTATED_REST');
   await page.selectOption('#v3-length','quarter');
-  await page.click('#v4-insert-note');
+  await page.locator('[data-tool="note"]').click();
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('음표 삽입 완료'));
   assert.match(await page.locator('#v3-events .v3-event').first().textContent(),/C4/);
   assert.ok((await page.locator('#v3-events .v3-event').count())>=2);
@@ -693,12 +699,12 @@ try {
   await page.click('#v4-new');
   await page.locator('#v3-events .v3-event').first().waitFor();
   await page.selectOption('#v3-length','eighth');
-  await page.click('#v4-insert-note');
+  await page.locator('[data-tool="note"]').click();
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부를 보존한 음표 삽입 완료'));
   await page.locator('#v3-events .v3-event').nth(1).click();
   await page.selectOption('#v3-length','eighth');
   await page.selectOption('#v3-step','E');
-  await page.click('#v4-insert-note');
+  await page.locator('[data-tool="note"]').click();
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부를 보존한 음표 삽입 완료'));
   await page.locator('#v3-events .v3-event').first().click();
   await page.selectOption('#v4-pro-step','D');
@@ -730,7 +736,7 @@ try {
   await page.selectOption('#v4-pro-step','A');
   await page.selectOption('#v4-pro-octave','3');
   await page.selectOption('#v4-pro-type','quarter');
-  await page.click('#v4-insert-note');
+  await page.locator('[data-tool="note"]').click();
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('성부를 보존한 음표 삽입 완료'));
   await page.selectOption('#v4-measure-count','1');
   await page.click('#v4-add-measures');
@@ -946,7 +952,7 @@ try {
   await page.selectOption('#v3-measure','4');
   await page.locator('#v3-events .v3-event').first().click();
   await page.selectOption('#v3-length','quarter');
-  await page.click('#v4-insert-note');
+  await page.locator('[data-tool="note"]').click();
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('음표 삽입 완료'),null,{timeout:30000});
   page.once('dialog',dialog=>dialog.accept());
   await page.locator('#v4-current-total').fill('4');
@@ -1046,7 +1052,7 @@ try {
   // Single-click is opt-in so pitch dragging stays safe in normal mode.
   const scoreHeads=page.locator('#score-container .jwoo-note-target');
   assert.ok(await scoreHeads.count()>=4,'Mapped noteheads must be available for direct lyric editing');
-  await page.click('#v4-lyric-mode-button');
+  await page.locator('[data-tool="lyric"]').click();
   assert.equal(await page.locator('#v4-lyric-mode-button').getAttribute('aria-pressed'),'true');
   await scoreHeads.first().click();
   await page.locator('#v4-inline-lyric-editor:visible').waitFor();
@@ -1104,7 +1110,7 @@ try {
   // Cancel popover and disable mode: the normal pitch-edit interaction returns.
   await page.locator('#v4-inline-input').press('Escape');
   assert.equal(await page.locator('#v4-inline-lyric-editor').isVisible(),false);
-  await page.click('#v4-lyric-mode-button');
+  await page.locator('[data-tool="lyric"]').click();
   assert.equal(await page.locator('#v4-lyric-mode-button').getAttribute('aria-pressed'),'false');
   const reselect=page.locator('#score-container .jwoo-note-target').nth(1);
   await reselect.dblclick();
@@ -1332,7 +1338,7 @@ try {
   assert.equal(heroBefore.active,true);
   assert.ok(heroBefore.fontSize<=105,'Loaded workspace uses a compact hero instead of landing-sized type');
   const shortcuts=page.locator('.jwoo-quick-link');
-  assert.deepEqual(await shortcuts.allTextContents(),['새 악보','파트','음표','가사','코드','출력']);
+  assert.deepEqual(await shortcuts.allTextContents(),['새 악보','파트','음표','마디','가사','코드','출력']);
   const unchangedRevision=Number(await page.locator('#score-container').getAttribute('data-render-revision'));
   await page.getByRole('button',{name:'모두 접기'}).click();
   assert.equal(await page.locator('#v4-lyrics-batch-text').isVisible(),false);
