@@ -16,7 +16,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install independent MusicXML XSD validator
-        run: python3 -m pip install --user lxml==5.4.0
+        run: python3 -m pip install --only-binary=:all: lxml==5.4.0
       - name: Validate W3C MusicXML 4.0 schema and independent 10-score corpus
         run: python3 scripts/validate_musicxml_4.py
