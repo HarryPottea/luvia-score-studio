@@ -9,6 +9,7 @@ import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 import {adaptLyricRendering} from './studio-v4-lyric-spacing-audit.js';
 import {adaptExpressionRendering,inspectSvgExpressionSpacing} from './studio-v4-expression-spacing-audit.js';
 import {inspectSvgPageBounds} from './studio-v4-page-bounds.js';
+import {FULL_SCORE_EXPORT_ID,prepareScoreAndPartExport} from './studio-v4-pdf-export-plan.js';
 
 const FORMATS={A4_P:{w:'210mm',h:'297mm'},A4_L:{w:'297mm',h:'210mm'}};
 const MAX_PARTS=12,MAX_PAGES=80,MAX_PART_PAGES=24;
@@ -31,12 +32,18 @@ export function partOnlyDocument(source,partId){
 export {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='auto',measureNumbers=true,
   onProgress=()=>{}}={}){
-  if(!FORMATS[pageFormat]||!Array.isArray(parts)||parts.length<1||parts.length>MAX_PARTS)
-    throw new Error('벡터 파트보는 A4 규격에서 1~12개 파트까지 출력합니다.');
+  const fullScore=parts?.[0]?.id===FULL_SCORE_EXPORT_ID&&parts[0].fullScore===true;
+  if(!FORMATS[pageFormat]||!Array.isArray(parts)||parts.length<1||
+     parts.length>(fullScore?MAX_PARTS+1:MAX_PARTS)||
+     parts.slice(fullScore?1:0).some(p=>p?.id===FULL_SCORE_EXPORT_ID||p?.fullScore))
+    throw new Error('벡터 악보 출력은 A4 규격에서 전체 악보와 최대 12개 파트를 지원합니다.');
+  if(fullScore)prepareScoreAndPartExport(doc,parts.slice(1));
   const output=[],lyricAudits=[],boundsAudits=[],expressionAudits=[];
   for(const [index,p] of parts.entries()){
     if(!p||typeof p.id!=='string'||!p.id)throw new Error('인쇄 파트를 선택해 주세요.');
-    const partDoc=partOnlyDocument(doc,p.id);
+    // A reserved virtual group renders the original concert/full score;
+    // ordinary groups retain their existing, independently formatted parts.
+    const partDoc=fullScore&&index===0?doc.cloneNode(true):partOnlyDocument(doc,p.id);
     const expectedLyrics=[...partDoc.querySelectorAll('note > lyric > text')]
       .filter(n=>String(n.textContent||'').trim()).length;
     const holder=document.createElement('div');
