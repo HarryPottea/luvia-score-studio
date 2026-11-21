@@ -12,6 +12,7 @@ import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { editableScoreRenderOptions } from './osmd-render-policy.js';
 import { mountStudioV4 } from './studio-v4.js';
 import { assertMusicXmlRoundTrip } from './studio-v4-xml-roundtrip.js';
+import { stripExternalMusicXmlDoctype } from './studio-v4-safe-xml-prolog.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
 import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
@@ -84,8 +85,9 @@ function directChild(parent, tag) { return [...parent.children].find(el => el.lo
 function childText(parent, tag) { return directChild(parent, tag)?.textContent?.trim() ?? ''; }
 function ensureChild(parent, tag) { let child = directChild(parent, tag); if (!child) { child = parent.ownerDocument.createElement(tag); parent.appendChild(child); } return child; }
 function parseXml(raw) {
-  // MusicXML exports commonly contain a DTD. Strip it before DOMParser so a file never fetches external references.
-  const safe = raw.replace(/<!DOCTYPE[\s\S]*?(?:\[[\s\S]*?\]\s*)?>|<!DOCTYPE[^>]*>/gi, '');
+  // Preserve the MusicXML content exactly; strip only safe external DTD prologs.
+  // Internal entities and ambiguous declarations are denied, not silently changed.
+  const safe = stripExternalMusicXmlDoctype(raw);
   const doc = new DOMParser().parseFromString(safe, 'application/xml');
   if (doc.querySelector('parsererror')) throw new Error('MusicXML 내용을 읽지 못했습니다. 파일이 손상되었는지 확인해주세요.');
   if (doc.documentElement.localName !== 'score-partwise') throw new Error('현재는 MusicXML partwise 악보만 지원합니다. Logic Pro에서 다시 내보내주세요.');
