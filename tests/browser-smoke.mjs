@@ -102,6 +102,9 @@ try {
   await page.click('#v4-new');
   await page.locator('#v3-events .v3-event').first().waitFor();
   assert.match(await page.locator('#score-title').inputValue(),/통합 검증/);
+  assert.equal(await page.locator('#score-container svg text[data-jwoo-software-copyright]').count()>0,true,'Score page must display software copyright');
+  const visibleRights=await page.locator('#score-container svg text[data-jwoo-software-copyright]').first().textContent();
+  assert.equal(visibleRights,'© 2026 PARKJAEWOO. All rights reserved.');
   assert.equal(await page.locator('#toggle-settings').isEnabled(),true);
   assert.equal(await page.locator('#toggle-settings').getAttribute('aria-expanded'),'true');
   const originalTitle=await page.locator('#score-title').inputValue();

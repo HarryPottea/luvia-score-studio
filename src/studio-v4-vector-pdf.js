@@ -45,7 +45,8 @@ async function loadLibraries(){
 function nonAsciiText(svg){
   for(const t of svg.querySelectorAll('text,tspan')){
     const v=t.textContent||'';
-    if(/[^\x00-\x7f]/.test(v))return v.slice(0,30);
+    // U+00A9 is supported in PDF's basic WinAnsi font encoding.
+    if(/[^\x00-\x7f\u00a9]/.test(v))return v.slice(0,30);
   }
   return null;
 }
