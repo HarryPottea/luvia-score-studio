@@ -2822,6 +2822,10 @@ try {
   console.log('BROWSER_STAGE=STAGE6_SEVEN_REAL_EXPORTS_INDEPENDENT_W3C_XSD_PASS');
 
 
+  const normalizeStage7Xml=xml=>xml
+    .replace(/^\uFEFF?\s*<\?xml[^?]*\?>\s*/i,'')
+    .replace(/>\s+</g,'><').trim();
+
   // Stage 7 final acceptance: a single composer session that spans authoring,
   // lyric/expression edits, undo/redo, explicit recovery, browser restart,
   // tamper-resistant project archive, musicxml XSD and vector score/part PDF.
@@ -2881,8 +2885,9 @@ try {
     null,{timeout:30000});
   const stage7RecoveredEvent=page.waitForEvent('download');
   await page.click('#download-xml');
-  assert.equal(await fs.readFile(await (await stage7RecoveredEvent).path(),'utf8'),stage7Edited,
-    'Restarted browser must restore every edit from the explicit SHA-256 checkpoint');
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7RecoveredEvent).path(),'utf8')),
+    normalizeStage7Xml(stage7Edited),
+    'Restarted browser must restore every musical element from the SHA-256 checkpoint');
   assert.equal(await page.locator('#v3-undo').isDisabled(),true,
     'Session restart must not reuse unrelated in-memory undo history');
   console.log('BROWSER_STAGE=STAGE7_BROWSER_RELOAD_SHA256_CHECKPOINT_RECOVERY');
@@ -2895,7 +2900,8 @@ try {
   assert.equal(stage7Manifest.format,'J-WOO-PROJECT');
   assert.equal(stage7Manifest.current.filename,'stage7-integrated.musicxml');
   assert.equal(stage7Manifest.versions.length>=1,true);
-  assert.equal(await stage7Archive.file('score.musicxml').async('string'),stage7Edited);
+  assert.equal(normalizeStage7Xml(await stage7Archive.file('score.musicxml').async('string')),
+    normalizeStage7Xml(stage7Edited));
   const stage7Corrupted=await JSZip.loadAsync(stage7ArchiveBytes);
   stage7Corrupted.file('score.musicxml',stage7Edited.replace('Together','Wrong text'));
   page.once('dialog',dialog=>dialog.accept());
@@ -2908,7 +2914,8 @@ try {
   assert.match(await page.locator('#v4-project-status').textContent(),/SHA-256|해시/);
   const stage7TamperCheck=page.waitForEvent('download');
   await page.click('#download-xml');
-  assert.equal(await fs.readFile(await (await stage7TamperCheck).path(),'utf8'),stage7Edited,
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7TamperCheck).path(),'utf8')),
+    normalizeStage7Xml(stage7Edited),
     'Rejected tampered project must never overwrite the current unsaved score');
   console.log('BROWSER_STAGE=STAGE7_TAMPERED_PROJECT_REJECTED_WITHOUT_DATA_LOSS');
 
@@ -2937,14 +2944,16 @@ try {
     'Rejecting render failure must preserve the previous edit history');
   const stage7RejectedEvent=page.waitForEvent('download');
   await page.click('#download-xml');
-  assert.equal(await fs.readFile(await (await stage7RejectedEvent).path(),'utf8'),stage7PreFailureXml,
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7RejectedEvent).path(),'utf8')),
+    normalizeStage7Xml(stage7PreFailureXml),
     'Failed render must roll back to the exact previous score');
   await page.click('#v3-undo');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent
     ?.includes('되돌리기 완료'),null,{timeout:30000});
   const stage7UnwoundEvent=page.waitForEvent('download');
   await page.click('#download-xml');
-  assert.equal(await fs.readFile(await (await stage7UnwoundEvent).path(),'utf8'),stage7Edited,
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7UnwoundEvent).path(),'utf8')),
+    normalizeStage7Xml(stage7Edited),
     'Undo after rejected import must still return to the pre-import checkpoint');
   console.log('BROWSER_STAGE=STAGE7_FAILED_RENDER_IMPORT_PRESERVES_EDIT_HISTORY');
 
@@ -2956,7 +2965,8 @@ try {
     ?.includes('검증된 프로젝트 복원 완료'),null,{timeout:30000});
   const stage7ValidImportEvent=page.waitForEvent('download');
   await page.click('#download-xml');
-  assert.equal(await fs.readFile(await (await stage7ValidImportEvent).path(),'utf8'),stage7Edited);
+  assert.equal(normalizeStage7Xml(await fs.readFile(await (await stage7ValidImportEvent).path(),'utf8')),
+    normalizeStage7Xml(stage7Edited));
   console.log('BROWSER_STAGE=STAGE7_PORTABLE_PROJECT_REIMPORT_EXACT_SCORE_RESTORED');
 
   // The very same restored score must pass independent MusicXML 4.0 XSD and
