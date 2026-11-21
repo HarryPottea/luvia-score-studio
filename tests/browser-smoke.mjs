@@ -2570,6 +2570,7 @@ try {
     mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage4Manual)});
   await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
     null,{timeout:30000});
+  await page.uncheck('#v4-cadence-replace');
   await page.click('#v4-auto-layout');
   await page.waitForFunction(()=>document.querySelector('#v4-auto-layout-status')?.textContent?.includes('자동 배치 적용'),
     null,{timeout:30000});
@@ -2599,6 +2600,7 @@ try {
     mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage4Individual)});
   await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
     null,{timeout:30000});
+  await page.uncheck('#v4-cadence-replace');
   await page.click('#v4-part-layout');
   await page.waitForFunction(()=>document.querySelector('#v4-part-layout-status')?.textContent?.includes('악기 2파트'),
     null,{timeout:30000});
