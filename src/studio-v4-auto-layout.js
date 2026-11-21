@@ -160,7 +160,10 @@ export function planDensityLayout(source,{pageFormat='A4_P',
   let systemsOnPage=0,pages=1;
   for(let k=1;k<starts.length;k++){
     const at=starts[k];
-    const newPage=manual[at]==='page'||systemsOnPage+1>=systemsPerPage;
+    // Never reinterpret an explicit manual system start as a page break.
+    // A4 overflow is independently checked against the rendered page geometry.
+    const newPage=manual[at]==='page'||manual[at]!=='system'&&
+      systemsOnPage+1>=systemsPerPage;
     expected[at]=newPage?'page':'system';
     if(newPage){pages++;systemsOnPage=0;}
     else systemsOnPage++;
