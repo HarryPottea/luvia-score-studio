@@ -2563,6 +2563,24 @@ try {
 
   // Stage 4: a manually authored page break is a hard boundary, not an
   // exception or permission to erase the composer's layout instructions.
+  // Render the real, expression-dense Korean vocal part through the same
+  // SVG print path used by PDF export. Known lyric/notehead/articulation
+  // collisions and page overflow now block export rather than ship bad pages.
+  await page.locator('#file-input').setInputFiles({name:'stage4-expression-print.musicxml',
+    mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(stage3Xml)});
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===3,
+    null,{timeout:30000});
+  const stage4PrintEvent=page.waitForEvent('download');
+  await page.click('#v4-part-svg-zip');
+  const stage4PrintZip=await JSZip.loadAsync(
+    await fs.readFile(await (await stage4PrintEvent).path()));
+  const stage4SvgFile=Object.keys(stage4PrintZip.files).find(name=>name.endsWith('.svg'));
+  assert.ok(stage4SvgFile,'rendered vocal part must have a vector SVG page');
+  const stage4SvgSource=await stage4PrintZip.file(stage4SvgFile).async('string');
+  assert.match(stage4SvgSource,/<svg\\b/);
+  assert.match(await page.locator('#message').textContent(),/SVG.*ZIP 저장 완료/);
+  console.log('BROWSER_STAGE=STAGE4_COMPLEX_KOREAN_VOCAL_VECTOR_PRINT_NO_KNOWN_COLLISION');
+
   const stage4Manual=combinedParts.replace('<measure number="7">',
     '<measure number="7"><print new-page="yes"/>');
   assert.notEqual(stage4Manual,combinedParts);
