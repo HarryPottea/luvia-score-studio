@@ -21,6 +21,20 @@ export function createEditorHistory(maxEntries=40) {
       past.push({doc:current,label:item.label});
       return {doc:item.doc,label:item.label};
     },
+    // Only used for an attempted document-open transaction. Preserve the
+    // exact in-memory undo/redo stack if the new score cannot be rendered.
+    capture(){
+      return {past:past.map(x=>({...x})),future:future.map(x=>({...x}))};
+    },
+    restore(snapshot){
+      if(!snapshot||!Array.isArray(snapshot.past)||!Array.isArray(snapshot.future)||
+         snapshot.past.length>maxEntries||snapshot.future.length>maxEntries||
+         [...snapshot.past,...snapshot.future].some(x=>
+           !x||!x.doc||typeof x.label!=='string'))
+        throw new Error('이전 편집 기록을 안전하게 복구할 수 없습니다.');
+      past.splice(0,past.length,...snapshot.past.map(x=>({...x})));
+      future.splice(0,future.length,...snapshot.future.map(x=>({...x})));
+    },
     clear(){past.length=0;future.length=0;},
     status(){return {undo:past.length,redo:future.length,last:past.at(-1)?.label||''};},
   };
