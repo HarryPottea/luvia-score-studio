@@ -1,0 +1,30 @@
+{
+  "schema": {
+    "repository": "w3c-cg/musicxml",
+    "ref": "v4.0",
+    "files": {
+      "musicxml.xsd": "2f2d116e94095cf069a1b3daf3691297b83106d1",
+      "xlink.xsd": "7b5e5e831189fcc5952c69aad52bc353125eb7bd",
+      "xml.xsd": "eeb9db56093d2382951cbcd1b61c2ccd9d674c92"
+    }
+  },
+  "corpus": {
+    "repository": "w3c-cg/musicxmlTestSuite",
+    "ref": "0618bdee1bfcb965ffdd9f4e52271c909d744fd1",
+    "files": {
+      "01a-Pitches-Pitches.musicxml": "8bfcf5da078201be293e711c2511ba6af14c9a17",
+      "02c-Rests-MultiMeasureRests.musicxml": "f21bd625ba02bbfbc48a5a53d7e11cd087e35099",
+      "03d-Rhythm-DottedDurations-Factors.musicxml": "62607cfda43ad90fa41d17f08bffbc0a3c0e3bea",
+      "21b-Chords-TwoNotes.musicxml": "c1c01d2c4c8a63e17d5aa32db5351e3621fde150",
+      "23a-Tuplets.musicxml": "b3ff70060e7106192156a33c0e0c83aa0a488742",
+      "24b-ChordAsGraceNote.musicxml": "ef2d46d6e45bbc805243f2484732e15df57cc85b",
+      "32a-Notations.musicxml": "bb353f1e758ffed2fce8bb075644702f513d22f3",
+      "41a-MultiParts-Partorder.musicxml": "87f1c0b4ea825602f5071f01f1df18d83cf0a91f",
+      "42a-MultiVoice-TwoVoicesOnStaff-Lyrics.musicxml": "2fe52bcb7e048728d17b4ecd93ca5b492ebe8857",
+      "61a-Lyrics.musicxml": "fb6478e120e7aa3f3d984c5dd26500363b6b3600"
+    }
+  },
+  "local": [
+    "tests/fixtures/complex-voices-original.musicxml"
+  ]
+}
