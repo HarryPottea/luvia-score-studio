@@ -2948,10 +2948,10 @@ try {
     'Undo after rejected import must still return to the pre-import checkpoint');
   console.log('BROWSER_STAGE=STAGE7_FAILED_RENDER_IMPORT_PRESERVES_EDIT_HISTORY');
 
+  page.once('dialog',dialog=>dialog.accept());
   await page.locator('#v4-project-file').setInputFiles({
     name:'stage7-recovery.jwoo',mimeType:'application/zip',buffer:stage7ArchiveBytes
   });
-  page.once('dialog',dialog=>dialog.accept());
   await page.waitForFunction(()=>document.querySelector('#v4-project-status')?.textContent
     ?.includes('검증된 프로젝트 복원 완료'),null,{timeout:30000});
   const stage7ValidImportEvent=page.waitForEvent('download');
