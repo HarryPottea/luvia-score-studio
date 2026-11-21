@@ -2643,6 +2643,17 @@ try {
   assert.ok(stage4Bounds.glyphWidth>0&&stage4Bounds.glyphHeight>0);
   console.log('BROWSER_STAGE=STAGE4_REAL_RENDERED_PAGE_BOUNDS_MEASURED');
 
+  const assertStage5A4=(pdfBytes,w,h,label)=>{
+    const metadata=pdfBytes.toString('latin1');
+    const matches=[...metadata.matchAll(/\/MediaBox\s*\[\s*([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s*\]/g)];
+    assert.ok(matches.length>0,label+' must contain A4 MediaBox metadata');
+    for(const [,x1,y1,x2,y2] of matches){
+      assert.ok(Math.abs(Number(x1))<.1&&Math.abs(Number(y1))<.1&&
+        Math.abs(Number(x2)-w)<.6&&Math.abs(Number(y2)-h)<.6,
+        label+' must preserve the correct physical A4 dimensions');
+    }
+  };
+
   // Stage 5: score + every independent part must be downloadable as genuine,
   // non-raster A4 PDF pages in one deterministic ZIP. The legacy part-only
   // export stays available without changing its file naming or behavior.
@@ -2666,7 +2677,7 @@ try {
   for(const name of stage5PdfNames){
     const bytes=await stage5AllZip.file(name).async('nodebuffer');
     assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
-    assert.match(bytes.toString('latin1'),/\/MediaBox\s*\[\s*0\s+0\s+595\.28\s+841\.89\s*\]/);
+    assertStage5A4(bytes,595.2756,841.8898,name);
     assert.match(bytes.toString('latin1'),/\/Type\s*\/Page\b/);
     assert.doesNotMatch(bytes.toString('latin1'),/\/Subtype\s*\/Image\b/,
       name+' must preserve non-raster musical notation');
@@ -2695,7 +2706,7 @@ try {
   assert.deepEqual(stage5LandscapeNames,stage5PdfNames);
   for(const name of stage5LandscapeNames){
     const bytes=await stage5LandscapeZip.file(name).async('nodebuffer');
-    assert.match(bytes.toString('latin1'),/\/MediaBox\s*\[\s*0\s+0\s+841\.89\s+595\.28\s*\]/);
+    assertStage5A4(bytes,841.8898,595.2756,name);
     assert.doesNotMatch(bytes.toString('latin1'),/\/Subtype\s*\/Image\b/);
   }
   console.log('BROWSER_STAGE=STAGE5_LANDSCAPE_FULL_SCORE_AND_PARTS_A4_PDF');
@@ -2728,7 +2739,7 @@ try {
     const body=pdf.toString('latin1');
     assert.match(body,/\/FontFile2\b/,'embedded TrueType is required in '+name);
     assert.match(body,/\/ToUnicode\b/,'Unicode character mapping is required in '+name);
-    assert.match(body,/\/MediaBox\s*\[\s*0\s+0\s+595\.28\s+841\.89\s*\]/);
+    assertStage5A4(pdf,595.2756,841.8898,name);
     assert.doesNotMatch(body,/\/Subtype\s*\/Image\b/);
   }
   assert.match(await page.locator('#message').textContent(),/TTF 벡터 글자/);
