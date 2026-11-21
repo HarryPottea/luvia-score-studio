@@ -83,14 +83,20 @@ test('larger landscape capacity keeps at least as many bars per system',()=>{
   assert.ok(landscape.systems<=portrait.systems);
   assert.ok(landscape.capacity>portrait.capacity);
 });
-test('manual breaks are preserved unless explicitly allowed to replace',()=>{
+test('manual page break is hard-preserved in every full-score part, replace can override',()=>{
   const source=score();
   bars(source.documentElement.children[0])[1].insertBefore(
     el('print',[],{'new-page':'yes'}),bars(source.documentElement.children[0])[1].firstChild);
-  assert.throws(()=>planDensityLayout(source),/기존 수동/);
-  const result=applyDensityLayout(source,{replaceExisting:true});
-  assert.equal(marks(result.doc)[0][1],'none');
-  assert.equal(marks(source)[0][1],'yes');
+  const plan=planDensityLayout(source);
+  assert.equal(plan.expected[1],'page');
+  assert.ok(plan.systemStarts.includes(1));
+  assert.deepEqual(plan.manualBreaks,[1]);
+  const kept=applyDensityLayout(source).doc;
+  assert.equal(first(bars(kept.documentElement.children[0])[1],'print').getAttribute('new-page'),'yes');
+  assert.equal(first(bars(kept.documentElement.children[1])[1],'print').getAttribute('new-page'),'yes');
+  assert.equal(first(bars(source.documentElement.children[0])[1],'print').getAttribute('new-page'),'yes');
+  const replace=applyDensityLayout(source,{replaceExisting:true});
+  assert.equal(marks(replace.doc)[0][1],'none');
 });
 test('unbalanced measures and unsupported document never mutate input',()=>{
   const source=score();
@@ -121,11 +127,16 @@ test('part-by-part layout produces different page turns for dense vocal and spar
   assert.deepEqual(marks(source)[1],Array(16).fill('none'));
   assert.equal(result.change.collisionVerified,false);
 });
-test('independent part layout refuses conflicting manual breaks without replacement consent',()=>{
+test('independent part layout preserves a manual page on only its own instrument',()=>{
   const source=score({parts:2,count:12,notes:4});
   const bar=bars(source.documentElement.children[1])[1];
   bar.insertBefore(el('print',[],{'new-page':'yes'}),bar.firstChild);
-  assert.throws(()=>planIndependentPartLayout(source),/기존 수동/);
+  const plan=planIndependentPartLayout(source);
+  assert.equal(plan.partPlans[0].expected[1],'none');
+  assert.equal(plan.partPlans[1].expected[1],'page');
+  const result=applyIndependentPartLayout(source).doc;
+  assert.equal(first(bars(result.documentElement.children[0])[1],'print'),undefined);
+  assert.equal(first(bars(result.documentElement.children[1])[1],'print').getAttribute('new-page'),'yes');
   assert.equal(applyIndependentPartLayout(source,{replaceExisting:true}).change.parts,2);
 });
 
@@ -182,4 +193,46 @@ test('density layout recognizes tie connections and charges a protected seam',()
   assert.equal(first(tiedA,'tie').getAttribute('type'),'start');
   assert.equal(first(tiedB,'tie').getAttribute('type'),'stop');
   assert.equal(first(first(bars(result.doc.documentElement.children[0])[2],'note'),'tie').getAttribute('type'),'start');
+});
+
+test('stage4: two conflicting manual break types must never silently overwrite one another',()=>{
+  const source=score({parts:2,count:10,notes:3});
+  for(const [index,type] of ['new-page','new-system'].entries()){
+    const bar=bars(source.documentElement.children[index])[4];
+    bar.insertBefore(el('print',[],{[type]:'yes'}),bar.firstChild);
+  }
+  assert.throws(()=>planDensityLayout(source),/수동 줄·페이지 지시가 파트마다/);
+  const firstBreak=first(bars(source.documentElement.children[0])[4],'print');
+  assert.equal(firstBreak.getAttribute('new-page'),'yes');
+  const result=applyDensityLayout(source,{replaceExisting:true});
+  assert.equal(result.change.collisionVerified,false);
+});
+test('stage4: explicit manual system boundaries constrain balanced planning without deleting source print',()=>{
+  const source=score({parts:2,count:18,notes:3,lyrics:true});
+  const m=bars(source.documentElement.children[0])[7];
+  m.insertBefore(el('print',[],{'new-system':'yes','staff-spacing':'16'}),m.firstChild);
+  const plan=planDensityLayout(source);
+  assert.ok(plan.systemStarts.includes(7));
+  assert.equal(plan.expected[7],'system');
+  const candidate=applyDensityLayout(source).doc;
+  assert.equal(first(bars(candidate.documentElement.children[0])[7],'print').getAttribute('staff-spacing'),'16');
+  assert.equal(first(bars(candidate.documentElement.children[0])[7],'print').getAttribute('new-system'),'yes');
+  assert.equal(first(bars(candidate.documentElement.children[1])[7],'print').getAttribute('new-system'),'yes');
+  assert.deepEqual(marks(source)[1],Array(18).fill('none'));
+});
+test('stage4: two lyric verses and sustained expression need extra page height reserve',()=>{
+  const src=score({parts:1,count:18,notes:4,lyrics:true});
+  const ordinary=planDensityLayout(src);
+  for(const bar of bars(src.documentElement.children[0])){
+    for(const note of bar.children.filter(n=>n.localName==='note')){
+      note.appendChild(el('lyric',[text('text','Together')],{number:'2'}));
+      note.appendChild(el('notations',[el('ornaments',[el('trill-mark')])]));
+    }
+    bar.insertBefore(el('direction',[el('direction-type',[
+      el('words',[],{},'crescendo molto')])]),bar.firstChild);
+  }
+  const dense=planDensityLayout(src);
+  assert.ok(dense.systemsPerPage<=ordinary.systemsPerPage);
+  assert.ok(dense.widths.every((width,i)=>width>=ordinary.widths[i]));
+  assert.ok(dense.pages>=ordinary.pages);
 });
