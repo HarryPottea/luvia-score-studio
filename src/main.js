@@ -377,18 +377,72 @@ previewUpdater=createCoalescedPreviewUpdate({
   onPending:()=>markPreviewBusy(true),
 });
 
+// A failed import must not replace unsaved work or erase undo/redo history.
+let openSequence=0;
 async function openScore(raw, filename) {
+  const ticket=++openSequence;
+  const prior={
+    doc:state.doc,originalDoc:state.originalDoc,filename:state.filename,
+    undoRhythmDoc:state.undoRhythmDoc,showBaseline:state.showBaseline,
+    visible:new Set(state.visible),editor:v3.captureState(),
+    controlsHidden:$('editor-controls').hidden
+  };
+  let parsed=null,switched=false;
   try {
-    const parsed = parseXml(raw);
+    parsed=parseXml(raw);
     v4?.beforeOpen?.();
-    state.doc = parsed; state.originalDoc = state.doc.cloneNode(true); state.filename = filename; state.undoRhythmDoc = null; state.showBaseline = false; v2.invalidateUndo();
+    if(ticket!==openSequence)return false;
+    state.doc=parsed;
+    state.originalDoc=parsed.cloneNode(true);
+    state.filename=filename;
+    state.undoRhythmDoc=null;
+    state.showBaseline=false;
+    switched=true;
     showLoaded();
-    const rendered = await renderScore();
-    if (!rendered) return false;
-    $('workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const rendered=await renderScore();
+    if(ticket!==openSequence||state.doc!==parsed)return false;
+    if(!rendered)throw new Error('불러온 MusicXML 악보를 렌더링할 수 없습니다.');
+    v2.invalidateUndo();
+    $('workspace').scrollIntoView({behavior:'smooth',block:'start'});
     v4?.onLoaded?.();
     return true;
-  } catch (error) { setMessage(error.message || '파일을 열지 못했습니다.', true); return false; }
+  }catch(error){
+    // If another open began, it owns the new document. Never roll it back.
+    if(switched&&ticket===openSequence&&state.doc===parsed){
+      state.doc=prior.doc;
+      state.originalDoc=prior.originalDoc;
+      state.filename=prior.filename;
+      state.undoRhythmDoc=prior.undoRhythmDoc;
+      state.showBaseline=prior.showBaseline;
+      state.visible=new Set(prior.visible);
+      if(prior.doc){
+        showLoaded();
+        state.visible=new Set(prior.visible);
+        renderPartInputs();
+        v3.restoreState(prior.editor);
+        $('editor-controls').hidden=prior.controlsHidden;
+        syncSettingsToggle();
+        // The old SVG remains until a successful replacement render; bring
+        // the canvas and side panels back to the same restored document.
+        await renderScore();
+        v4?.onLoaded?.();
+      }else{
+        document.querySelector('.site-shell')?.classList.remove('has-active-score');
+        $('editor-controls').hidden=true;
+        $('output-actions').hidden=true;
+        $('empty-preview').hidden=false;
+        $('drop-zone').classList.remove('has-file');
+        $('drop-zone').querySelector('strong').textContent='파일을 선택하세요';
+        $('drop-zone').querySelector('.drop-link').textContent='파일 열기';
+        $('score-info').textContent='파일을 열면 악보가 표시됩니다';
+        syncSettingsToggle();
+        v3.reset();
+      }
+    }
+    setMessage('악보 불러오기 차단 · 기존 작업 보존: '+
+      (error.message||'파일을 열지 못했습니다.'),true);
+    return false;
+  }
 }
 
 async function handleFile(file) {
