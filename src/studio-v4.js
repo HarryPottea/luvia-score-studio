@@ -240,8 +240,8 @@ const panel=[
   '<div class="v4-symbol-position" role="group" aria-label="기호 표시 위치 조정">',
   '<strong>기호 표시 위치</strong>',
   '<p class="v4-tiny">박자·조성·음자리의 의미는 바꾸지 않고 표시만 이동합니다.</p>',
-  '<label class="v4-timeline-move-check"><input id="v4-symbol-drag" type="checkbox" /> 직접 드래그 켜기 · 기호 선택 불필요</label>',
-  '<p class="v4-tiny">켜면 악보의 쉼표·조표·박자표·음자리표를 각각 바로 끌어 옮길 수 있습니다. 아래 기호 선택은 수치로 정밀 조정할 때만 사용합니다.</p>',
+  '<label class="v4-timeline-move-check jwoo-tool-source"><input id="v4-symbol-drag" type="checkbox" /> 직접 드래그 켜기 · 기호 선택 불필요</label>',
+  '<p class="v4-tiny">악보 위 네 방향 화살표 도구를 켜면 쉼표·조표·박자표·음자리표를 바로 끌어 옮길 수 있습니다. 아래 기호 선택은 수치로 정밀 조정할 때만 사용합니다.</p>',
   '<div class="v4-inline"><label for="v4-symbol-kind">기호</label><select id="v4-symbol-kind"><option value="rest">선택 쉼표</option><option value="key">선택 마디 조표</option><option value="time">선택 마디 박자표</option><option value="clef">선택 보표 음자리표</option></select></div>',
   '<div class="v4-inline"><div><label for="v4-symbol-x">가로 (+ 오른쪽)</label><input id="v4-symbol-x" type="number" min="-200" max="200" step="0.5" value="0" /></div>',
   '<div><label for="v4-symbol-y">세로 (+ 위쪽)</label><input id="v4-symbol-y" type="number" min="-200" max="200" step="0.5" value="0" /></div></div>',
@@ -427,6 +427,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     if(state.doc&&state.osmd&&!state.showBaseline)applySymbolOffsets(state.osmd,state.doc,
       $('score-container'),[...state.visible]);
     syncSymbolControls();
+    document.dispatchEvent(new Event('jwoo:score-updated'));
     syncCurrentMeasureCount();
     syncMeasureDelete();
     $('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;
@@ -450,7 +451,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();syncSymbolControls();$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;$('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;$('v4-add-part').disabled=!state.doc||state.showBaseline;void refreshDrafts();void refreshCheckpoints();}
+  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();syncSymbolControls();document.dispatchEvent(new Event('jwoo:score-updated'));$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;$('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;$('v4-add-part').disabled=!state.doc||state.showBaseline;void refreshDrafts();void refreshCheckpoints();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{

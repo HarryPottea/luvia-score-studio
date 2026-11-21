@@ -15,6 +15,7 @@ import { assertMusicXmlRoundTrip } from './studio-v4-xml-roundtrip.js';
 import { stripExternalMusicXmlDoctype } from './studio-v4-safe-xml-prolog.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
+import { mountScoreToolstrip } from './score-toolstrip.js';
 import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
 import {stampSoftwareCopyright} from './studio-v4-software-copyright.js';
 import './style.css';
@@ -635,4 +636,5 @@ v3.onSelectionChange(() => {advanced.refresh();v4?.onSelectionChange?.();updateS
 v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore });
 mountStickyPreview();
 mountSettingsAccordions();
+mountScoreToolstrip();
 updateSelectionBadge();

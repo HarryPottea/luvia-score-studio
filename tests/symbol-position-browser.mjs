@@ -60,7 +60,8 @@ try{
   assert.match(await page.locator('#score-container .jwoo-rest-target').first()
     .getAttribute('transform'),/^translate\(/);
   assert.equal(await page.locator('#v4-symbol-kind').inputValue(),'key');
-  await page.locator('#v4-symbol-drag').check();
+  await page.locator('[data-tool="move"]').click();
+  assert.equal(await page.locator('#v4-symbol-drag').isChecked(),true);
   assert.equal(await page.locator('#v4-symbol-kind').isDisabled(),true);
   const rest=page.locator('#score-container .jwoo-rest-target').first();
   const beforeDrag=await rest.getAttribute('transform');
@@ -73,7 +74,8 @@ try{
   await page.waitForFunction(previous=>document.querySelector('#score-container .jwoo-rest-target')
     ?.getAttribute('transform')!==previous,beforeDrag);
   assert.match(await page.locator('#v4-symbol-status').textContent(),/드롭다운 선택 없이/);
-  await page.locator('#v4-symbol-drag').uncheck();
+  await page.locator('[data-tool="move"]').click();
+  assert.equal(await page.locator('#v4-symbol-drag').isChecked(),false);
   assert.equal(await page.locator('#v4-symbol-kind').isEnabled(),true);
   for(const [kind,x,y,selector] of [
     ['time','10','5','.vf-timesignature'],['clef','8','-3','.vf-clef']]){
@@ -101,7 +103,8 @@ try{
   await page.locator('#drop-zone strong').getByText('reopen-extended.musicxml').waitFor();
   await page.locator('#score-container .vf-timesignature[transform]').first().waitFor();
   await page.locator('#score-container .vf-clef[transform]').first().waitFor();
-  await page.locator('#v4-symbol-drag').check();
+  await page.locator('[data-tool="move"]').click();
+  assert.equal(await page.locator('#v4-symbol-drag').isChecked(),true);
   const meter=page.locator('#score-container .vf-timesignature').first();
   const meterBefore=await meter.getAttribute('transform');
   const meterBox=await meter.boundingBox();
@@ -124,7 +127,8 @@ try{
   const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   await mobile.goto(url);
   await mobile.click('#v4-new');
-  await mobile.locator('#v4-symbol-drag').check();
+  await mobile.locator('[data-tool="move"]').tap();
+  assert.equal(await mobile.locator('#v4-symbol-drag').isChecked(),true);
   const touch=await mobile.context().newCDPSession(mobile);
   for(const selector of ['.vf-timesignature','.vf-clef']){
     const symbol=mobile.locator('#score-container '+selector).first();
