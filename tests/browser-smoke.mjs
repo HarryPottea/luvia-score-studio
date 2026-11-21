@@ -2680,6 +2680,30 @@ try {
     await fs.readFile(await stage5AllDownload.path()));
   console.log('BROWSER_STAGE=STAGE5_FULL_SCORE_AND_TWO_PARTS_VECTOR_A4_PDF_ZIP');
 
+  // A4 landscape must preserve the actual PDF MediaBox, not merely change
+  // the preview aspect ratio.
+  await page.selectOption('#page-orientation','A4_L');
+  await page.waitForFunction(()=>Math.abs(
+    document.querySelector('#score-container svg')?.getBoundingClientRect().width-
+    297*96/25.4)<3,null,{timeout:30000});
+  const stage5LandscapeEvent=page.waitForEvent('download',{timeout:120000});
+  await page.click('#v4-score-parts-pdf-zip');
+  const stage5LandscapeZip=await JSZip.loadAsync(
+    await fs.readFile(await (await stage5LandscapeEvent).path()));
+  const stage5LandscapeNames=Object.keys(stage5LandscapeZip.files)
+    .filter(name=>name.endsWith('.pdf')).sort();
+  assert.deepEqual(stage5LandscapeNames,stage5PdfNames);
+  for(const name of stage5LandscapeNames){
+    const bytes=await stage5LandscapeZip.file(name).async('nodebuffer');
+    assert.match(bytes.toString('latin1'),/\/MediaBox\s*\[\s*0\s+0\s+841\.89\s+595\.28\s*\]/);
+    assert.doesNotMatch(bytes.toString('latin1'),/\/Subtype\s*\/Image\b/);
+  }
+  console.log('BROWSER_STAGE=STAGE5_LANDSCAPE_FULL_SCORE_AND_PARTS_A4_PDF');
+  await page.selectOption('#page-orientation','A4_P');
+  await page.waitForFunction(()=>Math.abs(
+    document.querySelector('#score-container svg')?.getBoundingClientRect().width-
+    210*96/25.4)<3,null,{timeout:30000});
+
   // User-selected, self-generated two-syllable TTF is embedded separately in
   // both the whole score and its extracted part. No glyph-image substitutions.
   await page.locator('#file-input').setInputFiles({
