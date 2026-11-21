@@ -102,6 +102,9 @@ try {
   await page.click('#v4-new');
   await page.locator('#v3-events .v3-event').first().waitFor();
   assert.match(await page.locator('#score-title').inputValue(),/통합 검증/);
+  assert.equal(await page.locator('#score-container svg text[data-jwoo-software-copyright]').count()>0,true,'Score page must display software copyright');
+  const visibleRights=await page.locator('#score-container svg text[data-jwoo-software-copyright]').first().textContent();
+  assert.equal(visibleRights,'© 2026 PARKJAEWOO. All rights reserved.');
   assert.equal(await page.locator('#toggle-settings').isEnabled(),true);
   assert.equal(await page.locator('#toggle-settings').getAttribute('aria-expanded'),'true');
   const originalTitle=await page.locator('#score-title').inputValue();
@@ -178,6 +181,7 @@ try {
   const v4Pages=Object.keys(v4VectorZip.files).filter(x=>x.endsWith('.svg'));
   assert.ok(v4Pages.length>=1);
   assert.match(await v4VectorZip.file(v4Pages[0]).async('string'),/<svg[\s>]/);
+  assert.match(await v4VectorZip.file(v4Pages[0]).async('string'),/data-jwoo-software-copyright="true"/, 'Exported SVG must retain the PARKJAEWOO software footer');
   console.log('BROWSER_STAGE=V4_VECTOR_SVG_EXPORTED');
   await page.click('#v4-play');
   await page.waitForFunction(()=>document.querySelector('#v4-play-status')?.textContent.includes('재생 중'),null,{timeout:15000});
@@ -789,6 +793,7 @@ try {
   assert.equal(bookPdf.subarray(0,5).toString(),'%PDF-');
   assert.ok(bookPdf.length>1800);
   assert.equal(await bothPartsTab.locator('#jwoo-print-part-select').count(),1);
+  assert.equal(await bothPartsTab.locator('.sheet svg text[data-jwoo-software-copyright]').count()>0,true,'Print book must contain the software footer');
   await bothPartsTab.selectOption('#jwoo-print-part-select','P2');
   const visiblePartIds=await bothPartsTab.locator('.sheet:visible').evaluateAll(
     list=>[...new Set(list.map(x=>x.dataset.partId))]);
@@ -896,6 +901,7 @@ try {
   await page.click('#v4-print-book');
   const printTab=await popupPromise;
   await printTab.locator('.sheet svg').first().waitFor({timeout:45000});
+  assert.match(await printTab.locator('.sheet svg text[data-jwoo-software-copyright]').first().textContent(),/© 2026 PARKJAEWOO/);
   assert.ok(await printTab.locator('.sheet svg path').count()>0);
   assert.equal(await printTab.locator('.controls button').textContent(),'인쇄 / PDF 저장');
   const vectorPdf=await printTab.pdf({printBackground:true,preferCSSPageSize:true});

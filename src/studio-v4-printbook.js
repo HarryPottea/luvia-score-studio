@@ -10,6 +10,7 @@ import {adaptLyricRendering} from './studio-v4-lyric-spacing-audit.js';
 import {adaptExpressionRendering,inspectSvgExpressionSpacing} from './studio-v4-expression-spacing-audit.js';
 import {inspectSvgPageBounds} from './studio-v4-page-bounds.js';
 import {FULL_SCORE_EXPORT_ID,prepareScoreAndPartExport} from './studio-v4-pdf-export-plan.js';
+import {stampSoftwareCopyright} from './studio-v4-software-copyright.js';
 
 const FORMATS={A4_P:{w:'210mm',h:'297mm'},A4_L:{w:'297mm',h:'210mm'}};
 const MAX_PARTS=12,MAX_PAGES=80,MAX_PART_PAGES=24;
@@ -85,6 +86,7 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
       if(pageBounds.overflowPages>0)
         throw new Error(p.name+' 악보 페이지 바깥의 기보가 '+pageBounds.overflowPages+
           '페이지에서 검출되어 출력하지 않습니다.');
+      stampSoftwareCopyright(rendered,pageFormat);
       for(const svg of rendered){
         inspectPrintableSvg(svg);
         output.push({partName:String(p.name||p.id),partId:p.id,svg:svg.cloneNode(true),lyricAudit});

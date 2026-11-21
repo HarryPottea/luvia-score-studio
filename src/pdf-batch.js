@@ -4,6 +4,7 @@ import { applyLayoutPreset } from './layout-profile.js';
 import { applyFixedA4Profile, fixedA4Profile } from './a4-engraving.js';
 import { baseScoreName, safeFileName } from './part-export.js';
 import { makePdfFromJpegPages } from './pdf-bytes.js';
+import {stampSoftwareCopyright} from './studio-v4-software-copyright.js';
 
 const A4 = { A4_P: [595.28, 841.89], A4_L: [841.89, 595.28] };
 const MAX_PARTS = 12, MAX_PAGES_PER_PART = 14, MAX_TOTAL_PAGES = 80;
@@ -59,6 +60,7 @@ async function renderPdfPages(doc,format,layout,measureNumbers) {
     osmd.render();
     const svgs=[...holder.querySelectorAll('svg')];
     if(!svgs.length || svgs.length>MAX_PAGES_PER_PART) throw new Error('악보 페이지 수가 지원 범위를 벗어났습니다.');
+    stampSoftwareCopyright(svgs,format);
     const pages=[];
     for(const svg of svgs) pages.push(await svgToJpeg(svg,format));
     return pages;

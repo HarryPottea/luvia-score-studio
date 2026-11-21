@@ -65,3 +65,16 @@ test('register TrueType in jsPDF VFS and require actual font embedding objects',
   assert.throws(()=>assertEmbeddedFontInPdf(new TextEncoder().encode(
     '%PDF-1.4\n'+ ' '.repeat(700)+'\n%%EOF')),/내장되지/);
 });
+
+test('J-WOO software credit does not require glyphs in a locally selected lyric font',()=>{
+  const createNode=(value,credit=false)=>({textContent:value,attrs:{},style:{setProperty(){}},
+    getAttribute(k){return k==='data-jwoo-software-copyright'&&credit?'true':null;},
+    setAttribute(k,v){this.attrs[k]=v;},querySelectorAll(){return [];}});
+  const korean=createNode('한글'),credit=createNode('© 2026 PARKJAEWOO. All rights reserved.',true);
+  const svg={localName:'svg',querySelectorAll(){return [korean,credit];}};
+  const report=prepareFontSvg(svg,fontObject());
+  assert.equal(report.nodes,1);
+  assert.equal(korean.attrs['font-family'],'JWOOLocalVectorFont');
+  assert.equal(credit.attrs['font-family'],undefined);
+  assert.ok(report.characters===2);
+});

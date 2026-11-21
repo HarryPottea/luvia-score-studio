@@ -16,6 +16,7 @@ import { stripExternalMusicXmlDoctype } from './studio-v4-safe-xml-prolog.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
 import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
+import {stampSoftwareCopyright} from './studio-v4-software-copyright.js';
 import './style.css';
 
 let v4 = null;
@@ -343,6 +344,7 @@ async function renderScore() {
     applyLayoutPreset(osmd,$('v2-layout')?.value||'standard',renderedDoc);
     osmd.render();
     if(token!==state.renderToken)return false;
+    stampSoftwareCopyright([...stage.querySelectorAll('svg')],format);
     const container=$('score-container'),scroll=$('preview-shell');
     const priorScroll={top:scroll.scrollTop,left:scroll.scrollLeft};
     state.graphicBridge?.dispose?.();state.graphicBridge=null;
