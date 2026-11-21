@@ -2747,6 +2747,72 @@ try {
     await fs.readFile(await stage5HanDownload.path()));
   console.log('BROWSER_STAGE=STAGE5_KOREAN_EMBEDDED_TRUE_TYPE_FULL_SCORE_AND_PARTS');
 
+
+  // Stage 6: independent W3C MusicXML 4.0 XSD will check these *actual*
+  // exported documents after the full Chromium test, not just hard-coded
+  // original fixtures or strings fabricated by the XSD test itself.
+  const stage6Dir=output+'/stage6';
+  await fs.mkdir(stage6Dir,{recursive:true});
+  for(const [filename,xml] of [
+    ['01-polyphonic-rest-and-undo.musicxml',s1Final],
+    ['02-tuplet-rebalance.musicxml',s2TuXml],
+    ['03-connected-notation-two-lyric-verses.musicxml',stage3Xml],
+    ['04-manual-page-break-full-score.musicxml',stage4FullXml],
+  ]){
+    assert.match(xml,/<score-partwise\s+version="4\.0"/);
+    await fs.writeFile(stage6Dir+'/'+filename,xml,'utf8');
+  }
+  console.log('BROWSER_STAGE=STAGE6_FOUR_REAL_EDITED_MUSICXML_FILES_FOR_INDEPENDENT_XSD');
+
+  // Import an outside corpus compiled by the W3C MusicXML community, with
+  // pinned hash verification completed by the independent XSD job.
+  // No editing of these external scores is needed for lossless export:
+  // unsupported extensions must remain intact or export must be blocked.
+  for(const filename of [
+    '01a-Pitches-Pitches.musicxml',
+    '21b-Chords-TwoNotes.musicxml',
+    '61a-Lyrics.musicxml'
+  ]){
+    const original=await fs.readFile('.ci-musicxml4-cache/corpus/'+filename,'utf8');
+    const normal=original.replace(/<!DOCTYPE[\s\S]*?(?:\[[\s\S]*?\]\s*)?>|<!DOCTYPE[^>]*>/gi,'');
+    await page.locator('#file-input').setInputFiles({
+      name:filename,mimeType:'application/vnd.recordare.musicxml+xml',
+      buffer:Buffer.from(original,'utf8')
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('#v3-events .v3-event').length>0,
+      null,{timeout:30000});
+    const exportedEvent=page.waitForEvent('download',{timeout:30000});
+    await page.click('#download-xml');
+    const exported=await fs.readFile(await (await exportedEvent).path(),'utf8');
+    // Compare canonical element/attribute/content signatures using an
+    // independent DOM traversal. Drop indentation-only whitespace, but do
+    // not drop pitch, duration, lyric, direction or extension nodes.
+    const same=await page.evaluate(({before,after})=>{
+      const parser=new DOMParser();
+      const a=parser.parseFromString(before,'application/xml');
+      const b=parser.parseFromString(after,'application/xml');
+      const canonical=node=>{
+        if(node.nodeType===8)return ['comment',node.nodeValue];
+        if(node.nodeType===3||node.nodeType===4){
+          const text=node.nodeValue||'';
+          return /^\s*$/.test(text)?null:['text',text];
+        }
+        if(node.nodeType!==1)return null;
+        return [node.localName,node.namespaceURI||'',
+          [...node.attributes].filter(x=>!x.name.startsWith('xmlns'))
+            .map(x=>[x.namespaceURI||'',x.localName,x.value])
+            .sort((x,y)=>JSON.stringify(x).localeCompare(JSON.stringify(y))),
+          [...node.childNodes].map(canonical).filter(Boolean)];
+      };
+      return JSON.stringify(canonical(a.documentElement))===
+        JSON.stringify(canonical(b.documentElement));
+    },{before:normal,after:exported});
+    assert.ok(same,'W3C third-party score must not lose XML content: '+filename);
+    await fs.writeFile(stage6Dir+'/W3C-'+filename,exported,'utf8');
+    console.log('BROWSER_STAGE=STAGE6_W3C_INDEPENDENT_ROUNDTRIP_'+filename);
+  }
+  assert.deepEqual(errors,[],'no browser JavaScript exceptions during third-party import');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
