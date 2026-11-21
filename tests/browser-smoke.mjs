@@ -2577,7 +2577,7 @@ try {
   const stage4SvgFile=Object.keys(stage4PrintZip.files).find(name=>name.endsWith('.svg'));
   assert.ok(stage4SvgFile,'rendered vocal part must have a vector SVG page');
   const stage4SvgSource=await stage4PrintZip.file(stage4SvgFile).async('string');
-  assert.match(stage4SvgSource,/<svg\\b/);
+  assert.match(stage4SvgSource,/<svg\b/);
   assert.match(await page.locator('#message').textContent(),/SVG.*ZIP 저장 완료/);
   console.log('BROWSER_STAGE=STAGE4_COMPLEX_KOREAN_VOCAL_VECTOR_PRINT_NO_KNOWN_COLLISION');
 
