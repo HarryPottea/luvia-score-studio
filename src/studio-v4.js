@@ -33,6 +33,7 @@ import {planBatchLyrics,applyBatchLyrics} from './studio-v4-lyrics-batch.js';
 import {mountInlineLyricEditor} from './studio-v4-lyrics-floating.js';
 import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.js';
 import {renderPartSvgPages,populateVectorPrintWindow} from './studio-v4-printbook.js';
+import {prepareScoreAndPartExport} from './studio-v4-pdf-export-plan.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
 import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
@@ -262,6 +263,8 @@ const panel=[
   '<p class="v4-tiny">새 창에서 모든 악기를 개별 페이지로 나눈 후 브라우저 인쇄 → PDF로 저장합니다. 미리보기의 조판 간격 선택도 파트보에 적용됩니다. 표준 출력에서는 악보 SVG를 JPEG로 변환하지 않습니다.</p>',
   '<button id="v4-part-svg-zip" type="button">모든 파트 SVG ZIP 저장 (벡터)</button>',
   '<button id="v4-part-pdf-zip" type="button">파트별 PDF ZIP 생성 (음표·오선 벡터)</button>',
+  '<button id="v4-score-parts-pdf-zip" type="button">전체 악보 + 모든 파트 PDF 일괄 저장</button>',
+  '<p class="v4-tiny">00-Full-Score.pdf와 악기별 01·02… PDF를 하나의 ZIP으로 저장합니다. 전체 악보와 각 파트는 독립적으로 조판하며 동일한 A4·글꼴·벡터 검사를 적용합니다.</p>',
   '<label class="v4-timeline-move-check"><input id="v4-pdf-unicode-raster" type="checkbox" /> 한글·특수문자 텍스트만 고해상도 이미지로 포함 (하이브리드 PDF)</label>',
   '<label for="v4-pdf-local-font">선택한 로컬 TTF를 PDF에 내장해 한글 벡터 글자로 출력 (선택 사항)</label>',
   '<input id="v4-pdf-local-font" type="file" accept=".ttf,font/ttf" />',
@@ -1242,28 +1245,31 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }catch(error){setMessage('파트별 벡터 ZIP 생성 실패: '+error.message,true);}
     finally{button.disabled=false;}
   });
-  $('v4-part-pdf-zip').addEventListener('click',async()=>{
+  async function exportScorePdfZip(includeFullScore=false){
     if(!state.doc)return;
-    const button=$('v4-part-pdf-zip');button.disabled=true;
+    const button=$(includeFullScore?'v4-score-parts-pdf-zip':'v4-part-pdf-zip');
+    button.disabled=true;
     try{
       const names=new Map([...state.doc.querySelectorAll('part-list > score-part')].map(p=>[
         p.getAttribute('id'),p.querySelector('part-name')?.textContent||p.getAttribute('id'),
       ]));
       const parts=[...state.doc.documentElement.children].filter(n=>n.localName==='part')
         .map(p=>({id:p.getAttribute('id'),name:names.get(p.getAttribute('id'))||p.getAttribute('id')}));
+      const exportParts=includeFullScore?prepareScoreAndPartExport(state.doc,parts):parts;
       const pageFormat=$('page-orientation').value;
-      const pages=await renderPartSvgPages({doc:state.doc,parts,pageFormat,
+      const pages=await renderPartSvgPages({doc:state.doc,parts:exportParts,pageFormat,
         layout:$('v2-layout')?.value||'auto',
         measureNumbers:$('measure-numbers').checked,
-        onProgress:detail=>setMessage('파트별 벡터 PDF 렌더링: '+detail)});
+        onProgress:detail=>setMessage('전문 PDF 악보 렌더링: '+detail)});
       const result=await createVectorPartPdfZip({pages,filename:state.filename,pageFormat,
-        allowUnicodeText:$('v4-pdf-unicode-raster').checked,
+        includeFullScore,allowUnicodeText:$('v4-pdf-unicode-raster').checked,
         fontFile:$('v4-pdf-local-font').files?.[0]||null,
         onProgress:(count,total)=>setMessage('벡터 PDF 페이지 변환: '+count+' / '+total)});
       const url=URL.createObjectURL(result.blob),a=document.createElement('a');
       a.href=url;a.download=result.filename;a.click();
       setTimeout(()=>URL.revokeObjectURL(url),10000);
-      setMessage('파트별 '+(result.hybridTextCount?'하이브리드':'벡터')+' PDF '+result.parts+
+      setMessage((includeFullScore?'전체 악보 + ':'')+
+        (result.hybridTextCount?'하이브리드':'벡터')+' PDF '+result.parts+
         '개 파트 · '+result.pages+'페이지 ZIP 저장 · 한글 이미지 '+result.hybridTextCount+
         '개 · TTF 벡터 글자 '+(result.embeddedVectorTextCount||0)+
         '개 · 가사 간격 자동 보정 '+(pages.lyricAudit?.attempts||0)+'회 ·'+
@@ -1275,7 +1281,9 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     }catch(error){
       setMessage('벡터 PDF ZIP 생성 차단: '+(error.message||'지원하지 않는 SVG 표기입니다.'),true);
     }finally{button.disabled=false;}
-  });
+  }
+  $('v4-part-pdf-zip').addEventListener('click',()=>void exportScorePdfZip(false));
+  $('v4-score-parts-pdf-zip').addEventListener('click',()=>void exportScorePdfZip(true));
   $('v4-vector-zip').addEventListener('click',async()=>{
     if(!state.doc)return;
     const button=$('v4-vector-zip');button.disabled=true;
