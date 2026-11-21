@@ -2642,6 +2642,76 @@ try {
   assert.ok(stage4Bounds.viewWidth>0&&stage4Bounds.viewHeight>0);
   assert.ok(stage4Bounds.glyphWidth>0&&stage4Bounds.glyphHeight>0);
   console.log('BROWSER_STAGE=STAGE4_REAL_RENDERED_PAGE_BOUNDS_MEASURED');
+
+  // Stage 5: score + every independent part must be downloadable as genuine,
+  // non-raster A4 PDF pages in one deterministic ZIP. The legacy part-only
+  // export stays available without changing its file naming or behavior.
+  const stage5English=combinedParts.replaceAll('반짝이는','Verse');
+  await page.locator('#file-input').setInputFiles({
+    name:'stage5-english-duo.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',
+    buffer:Buffer.from(stage5English)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===12,
+    null,{timeout:30000});
+  await page.locator('#v4-pdf-local-font').setInputFiles([]);
+  await page.uncheck('#v4-pdf-unicode-raster');
+  const stage5AllEvent=page.waitForEvent('download',{timeout:120000});
+  await page.click('#v4-score-parts-pdf-zip');
+  const stage5AllDownload=await stage5AllEvent;
+  assert.match(stage5AllDownload.suggestedFilename(),/-full-score-and-parts-pdfs\.zip$/);
+  const stage5AllZip=await JSZip.loadAsync(
+    await fs.readFile(await stage5AllDownload.path()));
+  const stage5PdfNames=Object.keys(stage5AllZip.files).filter(n=>n.endsWith('.pdf')).sort();
+  assert.deepEqual(stage5PdfNames,['00-Full-Score.pdf','01-Vocal.pdf','02-Piano.pdf']);
+  for(const name of stage5PdfNames){
+    const bytes=await stage5AllZip.file(name).async('nodebuffer');
+    assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
+    assert.match(bytes.toString('latin1'),/\/MediaBox\s*\[\s*0\s+0\s+595\.28\s+841\.89\s*\]/);
+    assert.match(bytes.toString('latin1'),/\/Type\s*\/Page\b/);
+    assert.doesNotMatch(bytes.toString('latin1'),/\/Subtype\s*\/Image\b/,
+      name+' must preserve non-raster musical notation');
+    assert.ok(bytes.length>1000);
+  }
+  const fullScoreBytes=await stage5AllZip.file('00-Full-Score.pdf').async('nodebuffer');
+  const firstPartBytes=await stage5AllZip.file('01-Vocal.pdf').async('nodebuffer');
+  assert.notDeepEqual(fullScoreBytes,firstPartBytes,
+    'full score and extracted vocal part must be independent PDFs');
+  await fs.writeFile(output+'/stage5-full-score-and-parts-english.zip',
+    await fs.readFile(await stage5AllDownload.path()));
+  console.log('BROWSER_STAGE=STAGE5_FULL_SCORE_AND_TWO_PARTS_VECTOR_A4_PDF_ZIP');
+
+  // User-selected, self-generated two-syllable TTF is embedded separately in
+  // both the whole score and its extracted part. No glyph-image substitutions.
+  await page.locator('#file-input').setInputFiles({
+    name:'stage5-hangul.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',
+    buffer:Buffer.from(oneBarHangul)
+  });
+  await page.waitForFunction(()=>document.querySelectorAll('#jwoo-bar-strip .jwoo-bar-chip').length===1,
+    null,{timeout:30000});
+  await page.locator('#v4-pdf-local-font').setInputFiles({
+    name:'synthetic.ttf',mimeType:'font/ttf',buffer:Buffer.from(tinyLocalTTF,'base64')
+  });
+  await page.uncheck('#v4-pdf-unicode-raster');
+  const stage5HanEvent=page.waitForEvent('download',{timeout:120000});
+  await page.click('#v4-score-parts-pdf-zip');
+  const stage5HanDownload=await stage5HanEvent;
+  const stage5HanZip=await JSZip.loadAsync(
+    await fs.readFile(await stage5HanDownload.path()));
+  const stage5HanNames=Object.keys(stage5HanZip.files).filter(n=>n.endsWith('.pdf')).sort();
+  assert.deepEqual(stage5HanNames,['00-Full-Score.pdf','01-Vocal.pdf']);
+  for(const name of stage5HanNames){
+    const pdf=await stage5HanZip.file(name).async('nodebuffer');
+    const body=pdf.toString('latin1');
+    assert.match(body,/\/FontFile2\b/,'embedded TrueType is required in '+name);
+    assert.match(body,/\/ToUnicode\b/,'Unicode character mapping is required in '+name);
+    assert.match(body,/\/MediaBox\s*\[\s*0\s+0\s+595\.28\s+841\.89\s*\]/);
+    assert.doesNotMatch(body,/\/Subtype\s*\/Image\b/);
+  }
+  assert.match(await page.locator('#message').textContent(),/TTF 벡터 글자/);
+  await fs.writeFile(output+'/stage5-full-score-and-parts-korean-ttf.zip',
+    await fs.readFile(await stage5HanDownload.path()));
+  console.log('BROWSER_STAGE=STAGE5_KOREAN_EMBEDDED_TRUE_TYPE_FULL_SCORE_AND_PARTS');
+
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS_SYNTHETIC_BROWSER',xmlBytes:xml.length,pdfBytes:pdf.length,
     pdfCount:pdfFiles.length,graphicalNoteBindingHint:await page.locator('#v3-graphic-hint').textContent()}));
