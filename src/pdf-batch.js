@@ -5,6 +5,7 @@ import { applyFixedA4Profile, fixedA4Profile } from './a4-engraving.js';
 import { baseScoreName, safeFileName } from './part-export.js';
 import { makePdfFromJpegPages } from './pdf-bytes.js';
 import {stampSoftwareCopyright} from './studio-v4-software-copyright.js';
+import {editableScoreRenderOptions} from './osmd-render-policy.js';
 
 const A4 = { A4_P: [595.28, 841.89], A4_L: [841.89, 595.28] };
 const MAX_PARTS = 12, MAX_PAGES_PER_PART = 14, MAX_TOTAL_PAGES = 80;
@@ -53,7 +54,7 @@ async function renderPdfPages(doc,format,layout,measureNumbers) {
   document.body.append(holder);
   let osmd;
   try {
-    osmd=new OpenSheetMusicDisplay(holder,{autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,drawMeasureNumbers:measureNumbers,pageFormat:format});
+    osmd=new OpenSheetMusicDisplay(holder,editableScoreRenderOptions({autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,drawMeasureNumbers:measureNumbers,pageFormat:format}));
     await osmd.load(doc);
     applyFixedA4Profile(osmd,doc,format);
     applyLayoutPreset(osmd,layout,doc);
