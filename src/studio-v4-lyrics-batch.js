@@ -83,6 +83,45 @@ function pitched(note){
     !child(note,'cue')&&!child(note,'unpitched');
 }
 
+// A bounded, source-verified lyric run for editing a phrase in one transaction.
+// Stops at the first empty eligible note so a later phrase is never cleared.
+export function readLyricRun(doc,{partId,measureIndex,eventIndex,verse=1}={}){
+  if(!validInt(Number(verse),1,12))error('가사 절 번호는 1~12 사이여야 합니다.');
+  const part=children(doc?.documentElement,'part').find(n=>n.getAttribute('id')===partId);
+  const measures=children(part,'measure');
+  if(!part||!measures[measureIndex])error('가사 구간의 시작 음표를 찾지 못했습니다.');
+  const firstAudit=inspectAdvancedMeasure(doc,partId,measureIndex);
+  if(firstAudit.reason)error('선택한 마디의 성부 정보를 확인할 수 없습니다.');
+  const selected=firstAudit.events[eventIndex];
+  const firstNote=children(measures[measureIndex],'note')[eventIndex];
+  if(!selected||selected.rest||selected.chord||!pitched(firstNote)||soundingStop(firstNote))
+    error('일반 선율 음표에서 연속 가사를 편집할 수 있습니다.');
+  const positions=[],pieces=[];
+  for(let m=measureIndex;m<measures.length&&positions.length<4000;m++){
+    const audit=m===measureIndex?firstAudit:inspectAdvancedMeasure(doc,partId,m);
+    if(audit.reason)break;
+    const notes=children(measures[m],'note');
+    const events=audit.events.filter(e=>e.voice===selected.voice&&e.staff===selected.staff&&!e.chord)
+      .sort((a,b)=>a.start-b.start||a.eventIndex-b.eventIndex);
+    for(const event of events){
+      if(m===measureIndex&&(event.start<selected.start||event.start===selected.start&&event.eventIndex<eventIndex))continue;
+      const note=notes[event.eventIndex];
+      if(event.rest||soundingStop(note))continue;
+      if(!pitched(note))return {text:pieces.join('').trim(),positions,count:positions.length};
+      const lyric=noteLyric(note,String(Number(verse)));
+      if(!lyric)return {text:pieces.join('').trim(),positions,count:positions.length};
+      const syllable=value(lyric,'text');
+      const syllabic=value(lyric,'syllabic');
+      if(syllable)pieces.push((pieces.length&&['middle','end'].includes(syllabic)?'-':' ')+syllable);
+      else if(child(lyric,'extend'))pieces.push(' _');
+      else error('빈 가사 표기는 연속 편집으로 바꾸지 않습니다.');
+      positions.push({measureIndex:m,eventIndex:event.eventIndex});
+      if(positions.length>=4000)break;
+    }
+  }
+  return {text:pieces.join('').trim(),positions,count:positions.length};
+}
+
 export function planBatchLyrics(doc,{partId,measureIndex,eventIndex,verse=1,text,overwrite=false}={}){
   if(!validInt(Number(verse),1,12))error('가사 절 번호는 1~12 사이여야 합니다.');
   if(typeof partId!=='string'||!partId||!validInt(measureIndex,0,3000)||!validInt(eventIndex,0,50000))
@@ -157,6 +196,18 @@ function writeLyric(note,verse,token){
 }
 export function applyBatchLyrics(source,options){
   const plan=planBatchLyrics(source,options);
+  const prior=options.replaceExistingRun?readLyricRun(source,options):null;
+  if(prior){
+    const owned=new Set(prior.positions.map(item=>item.measureIndex+':'+item.eventIndex));
+    const sourcePart=children(source.documentElement,'part').find(n=>n.getAttribute('id')===plan.partId);
+    const sourceMeasures=children(sourcePart,'measure');
+    for(const item of plan.assignments){
+      if(owned.has(item.measureIndex+':'+item.eventIndex))continue;
+      const note=children(sourceMeasures[item.measureIndex],'note')[item.eventIndex];
+      if(noteLyric(note,String(plan.verse)))
+        error('다른 가사 구간은 덮어쓰지 않습니다. 시작 음표나 입력 길이를 확인해 주세요.');
+    }
+  }
   const result=source.cloneNode(true);
   const part=children(result.documentElement,'part').find(n=>n.getAttribute('id')===plan.partId);
   const measures=children(part,'measure');
@@ -165,10 +216,18 @@ export function applyBatchLyrics(source,options){
     if(!note)error('일괄 입력 중 음표 위치가 변경되어 적용하지 않았습니다.');
     writeLyric(note,String(plan.verse),item.token);
   }
-  assertNotationMutation(source,result,{partId:plan.partId,targets:plan.assignments.map(item=>({
+  const assigned=new Set(plan.assignments.map(item=>item.measureIndex+':'+item.eventIndex));
+  const cleared=[];
+  for(const position of prior?.positions||[]){
+    if(assigned.has(position.measureIndex+':'+position.eventIndex))continue;
+    const note=children(measures[position.measureIndex],'note')[position.eventIndex];
+    const lyric=noteLyric(note,String(plan.verse));
+    if(lyric){note.removeChild(lyric);cleared.push(position);}
+  }
+  assertNotationMutation(source,result,{partId:plan.partId,targets:[...plan.assignments,...cleared].map(item=>({
     measureIndex:item.measureIndex,eventIndex:item.eventIndex,
     allowed:[{name:'lyric',number:String(plan.verse)}]
   }))});
   return {doc:result,change:{action:'batch-lyrics',partId:plan.partId,verse:plan.verse,
-    count:plan.tokens,syllables:plan.syllables,extensions:plan.extensions}};
+    count:plan.tokens,syllables:plan.syllables,extensions:plan.extensions,cleared:cleared.length}};
 }

@@ -5,7 +5,7 @@ import {
   appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount,
 } from '../src/studio-v4-core.js';
 import {buildPlaybackTimeline,clipPlaybackToMeasures,measureAtPlaybackSecond} from '../src/studio-v4-playback.js';
-import {parseBatchLyrics,planBatchLyrics,applyBatchLyrics} from '../src/studio-v4-lyrics-batch.js';
+import {parseBatchLyrics,planBatchLyrics,applyBatchLyrics,readLyricRun} from '../src/studio-v4-lyrics-batch.js';
 
 // Minimal deterministic XML DOM with the operations used by the pure editor.
 class Element {
@@ -259,6 +259,27 @@ test('bulk lyric change is an immutable multi-note MusicXML edit',()=>{
   assert.deepEqual(lyricNotes(result).map(n=>first(verseNode(n),'syllabic').textContent),['begin','end','begin','end']);
   assert.equal(verseNode(lyricNotes(original)[0]),undefined);
   assert.deepEqual(lyricNotes(result).map(n=>first(n,'duration').textContent),['16','16','16','16']);
+});
+
+test('a lyric phrase can be reopened, shortened and shifted without changing other verses',()=>{
+  const original=lyricVocalScore({measures:2});
+  const verse2=applyBatchLyrics(original,lyricInput('봄',{verse:2})).doc;
+  const filled=applyBatchLyrics(verse2,lyricInput('우리 함께')).doc;
+  assert.equal(readLyricRun(filled,lyricInput('우리 함께')).text,'우-리 함-께');
+  const shortened=applyBatchLyrics(filled,lyricInput('우리',{overwrite:true,replaceExistingRun:true})).doc;
+  assert.deepEqual(lyricNotes(shortened).map(n=>verseNode(n)?first(verseNode(n),'text')?.textContent:undefined),
+    ['우','리',undefined,undefined]);
+  assert.equal(first(verseNode(lyricNotes(shortened)[0],'2'),'text').textContent,'봄');
+  assert.equal(first(verseNode(lyricNotes(filled)[3]),'text').textContent,'께');
+});
+
+test('phrase edit refuses to overwrite an unrelated later lyric after a gap',()=>{
+  const original=lyricVocalScore({measures:2});
+  const firstPhrase=applyBatchLyrics(original,lyricInput('우')).doc;
+  const withLater=applyBatchLyrics(firstPhrase,lyricInput('봄',{eventIndex:3})).doc;
+  assert.throws(()=>applyBatchLyrics(withLater,
+    lyricInput('하늘을 봐',{overwrite:true,replaceExistingRun:true})),/다른 가사 구간/);
+  assert.equal(first(verseNode(lyricNotes(withLater)[3]),'text').textContent,'봄');
 });
 
 test('melisma underscore emits MusicXML extend start/continue/stop',()=>{

@@ -2,8 +2,9 @@
 // requiring the composer to scroll through the long settings inspector.
 // All edits flow through the existing immutable MusicXML + undo transaction.
 import {readInlineLyric,nextInlineLyricPosition,smartLyricTokens} from './studio-v4-lyrics-inline.js';
-import {applyBatchLyrics,planBatchLyrics} from './studio-v4-lyrics-batch.js';
+import {applyBatchLyrics,planBatchLyrics,readLyricRun} from './studio-v4-lyrics-batch.js';
 import {setNoteVerse} from './studio-v4-composer.js';
+import {planPlacedLyricShift,shiftPlacedLyrics} from './studio-v4-lyrics-shift.js';
 
 const html=`
   <div class="jwoo-lyric-pop-header">
@@ -14,17 +15,29 @@ const html=`
   <select id="v4-inline-verse" aria-label="편집할 가사 절">
     ${Array.from({length:12},(_,i)=>'<option value="'+(i+1)+'">'+(i+1)+'절</option>').join('')}
   </select>
-  <label for="v4-inline-input">음절 또는 문장 입력</label>
-  <textarea id="v4-inline-input" rows="2" maxlength="20000" placeholder="예: 우 / 우리 함께 · 여러 줄 붙여넣기 가능"></textarea>
-  <p id="v4-inline-preview" class="jwoo-lyric-preview" aria-live="polite">텍스트를 입력하세요.</p>
-  <div class="jwoo-lyric-actions">
-    <button type="button" id="v4-inline-next" class="primary">저장 · 다음 음표 ↵</button>
-    <button type="button" id="v4-inline-save">이 음표만 저장</button>
-    <button type="button" id="v4-inline-auto">문장 자동 배치</button>
-    <button type="button" id="v4-inline-delete" class="subtle">현재 가사 삭제</button>
+  <div class="jwoo-lyric-phrase">
+    <label for="v4-inline-phrase">연속 가사 · 선택 음표부터</label>
+    <textarea id="v4-inline-phrase" rows="4" maxlength="20000" placeholder="문장처럼 입력하세요. 한글은 음절별로 다음 음표에 배치됩니다."></textarea>
+    <p id="v4-inline-phrase-preview" class="jwoo-lyric-preview" aria-live="polite"></p>
+    <div class="jwoo-lyric-actions">
+      <button type="button" id="v4-inline-phrase-apply" class="primary">연속 가사 한 번에 적용</button>
+      <button type="button" id="v4-inline-shift-right">현재부터 한 음 뒤로 →</button>
+    </div>
+    <p class="jwoo-lyric-hint">한글은 음절별로 배치합니다. _ 는 앞 음절을 길게 잇습니다. ⌘/Ctrl+Enter로 적용하며, 문장 전체를 한 번만 저장·조판합니다.</p>
   </div>
-  <label class="jwoo-lyric-overwrite"><input type="checkbox" id="v4-inline-overwrite" /> 기존 가사 덮어쓰기 허용 (자동 배치)</label>
-  <p id="v4-inline-status" class="jwoo-lyric-status" role="status" aria-live="polite">Enter: 저장 후 다음 음표 · Ctrl/⌘+Enter: 자동 배치 · Esc: 닫기</p>
+  <details class="jwoo-lyric-advanced"><summary>한 음표만 세밀하게 편집</summary>
+    <label for="v4-inline-input">현재 음표의 가사</label>
+    <textarea id="v4-inline-input" rows="2" maxlength="20000" placeholder="한 음표의 가사를 입력하세요"></textarea>
+    <p id="v4-inline-preview" class="jwoo-lyric-preview" aria-live="polite">텍스트를 입력하세요.</p>
+    <div class="jwoo-lyric-actions">
+      <button type="button" id="v4-inline-next" class="primary">저장 · 다음 음표 ↵</button>
+      <button type="button" id="v4-inline-save">이 음표만 저장</button>
+      <button type="button" id="v4-inline-auto">문장 자동 배치</button>
+      <button type="button" id="v4-inline-delete" class="subtle">현재 가사 삭제</button>
+    </div>
+    <label class="jwoo-lyric-overwrite"><input type="checkbox" id="v4-inline-overwrite" /> 기존 가사 덮어쓰기 허용 (자동 배치)</label>
+  </details>
+  <p id="v4-inline-status" class="jwoo-lyric-status" role="status" aria-live="polite">문장을 입력하고 ⌘/Ctrl+Enter로 적용 · Esc: 닫기</p>
 `;
 
 const same=(a,b)=>a&&b&&a.partId===b.partId&&a.measureIndex===b.measureIndex&&a.eventIndex===b.eventIndex;
@@ -61,10 +74,11 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
   editor.hidden=true;editor.innerHTML=html;
   document.body.appendChild(editor);
   const $=id=>document.getElementById(id);
-  let openAt=null,busy=false,mode=false,openedDoc=null,lastRect=null;
+  let openAt=null,busy=false,mode=false,openedDoc=null,lastRect=null,runCount=0;
   const field=$('v4-inline-input'),verse=$('v4-inline-verse');
   const status=$('v4-inline-status'),where=$('v4-inline-location');
-  const submitButtons=['v4-inline-next','v4-inline-save','v4-inline-auto','v4-inline-delete'];
+  const submitButtons=['v4-inline-next','v4-inline-save','v4-inline-auto','v4-inline-delete',
+    'v4-inline-phrase-apply','v4-inline-shift-right'];
   function enabled(){
     return !!state.doc&&!state.showBaseline;
   }
@@ -84,9 +98,11 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
     if(!rect)return;
     lastRect=rect;
     editor.hidden=false;
-    const width=Math.min(350,Math.max(260,window.innerWidth-24));
+    const width=Math.min(window.innerWidth>640?480:350,Math.max(260,window.innerWidth-24));
     editor.style.width=width+'px';
-    const left=Math.max(12,Math.min(window.innerWidth-width-12,rect.left||12));
+    const preferred=window.innerWidth>900&&rect.left>width+24?
+      rect.left-width-12:(rect.left||12);
+    const left=Math.max(12,Math.min(window.innerWidth-width-12,preferred));
     editor.style.left=left+'px';
     const height=editor.getBoundingClientRect().height;
     const below=(rect.bottom??window.innerHeight/2)+8;
@@ -106,12 +122,29 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
     where.textContent=(info.measureIndex+1)+'마디 · '+(info.eventIndex+1)+'번째 음표 · '+
       info.voice+'성부 / '+info.staff+'보표';
     field.value=info.text;
+    const run=readLyricRun(state.doc,openAt,{verse:Number(verse.value)});
+    runCount=run.count;
+    $('v4-inline-phrase').value=run.text;
+    updatePhrasePreview();
+    $('v4-inline-shift-right').disabled=!info.exists;
     $('v4-inline-delete').disabled=!info.exists;
     $('v4-inline-overwrite').checked=false;
     updatePreview();
     showStatus(info.exists?
-      '현재 가사를 불러왔습니다. 해당 절의 기존 멜리스마·음절 연결 정보를 유지합니다.':
-      'Enter: 이 음표에 입력 후 다음 음표 · Ctrl/⌘+Enter: 문장 자동 배치');
+      '연속 가사를 불러왔습니다. 문장 전체를 수정하거나 한 음 뒤로 밀 수 있습니다.':
+      '문장을 입력하고 ⌘/Ctrl+Enter로 한 번에 적용하세요.');
+  }
+  function updatePhrasePreview(){
+    const value=$('v4-inline-phrase').value;
+    try{
+      const tokens=smartLyricTokens(value);
+      $('v4-inline-phrase-preview').textContent=tokens.length+'개 음표에 배치'+
+        (runCount?' · 기존 연속 가사 '+runCount+'개 교체':'');
+      $('v4-inline-phrase-apply').disabled=!tokens.length;
+    }catch(error){
+      $('v4-inline-phrase-preview').textContent='입력 확인: '+error.message;
+      $('v4-inline-phrase-apply').disabled=true;
+    }
   }
   function updatePreview(){
     let preview;
@@ -143,7 +176,7 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
       refreshLocation();
       locate(rect||getNoteRect?.(openAt)||{left:window.innerWidth/2-140,
         bottom:Math.min(window.innerHeight*.4,200)});
-      field.focus();field.select();
+      $('v4-inline-phrase').focus();
       return true;
     }catch(error){
       showStatus('가사 편집 불가: '+error.message,true);
@@ -158,7 +191,21 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
     let info,next=null,transform,label;
     try{
       info=readCurrent();
-      if(kind==='delete'){
+      if(kind==='shift-right'){
+        planPlacedLyricShift(state.doc,{...current,verse:currentVerse,direction:'right'});
+        next=nextInlineLyricPosition(state.doc,current,{verse:currentVerse});
+        transform=doc=>shiftPlacedLyrics(doc,{...current,verse:currentVerse,direction:'right'});
+        label='가사 한 음표 밀기';
+      }else if(kind==='phrase'){
+        const phrase=$('v4-inline-phrase').value;
+        const run=readLyricRun(state.doc,current,{verse:currentVerse});
+        const plan=planBatchLyrics(state.doc,{...current,verse:currentVerse,text:phrase,
+          overwrite:run.count>0});
+        showStatus(plan.tokens+'개 음절을 한 번에 저장 중…');
+        transform=doc=>applyBatchLyrics(doc,{...current,verse:currentVerse,text:phrase,
+          overwrite:run.count>0,replaceExistingRun:true});
+        label='연속 가사 편집';
+      }else if(kind==='delete'){
         if(!info.exists){showStatus('삭제할 가사가 없습니다.',true);return;}
         transform=doc=>setNoteVerse(doc,{...current,verse:currentVerse,mode:'remove'});
         label='악보 위 가사 삭제';
@@ -190,13 +237,13 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
         return;
       }
       openedDoc=state.doc;
-      if(kind==='next'&&next){
+      if((kind==='next'||kind==='shift-right')&&next){
         v3.select(next);
         openAt=next;
         refreshLocation();
         locate(getNoteRect?.(next)||lastRect);
         field.focus();
-      }else if(kind==='next'){
+      }else if(kind==='next'||kind==='shift-right'){
         showStatus('저장 완료 · 선택 성부의 마지막 가사 음표입니다.');
         field.select();
       }else{
@@ -207,7 +254,12 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
       busy=false;
       if(openAt){
         updatePreview();
-        try{$('v4-inline-delete').disabled=!readCurrent().exists;}catch{}
+        updatePhrasePreview();
+        try{
+          const hasLyric=readCurrent().exists;
+          $('v4-inline-delete').disabled=!hasLyric;
+          $('v4-inline-shift-right').disabled=!hasLyric;
+        }catch{}
       }
     }
   }
@@ -227,6 +279,11 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
     try{refreshLocation();field.focus();}catch(error){showStatus(error.message,true);}
   });
   field.addEventListener('input',updatePreview);
+  $('v4-inline-phrase').addEventListener('input',updatePhrasePreview);
+  $('v4-inline-phrase').addEventListener('keydown',event=>{
+    if(event.isComposing||event.key!=='Enter'||!(event.ctrlKey||event.metaKey))return;
+    event.preventDefault();void change('phrase');
+  });
   field.addEventListener('keydown',event=>{
     if(event.isComposing||event.key!=='Enter')return;
     event.preventDefault();
@@ -239,6 +296,8 @@ export function mountInlineLyricEditor({state,v3,commit,setMessage,
   $('v4-inline-save').addEventListener('click',()=>void change('save'));
   $('v4-inline-auto').addEventListener('click',()=>void change('auto'));
   $('v4-inline-delete').addEventListener('click',()=>void change('delete'));
+  $('v4-inline-phrase-apply').addEventListener('click',()=>void change('phrase'));
+  $('v4-inline-shift-right').addEventListener('click',()=>void change('shift-right'));
   // The selection object is populated from the source-verified OSMD notehead.
   // No guessing is made from the SVG's linear child order.
   updateButton();

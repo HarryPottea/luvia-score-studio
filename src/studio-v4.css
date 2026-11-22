@@ -178,6 +178,14 @@
 .jwoo-lyric-actions button.primary{background:#d9ff7a;color:#17200f;border-color:#d9ff7a}
 .jwoo-lyric-actions button.subtle{background:#322d27;color:#eee2d4;border-color:#786b5a}
 .jwoo-lyric-actions button:disabled{opacity:.42;cursor:default}
+.jwoo-lyric-phrase{padding:12px;margin:9px 0 15px;background:#34442d;border:1px solid #7f9f65;border-radius:6px}
+.jwoo-lyric-phrase label{display:block;margin:0 0 7px;font-size:13px;font-weight:700;color:#ecffd8}
+.jwoo-lyric-phrase textarea{min-height:108px;max-height:220px;line-height:1.6}
+.jwoo-lyric-phrase .jwoo-lyric-actions{grid-template-columns:1.25fr 1fr}
+.jwoo-lyric-hint{margin:5px 0 0;font-size:11px;line-height:1.5;color:#d4e6c9}
+.jwoo-lyric-advanced{margin:10px 0 0;border-top:1px solid #586d4b;padding-top:9px}
+.jwoo-lyric-advanced summary{cursor:pointer;font-size:12px;font-weight:700;color:#e6f2d9}
+.jwoo-lyric-advanced label:not(.jwoo-lyric-overwrite){display:block;margin:10px 0 5px;font-size:12px}
 .jwoo-lyric-overwrite{display:flex;align-items:center;gap:9px;font-size:12px;margin-top:12px}
 .jwoo-lyric-overwrite input{flex:none;width:17px;height:17px;accent-color:#d9ff7a}
 .jwoo-lyric-status{min-height:25px;color:#d4e6c9;font-size:11px;margin:10px 0 0;overflow-wrap:anywhere}
