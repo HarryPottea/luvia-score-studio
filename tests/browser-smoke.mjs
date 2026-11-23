@@ -829,17 +829,18 @@ try {
   }
   console.log('BROWSER_STAGE=V4_INDIVIDUAL_PART_VECTOR_SVG_ZIP');
   await page.selectOption('#v4-cadence-bars','2');
-  await page.selectOption('#v4-cadence-systems','2');
+  assert.equal(await page.locator('#v4-cadence-systems').count(),0,
+    'Page line count must not require a separate setting');
   await page.click('#v4-cadence-apply');
-  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('전체 악보 줄·페이지 나눔 완료'),null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('전체 악보 줄당 마디 수 적용 완료'),null,{timeout:30000});
   assert.match(await page.locator('#v4-cadence-status').textContent(),/모든 파트 2개/);
   const scoreCadenceDownload=page.waitForEvent('download');
   await page.click('#download-xml');
   const scoreCadenceXml=await fs.readFile(await (await scoreCadenceDownload).path(),'utf8');
-  assert.equal((scoreCadenceXml.match(/<print new-system="yes"/g)||[]).length,2,
-    'The third bar must start a new system in each part');
-  assert.equal((scoreCadenceXml.match(/<print new-page="yes"/g)||[]).length,2,
-    'The fifth bar must start a new page in each part');
+  assert.equal((scoreCadenceXml.match(/<print new-system="yes"/g)||[]).length,4,
+    'The third and fifth bars must start new systems in each part');
+  assert.equal((scoreCadenceXml.match(/<print new-page="yes"/g)||[]).length,0,
+    'Page boundaries must be left to automatic pagination');
   assert.match(scoreCadenceXml,/<backup><duration>144<\/duration><\/backup>/);
   console.log('BROWSER_STAGE=V4_MULTIPART_CADENCE_SYSTEM_PAGE_WRITTEN');
 

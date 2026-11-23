@@ -262,12 +262,12 @@ const panel=[
   '<label for="v4-layout">선택한 마디부터</label><select id="v4-layout"><option value="system">새 줄 시작</option><option value="page">새 페이지 시작</option><option value="none">줄·페이지 나눔 해제</option></select>',
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
-  '<div class="v4-cadence-panel"><p class="v4-subhead">악보 전체 자동 줄·페이지 나눔 계획</p>',
-  '<div class="v4-inline"><div><label for="v4-cadence-bars">한 줄에 배치할 마디 수</label><select id="v4-cadence-bars"><option value="2">2마디</option><option value="3">3마디</option><option value="4" selected>4마디</option><option value="5">5마디</option><option value="6">6마디</option><option value="8">8마디</option></select></div>',
-  '<div><label for="v4-cadence-systems">한 페이지에 배치할 줄 수</label><select id="v4-cadence-systems"><option value="2">2줄</option><option value="3">3줄</option><option value="4" selected>4줄</option><option value="5">5줄</option><option value="6">6줄</option></select></div></div>',
+  '<div class="v4-cadence-panel"><p class="v4-subhead">한 줄의 마디 수</p>',
+  '<label for="v4-cadence-bars">한 줄에 배치할 마디 수</label><select id="v4-cadence-bars"><option value="2">2마디</option><option value="3">3마디</option><option value="4" selected>4마디</option><option value="5">5마디</option><option value="6">6마디</option><option value="8">8마디</option></select>',
+  '<p class="v4-tiny">페이지당 줄 수는 지정하지 않습니다. 페이지가 차면 악보가 다음 페이지로 이어집니다.</p>',
   '<label class="v4-timeline-move-check"><input id="v4-cadence-replace" type="checkbox" /> 기존 수동 줄·페이지 나눔 대체 허용</label>',
-  '<button id="v4-cadence-apply" type="button">모든 파트에 줄·페이지 나눔 적용</button>',
-  '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">모든 파트의 마디 수가 같아야 합니다. 기존 수동 나눔은 기본적으로 보호됩니다.</p>',
+  '<button id="v4-cadence-apply" type="button">모든 파트에 줄당 마디 수 적용</button>',
+  '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">기존 페이지 나눔이 있으면 대체 허용을 선택해야 자동 페이지 흐름으로 바뀝니다. ⌘Z / Ctrl+Z로 되돌릴 수 있습니다.</p>',
   '<button id="v4-auto-layout" type="button">곡 밀도 기반 자동 줄·페이지 나눔</button>',
   '<p id="v4-auto-layout-status" class="v4-tiny" role="status" aria-live="polite">음표·가사·화음 밀도에 따라 모든 파트의 줄과 페이지 시작을 자동 제안합니다.</p>',
   '<button id="v4-part-layout" type="button">악기별 파트보 개별 자동 조판</button>',
@@ -1249,7 +1249,6 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   $('v4-cadence-apply').addEventListener('click',async()=>{
     if(!state.doc)return;
     const options={barsPerSystem:Number($('v4-cadence-bars').value),
-      systemsPerPage:Number($('v4-cadence-systems').value),
       replaceExisting:$('v4-cadence-replace').checked};
     const status=$('v4-cadence-status');
     let plan;
@@ -1260,10 +1259,10 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       setMessage(status.textContent,true);return;
     }
     const before=state.doc;
-    await commit(doc=>applyLayoutCadence(doc,options),'전체 악보 줄·페이지 나눔');
+    await commit(doc=>applyLayoutCadence(doc,options),'전체 악보 줄당 마디 수 적용');
     if(state.doc!==before){
       status.textContent='모든 파트 '+plan.parts+'개 · '+plan.total+'마디 · 새 줄 시작 '+
-        plan.systemStarts+'곳 · 페이지 시작 '+plan.pageStarts+'곳 기록 완료';
+        plan.systemStarts+'곳 기록 완료 · 페이지는 자동 배치';
     }else status.textContent='악보가 변경되지 않았습니다. 위 편집 상태를 확인해 주세요.';
   });
   $('v4-auto-layout').addEventListener('click',async()=>{

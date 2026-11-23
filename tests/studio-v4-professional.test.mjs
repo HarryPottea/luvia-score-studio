@@ -429,20 +429,20 @@ function layoutFixture(){
   doc.documentElement.appendChild(second);
   return doc;
 }
-test('engraving: cadence writes repeatable system and page breaks across every part',()=>{
+test('engraving: cadence fixes bars per system without forcing page breaks',()=>{
   const original=layoutFixture(),before=serialize(original);
-  const planned=planLayoutCadence(original,{barsPerSystem:2,systemsPerPage:2});
+  const planned=planLayoutCadence(original,{barsPerSystem:2});
   assert.equal(planned.parts,2);
   assert.equal(planned.total,8);
-  assert.equal(planned.systemStarts,2);
-  assert.equal(planned.pageStarts,1);
-  const {doc}=applyLayoutCadence(original,{barsPerSystem:2,systemsPerPage:2});
+  assert.equal(planned.systemStarts,3);
+  const {doc}=applyLayoutCadence(original,{barsPerSystem:2});
   assert.equal(serialize(original),before);
   for(const p of children(doc.documentElement,'part')){
     const measures=children(p,'measure');
     assert.equal(first(measures[2],'print').getAttribute('new-system'),'yes');
-    assert.equal(first(measures[4],'print').getAttribute('new-page'),'yes');
+    assert.equal(first(measures[4],'print').getAttribute('new-system'),'yes');
     assert.equal(first(measures[6],'print').getAttribute('new-system'),'yes');
+    assert.equal(measures.some(m=>first(m,'print')?.getAttribute('new-page')==='yes'),false);
     assert.equal(first(measures[1],'print'),undefined);
     assert.equal(first(measures[3],'print'),undefined);
     assert.deepEqual(children(measures[7],'note').map(n=>first(n,'duration').textContent),
@@ -454,13 +454,13 @@ test('engraving: manual break conflicts are protected until user opts into repla
   const print=E('print',[],{'new-page':'yes','staff-spacing':'18'});
   measure4.insertBefore(print,measure4.children[0]);
   const before=serialize(original);
-  assert.throws(()=>applyLayoutCadence(original,{barsPerSystem:2,systemsPerPage:2}),/수동|충돌/);
-  const applied=applyLayoutCadence(original,{barsPerSystem:2,systemsPerPage:2,replaceExisting:true}).doc;
+  assert.throws(()=>applyLayoutCadence(original,{barsPerSystem:2}),/수동|충돌/);
+  const applied=applyLayoutCadence(original,{barsPerSystem:2,replaceExisting:true}).doc;
   assert.equal(serialize(original),before);
   const preserved=first(children(part(applied),'measure')[3],'print');
   assert.equal(preserved.getAttribute('new-page'),null);
   assert.equal(preserved.getAttribute('staff-spacing'),'18','Other print settings remain intact');
-  assert.throws(()=>planLayoutCadence(original,{barsPerSystem:7,systemsPerPage:2}),/지원 범위/);
+  assert.throws(()=>planLayoutCadence(original,{barsPerSystem:7}),/지원 범위/);
 });
 
 
