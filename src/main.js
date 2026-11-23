@@ -14,6 +14,7 @@ import { mountStudioV4 } from './studio-v4.js';
 import { assertMusicXmlRoundTrip } from './studio-v4-xml-roundtrip.js';
 import { stripExternalMusicXmlDoctype } from './studio-v4-safe-xml-prolog.js';
 import { mountStickyPreview } from './sticky-preview.js';
+import { normalizeRedundantClefs } from './studio-v4-clef-normalize.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
 import { mountScoreToolstrip } from './score-toolstrip.js';
 import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
@@ -393,12 +394,13 @@ async function openScore(raw, filename) {
     visible:new Set(state.visible),editor:v3.captureState(),
     controlsHidden:$('editor-controls').hidden
   };
-  let parsed=null,switched=false;
+  let parsed=null,active=null,switched=false;
   try {
     parsed=parseXml(raw);
+    active=normalizeRedundantClefs(parsed).doc;
     v4?.beforeOpen?.();
     if(ticket!==openSequence)return false;
-    state.doc=parsed;
+    state.doc=active;
     state.originalDoc=parsed.cloneNode(true);
     state.filename=filename;
     state.undoRhythmDoc=null;
@@ -406,7 +408,7 @@ async function openScore(raw, filename) {
     switched=true;
     showLoaded();
     const rendered=await renderScore();
-    if(ticket!==openSequence||state.doc!==parsed)return false;
+    if(ticket!==openSequence||state.doc!==active)return false;
     if(!rendered)throw new Error('불러온 MusicXML 악보를 렌더링할 수 없습니다.');
     v2.invalidateUndo();
     $('workspace').scrollIntoView({behavior:'smooth',block:'start'});
@@ -414,7 +416,7 @@ async function openScore(raw, filename) {
     return true;
   }catch(error){
     // If another open began, it owns the new document. Never roll it back.
-    if(switched&&ticket===openSequence&&state.doc===parsed){
+    if(switched&&ticket===openSequence&&state.doc===active){
       state.doc=prior.doc;
       state.originalDoc=prior.originalDoc;
       state.filename=prior.filename;

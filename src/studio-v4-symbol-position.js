@@ -66,6 +66,8 @@ function target(doc,position,kind){
 export function readSymbolOffset(doc,position,kind){return offset(target(doc,position,kind));}
 export function readSymbolHidden(doc,position,kind){return target(doc,position,kind).getAttribute('print-object')==='no';}
 export function setSymbolHidden(source,{position,kind,hidden}){
+  if(kind==='clef'&&hidden)
+    throw new Error('음자리표는 각 줄의 시작에 하나씩 유지합니다. 같은 음자리표의 중복 선언은 악보를 열 때 자동 정리됩니다.');
   const original=target(source,position,kind);
   if(kind!=='rest'){
     const part=partAt(source,position.partId);

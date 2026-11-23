@@ -71,6 +71,7 @@
 /* Strictly opt-in SVG note direct manipulation, only when graphical/MusicXML match. */
 #score-container .jwoo-note-target,#score-container .jwoo-rest-target{cursor:pointer;touch-action:none}
 #score-container .jwoo-note-target:hover,#score-container .jwoo-rest-target:hover{filter:drop-shadow(0 0 5px rgba(174,255,99,.75))}
+#score-container .jwoo-note-drag-preview{pointer-events:none;opacity:.95;filter:drop-shadow(0 0 5px #8ddc42)}
 #score-container .jwoo-note-selected{filter:drop-shadow(0 0 5px #b7fb81)}
 #score-container .jwoo-note-target:focus-visible,#score-container .jwoo-rest-target:focus-visible{outline:2px solid #b7fb81;outline-offset:3px}
 .v3-advanced{border-top:1px solid #66775e;padding-top:18px}

@@ -8,6 +8,7 @@ import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
 import {transposeChordChromatically} from '../src/studio-v4-chord-transpose.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
+import {normalizeRedundantClefs} from '../src/studio-v4-clef-normalize.js';
 import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
 import {
   editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie
@@ -461,6 +462,22 @@ test('engraving: manual break conflicts are protected until user opts into repla
   assert.equal(preserved.getAttribute('new-page'),null);
   assert.equal(preserved.getAttribute('staff-spacing'),'18','Other print settings remain intact');
   assert.throws(()=>planLayoutCadence(original,{barsPerSystem:7}),/지원 범위/);
+});
+test('engraving: repeated unchanged clef is removed while real changes and source survive',()=>{
+  const clef=sign=>E('clef',[T('sign',sign),T('line',2)]);
+  const source=new Doc(E('score-partwise',[E('part',[
+    E('measure',[E('attributes',[clef('G')])],{number:'1'}),
+    E('measure',[E('note',[E('rest')])],{number:'2'}),
+    E('measure',[E('attributes',[clef('G')])],{number:'3'}),
+    E('measure',[E('attributes',[clef('F')])],{number:'4'}),
+  ],{id:'P1'})]));
+  const before=serialize(source),result=normalizeRedundantClefs(source);
+  assert.equal(result.removed,1);
+  assert.equal(serialize(source),before);
+  const bars=children(part(result.doc),'measure');
+  assert.equal(children(first(bars[0],'attributes'),'clef').length,1);
+  assert.equal(first(bars[2],'attributes'),undefined);
+  assert.equal(first(first(bars[3],'attributes'),'clef').children[0].textContent,'F');
 });
 
 

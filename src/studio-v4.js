@@ -242,7 +242,7 @@ const panel=[
   '<p class="v4-tiny">박자·조성·음자리의 의미는 바꾸지 않고 표시만 이동합니다.</p>',
   '<label class="v4-timeline-move-check jwoo-tool-source"><input id="v4-symbol-drag" type="checkbox" /> 직접 드래그 켜기 · 기호 선택 불필요</label>',
   '<label class="v4-timeline-move-check jwoo-tool-source"><input id="v4-symbol-hide" type="checkbox" /> 기호 표시 지우기</label>',
-  '<p class="v4-tiny">악보 위 지우개 도구로 기호를 누르면 표기만 숨깁니다. 쉼표의 박자와 조표·박자표·음자리표의 음악적 의미는 보존되며 실행 취소할 수 있습니다. 한 속성의 반복 표시는 함께 숨겨질 수 있습니다.</p>',
+  '<p class="v4-tiny">악보 위 지우개 도구로 쉼표·조표·박자표의 표시를 숨길 수 있습니다. 음자리표는 각 줄의 시작에 하나씩 유지하며, 원본의 같은 음자리표 중복 선언은 불러올 때 정리합니다.</p>',
   '<p class="v4-tiny">악보 위 네 방향 화살표 도구를 켜면 쉼표·조표·박자표·음자리표를 바로 끌어 옮길 수 있습니다. 아래 기호 선택은 수치로 정밀 조정할 때만 사용합니다.</p>',
   '<div class="v4-inline"><label for="v4-symbol-kind">기호</label><select id="v4-symbol-kind"><option value="rest">선택 쉼표</option><option value="key">선택 마디 조표</option><option value="time">선택 마디 박자표</option><option value="clef">선택 보표 음자리표</option></select></div>',
   '<div class="v4-inline"><div><label for="v4-symbol-x">가로 (+ 오른쪽)</label><input id="v4-symbol-x" type="number" min="-200" max="200" step="0.5" value="0" /></div>',
@@ -752,7 +752,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     if(!enabled){$('v4-symbol-show').disabled=true;$('v4-symbol-status').textContent='악보를 열고 기호를 선택해 주세요.';return;}
     if(hideMode){
       $('v4-symbol-show').disabled=true;
-      $('v4-symbol-status').textContent='기호 표시 지우기 중 · 악보의 쉼표·조표·박자표·음자리표를 누르세요.';
+      $('v4-symbol-status').textContent='기호 표시 지우기 중 · 쉼표·조표·박자표를 누르세요. 음자리표는 줄 시작마다 유지됩니다.';
       return;
     }
     if(dragMode){

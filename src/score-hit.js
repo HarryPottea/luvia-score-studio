@@ -226,15 +226,44 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       !!activeRange&&item.measureIndex>=activeRange.start&&item.measureIndex<=activeRange.end);
   }
   function highlight(){for(const item of targets)markSelected(item,!!same(selected,item));highlightRange();highlightPlayback();}
+  function clearDragPreview(){
+    if(!drag?.preview)return;
+    drag.preview?.remove();
+    if(drag.item.element.isConnected)drag.item.element.style.opacity=drag.priorOpacity??'';
+  }
+  function move(event){
+    if(disposed||!drag||drag.pointerId!==event.pointerId)return;
+    const delta=Math.max(-8*drag.unit,Math.min(8*drag.unit,event.clientY-drag.y));
+    if(!drag.preview&&Math.abs(delta)<3)return;
+    if(!drag.preview){
+      const original=drag.item.element,svg=original.closest('svg');
+      if(!svg||!original.parentNode)return;
+      const group=original.ownerDocument.createElementNS('http://www.w3.org/2000/svg','g');
+      group.classList.add('jwoo-note-drag-preview');
+      const ghost=original.cloneNode(true);
+      ghost.removeAttribute('id');ghost.removeAttribute('tabindex');ghost.removeAttribute('role');
+      ghost.removeAttribute('aria-pressed');ghost.removeAttribute('aria-label');
+      ghost.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'));
+      ghost.querySelectorAll('.jwoo-hit-area,.jwoo-selection-ring').forEach(node=>node.remove());
+      group.appendChild(ghost);original.parentNode.appendChild(group);
+      drag.preview=group;drag.svg=svg;drag.priorOpacity=original.style.opacity;
+      original.style.opacity='0.35';
+    }
+    const box=drag.svg.getBoundingClientRect();
+    const width=drag.svg.viewBox?.baseVal?.width;
+    const scale=box.width&&width?width/box.width:1;
+    drag.preview.setAttribute('transform',`translate(0 ${delta*scale})`);
+  }
   function up(event) {
     if(disposed||!drag||drag.pointerId!==event.pointerId)return;
     const {item,unit,y}=drag;
+    clearDragPreview();
     drag=null;
     const steps=Math.max(-8,Math.min(8,Math.round((y-event.clientY)/unit)));
     if(steps)movePitch(item,steps);
   }
-  function cancel(event){if(drag?.pointerId===event.pointerId)drag=null;}
-  function clearHandlers(){for(const off of cleanups)off();cleanups=[];drag=null;}
+  function cancel(event){if(drag?.pointerId===event.pointerId){clearDragPreview();drag=null;}}
+  function clearHandlers(){for(const off of cleanups)off();cleanups=[];clearDragPreview();drag=null;}
   function attach(item){
     const el=item.element;
     el.classList.add(item.rest?'jwoo-rest-target':'jwoo-note-target');el.setAttribute('tabindex','0');
@@ -274,6 +303,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   // one source-verified stave note and one notehead hitbox; never guess.
   function rootDown(event){
     if(disposed||event.button!==0||event.isPrimary===false)return;
+    if(drag){clearDragPreview();drag=null;}
     const stave=event.target?.closest?.('.vf-stavenote');
     if(!stave)return;
     const hit=targets.filter(item=>{
@@ -337,6 +367,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
   host?.addEventListener('contextmenu',rootContext,true);
   host?.addEventListener('pointerdown',rootDown,true);
   host?.addEventListener('dblclick',rootDouble,true);
+  document.addEventListener('pointermove',move);
   document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancel);
   // Observe subtree replacements only; class/attribute changes are not watched.
   // addHitArea modifies childList once, but remap's identity check prevents loops.
@@ -363,6 +394,7 @@ export function bindGraphicalEditor({osmd,doc,visibleParts,select,movePitch,anno
       host?.removeEventListener('contextmenu',rootContext,true);
       host?.removeEventListener('pointerdown',rootDown,true);
       host?.removeEventListener('dblclick',rootDouble,true);
+      document.removeEventListener('pointermove',move);
       document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancel);
     }};
 }
