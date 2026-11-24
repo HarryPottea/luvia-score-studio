@@ -16,7 +16,7 @@ export function mountScoreToolstrip(){
   host.setAttribute('role','toolbar');host.setAttribute('aria-label','악보 편집 도구');
   const caption=document.createElement('span');
   caption.className='jwoo-score-tools-caption';
-  caption.textContent='편집 도구 · 길게 눌러 설명';
+  caption.textContent='TOOLS';
   host.append(caption);
   const mobileHelp=document.createElement('p');
   mobileHelp.className='jwoo-score-tools-help';
@@ -42,7 +42,7 @@ export function mountScoreToolstrip(){
     button.type='button';button.className='jwoo-score-tool';
     button.dataset.tool=kind;button.dataset.help=name+' — '+description;
     button.setAttribute('aria-label',name+'. '+description);
-    button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+icons[kind]+'</svg>';
+    button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+icons[kind]+'</svg><span>'+({note:'음표',lyric:'가사',move:'이동',erase:'지우개',measure:'마디'})[kind]+'</span>';
     if(kind==='lyric'||kind==='move'||kind==='erase')button.setAttribute('aria-pressed','false');
     let hold=null,longPress=false;
     button.addEventListener('pointerdown',event=>{

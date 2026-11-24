@@ -17,9 +17,11 @@ import { mountStickyPreview } from './sticky-preview.js';
 import { normalizeRedundantClefs } from './studio-v4-clef-normalize.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
 import { mountScoreToolstrip } from './score-toolstrip.js';
+import { mountWorkspaceShell } from './workspace-shell.js';
 import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
 import {stampSoftwareCopyright} from './studio-v4-software-copyright.js';
 import './style.css';
+import './workspace-shell.css';
 
 let v4 = null;
 const MAX_FILE = 15 * 1024 * 1024;
@@ -644,4 +646,5 @@ v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore });
 mountStickyPreview();
 mountSettingsAccordions();
 mountScoreToolstrip();
+mountWorkspaceShell();
 updateSelectionBadge();
