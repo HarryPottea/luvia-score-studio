@@ -64,14 +64,14 @@ static class Program {
             Preferences.Default.OnnxRunner="CPU";
             SingerManager.Inst.Initialize();
             if(args[0]=="list" && args.Length==1) {
-                var singers = SingerManager.Inst.Singers.Values.OfType<DiffSingerSinger>().Select(s=>new {id=s.Id,name=s.Name,singerType="DiffSinger"}).ToArray();
+                var singers = SingerManager.Inst.Singers.Values.Where(s=>s.SingerType==USingerType.DiffSinger && s.Found).Select(s=>new {id=s.Id,name=s.Name,singerType="DiffSinger"}).ToArray();
                 Console.WriteLine(JsonSerializer.Serialize(singers));return 0;
             }
             if(args[0]!="render" || args.Length!=3) throw new Exception("Invalid command.");
             var project=Ustx.Load(args[1]);
             if(project.tracks.Count!=1 || project.parts.Count!=1 || project.parts[0] is not UVoicePart part) throw new Exception("Only one vocal track is allowed.");
             var track=project.tracks[0];
-            if(track.Singer is not DiffSingerSinger ds || !ds.Found || track.Phonemizer is not DiffSingerKoreanPhonemizer || track.RendererSettings.Renderer?.ToString()!="DIFFSINGER") throw new Exception("Real Korean DiffSinger renderer unavailable.");
+            if(track.Singer==null || track.Singer.SingerType!=USingerType.DiffSinger || !track.Singer.Found || track.Phonemizer is not DiffSingerKoreanPhonemizer || track.RendererSettings.Renderer?.ToString()!="DIFFSINGER") throw new Exception("Real Korean DiffSinger renderer unavailable.");
             doc.ExecuteCmd(new LoadProjectNotification(project));
             project.ValidateFull();
             var watch=Stopwatch.StartNew();

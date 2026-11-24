@@ -3,6 +3,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$ROOT/artifacts/vocal-mac"
 WORK="$(mktemp -d)"
+WORK="$(cd "$WORK" && pwd -P)"
+ROOT="$(cd "$ROOT" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 [[ "$(uname -s)" = Darwin ]] || { echo "macOS build host required"; exit 1; }
 case "$(uname -m)" in arm64) RID=osx-arm64;; x86_64) RID=osx-x64;; *) exit 1;; esac
@@ -16,7 +18,16 @@ git -C "$WORK/OpenUtau" checkout --detach FETCH_HEAD
 python3 "$ROOT/vocal-engine/native/prepare-upstream.py" "$WORK/OpenUtau"
 STAGE="$WORK/stage"
 mkdir -p "$STAGE/engine" "$STAGE/src" "$STAGE/runtime" "$STAGE/licenses" "$STAGE/vocal-engine" "$OUT"
-dotnet publish "$ROOT/vocal-engine/native/JwooRender.csproj" -c Release -r "$RID" --self-contained true -p:OpenUtauRoot="$WORK/OpenUtau" -o "$STAGE/engine"
+SDK="$(dotnet --list-sdks | awk '$1 ~ /^10\.0\.[0-9]+$/ {v=$1} END {print v}')"
+[[ -n "$SDK" ]]
+printf '{"sdk":{"version":"%s","rollForward":"disable"}}\n' "$SDK" > "$WORK/global.json"
+PROJECT="$ROOT/vocal-engine/native/JwooRender.csproj"
+(
+ cd "$WORK"
+ dotnet --version
+ dotnet restore "$PROJECT" -r "$RID" -p:OpenUtauRoot="$WORK/OpenUtau" --disable-parallel -m:1
+ dotnet publish "$PROJECT" -c Release -r "$RID" --self-contained true --no-restore -p:OpenUtauRoot="$WORK/OpenUtau" -m:1 -o "$STAGE/engine"
+)
 # Vendor the exact runtime supplied by the CI toolchain; keep distribution notices.
 NODE="$(command -v node)"
 cp "$NODE" "$STAGE/runtime/node"

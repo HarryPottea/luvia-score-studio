@@ -17,14 +17,18 @@ for project in ("OpenUtau.Core","OpenUtau.Plugin.Builtin"):
     p=folder/(project+".csproj")
     s=p.read_text(encoding="utf-8-sig")
     items=[]
+    names=set()
     for resx in folder.rglob("*.resx"):
         designer=resx.with_suffix(".Designer.cs")
-        if not designer.is_file(): continue
+        if not designer.is_file(): raise RuntimeError(f"Missing designer for {resx}")
         m=re.search(r'ResourceManager\("([^"]+)"',designer.read_text(encoding="utf-8-sig"))
-        if m:
-            name=m.group(1)+".resources"
-            rel=resx.relative_to(folder).as_posix()
-            items.append(f'<EmbeddedResource Update="{rel}" LogicalName="{name}" />')
+        if not m: raise RuntimeError(f"ResourceManager name missing for {resx}")
+        name=m.group(1)+".resources"
+        rel=resx.relative_to(folder).as_posix()
+        if name in names: raise RuntimeError(f"Duplicate resource {name}")
+        names.add(name)
+        items.append(f'<EmbeddedResource Include="{rel}" ManifestResourceName="{name[:-10]}" LogicalName="{name}" WithCulture="false" />')
     assert items
-    s=s.replace("</Project>","<ItemGroup>"+"".join(items)+"</ItemGroup></Project>")
+    s=s.replace("</Project>","<PropertyGroup><EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems><EmbeddedResourceUseDependentUponConvention>false</EmbeddedResourceUseDependentUponConvention></PropertyGroup><ItemGroup>"+"".join(items)+"</ItemGroup></Project>")
+    print(project, "explicit resources:", sorted(names))
     p.write_text(s,encoding="utf-8")
