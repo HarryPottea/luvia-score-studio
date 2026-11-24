@@ -62,7 +62,7 @@ function parsePart(p,{lyricVerse,selected,voice,staff}){
         if(!chord){last=cursor;cursor+=dur/div;}
         extent=Math.max(extent,start+dur/div,cursor);
         if(!lane||one(e,'rest'))continue;
-        if(chord||one(e,'unpitched'))fail('보컬은 한 번에 단선율 성부만 선택할 수 있습니다.');
+        if(one(e,'unpitched'))continue; // unpitched percussion cannot supply a vocal pitch
         const pch=one(e,'pitch'),step=val(pch,'step'),oct=Number(val(pch,'octave')),alt=Number(val(pch,'alter')||0);
         const tone=(oct+1)*12+pitchMap[step]+alt;
         if(!int(oct,0,9)||!int(alt,-2,2)||!int(tone,0,127))fail('지원하지 않는 음정입니다.');
@@ -79,8 +79,7 @@ function parsePart(p,{lyricVerse,selected,voice,staff}){
           continue;
         }
         if(active.has(tone))fail('닫히지 않은 붙임줄');
-        if(!lyric&&!one(lyrics[0],'extend'))fail((mi+1)+'마디에 가사가 없는 음표가 있습니다. 가사 또는 연음 표기를 입력하세요.');
-        const note={position,duration,tone,lyric:lyric||'+',measure:mi};
+        const note={position,duration,tone,lyric:lyric||(one(lyrics[0],'extend')?'+':''),measure:mi};
         notes.push(note);if(ties.has('start'))active.set(tone,note);
       }
     }
@@ -95,7 +94,7 @@ function parsePart(p,{lyricVerse,selected,voice,staff}){
   if(active.size)fail('끝까지 연결되지 않은 붙임줄입니다.');
   return {bars,notes,tempos,signatures};
 }
-export function buildVocalPlan(doc,{partId,voice='1',staff='1',lyricVerse='1',defaultBpm=120,startMeasure=1,endMeasure=null}={}){
+export function buildVocalPlan(doc,{partId,voice='1',staff='1',lyricVerse='1',defaultBpm=120,startMeasure=1,endMeasure=null,chordMode='lyric-high',missingLyric='silence'}={}){
   if(doc?.documentElement?.localName!=='score-partwise')fail('MusicXML 악보를 먼저 열어 주세요.');
   if(!Number.isFinite(defaultBpm)||defaultBpm<20||defaultBpm>400)fail('기본 BPM을 확인해 주세요.');
   const parts=all(doc.documentElement,'part'),p=parts.find(x=>x.getAttribute('id')===partId);
@@ -106,10 +105,41 @@ export function buildVocalPlan(doc,{partId,voice='1',staff='1',lyricVerse='1',de
   const bars=target.bars;endMeasure=endMeasure??bars.length;
   if(!int(startMeasure,1,bars.length)||!int(endMeasure,startMeasure,bars.length))fail('생성 마디 범위를 확인하세요.');
   const left=bars[startMeasure-1].start,right=bars[endMeasure-1].end;
-  const notes=target.notes.sort((a,b)=>a.position-b.position||a.tone-b.tone);
-  if(notes.length>6000||notes.some((n,i)=>i&&notes[i-1].position+notes[i-1].duration>n.position))fail('겹치는 음표 또는 음표 수 초과');
-  const selected=notes.filter(n=>n.position<right&&n.position+n.duration>left);
-  if(!selected.length||selected.some(n=>n.position<left||n.position+n.duration>right))fail('음표가 없거나 붙임줄이 범위 경계를 넘습니다.');
+  if(!['lyric-high','highest','lowest','strict'].includes(chordMode)||!['silence','ah'].includes(missingLyric))fail('가창 음표 선택 설정 오류');
+  const notes=target.notes.filter(n=>n.position<right&&n.position+n.duration>left).sort((a,b)=>a.position-b.position||a.tone-b.tone);
+  if(notes.length>18000)fail('음표 수 초과');
+  // Select one pitch per onset. Never rewrite the input MusicXML or move a note.
+  const groups=new Map();
+  for(const n of notes){if(!groups.has(n.position))groups.set(n.position,[]);groups.get(n.position).push(n);}
+  let skipped=0,filled=0,chords=0,sharedLyrics=0;
+  const selected=[];
+  for(const group of groups.values()){
+    if(group.length>1){
+      chords++;
+      if(chordMode==='strict')fail((group[0].measure+1)+'마디에 화음이 있습니다. 화음에서 가창할 음을 선택하세요.');
+    }
+    const sung=group.filter(n=>n.lyric);
+    const pool=chordMode==='lyric-high'&&sung.length?sung:group;
+    const chosen=chordMode==='lowest'?pool[0]:pool.at(-1);
+    let lyric=chosen.lyric;
+    // A MusicXML chord often stores its lyric on only one note. Only transfer
+    // an unambiguous shared lyric at the SAME onset, and only for selected pitch.
+    if(!lyric&&group.length>1){
+      const words=[...new Set(sung.map(n=>n.lyric))];
+      if(words.length>1)fail((chosen.measure+1)+'마디 화음의 가사가 여러 개입니다. 가사 음표 우선 또는 별도 성부를 선택하세요.');
+      if(words.length===1){lyric=words[0];sharedLyrics++;}
+    }
+    if(!lyric){
+      if(missingLyric==='silence'){skipped++;continue;}
+      lyric='아';filled++;
+    }
+    selected.push({...chosen,lyric});
+  }
+  if(!selected.length)fail('선택 구간에 가창할 가사가 없습니다. 다른 마디를 선택하거나 가사 없는 음표를 아로 부르도록 설정하세요.');
+  if(selected.length>6000)fail('가창 음표 수 초과');
+  if(selected.some(n=>n.position<left||n.position+n.duration>right))fail('붙임줄이 생성 범위 경계를 넘습니다. 연결된 마디까지 포함하세요.');
+  const overlap=selected.find((n,i)=>i&&selected[i-1].position+selected[i-1].duration>n.position);
+  if(overlap)fail((overlap.measure+1)+'마디에 시작 시점이 다른 가창 음표가 겹칩니다. 독립된 멜로디 성부를 선택하세요.');
   if(selected[0].lyric==='+'||selected.some((n,i)=>n.lyric==='+'&&(!i||selected[i-1].position+selected[i-1].duration!==n.position)))fail('연음은 앞 음절과 함께 생성해야 합니다.');
   const tm=new Map();
   for(const a of parsed)for(const t of a.tempos){if(tm.has(t.position)&&tm.get(t.position)!==t.bpm)fail('파트별 템포가 충돌합니다.');tm.set(t.position,t.bpm);}
@@ -117,7 +147,7 @@ export function buildVocalPlan(doc,{partId,voice='1',staff='1',lyricVerse='1',de
   const tempos=[...tm].sort((a,b)=>a[0]-b[0]).map(([position,bpm])=>({position,bpm}));
   const activeBpm=tempos.filter(t=>t.position<=left).at(-1).bpm;
   const rangeTempos=[{position:0,bpm:activeBpm},...tempos.filter(t=>t.position>left&&t.position<right).map(t=>({position:t.position-left,bpm:t.bpm}))];
-  const plan={notes:selected.map(n=>({...n,position:n.position-left})),tempos:rangeTempos,duration:right-left,measures:bars.slice(startMeasure-1,endMeasure).map(b=>({start:b.start-left,end:b.end-left})),startMeasure};
+  const plan={notes:selected.map(n=>({...n,position:n.position-left})),tempos:rangeTempos,duration:right-left,measures:bars.slice(startMeasure-1,endMeasure).map(b=>({start:b.start-left,end:b.end-left})),startMeasure,selection:{chordMode,missingLyric,skipped,filled,chords,sharedLyrics}};
   validatePlan(plan);return plan;
 }
 export function secondsAt(plan,position){

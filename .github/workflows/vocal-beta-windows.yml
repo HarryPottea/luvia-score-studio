@@ -17,6 +17,7 @@ jobs:
           node-version: '22.16.0'
           cache: npm
       - run: npm ci
+      - run: node --test tests/vocal-core.test.mjs
       - run: npm run build
       - uses: actions/download-artifact@v4
         with:
