@@ -7,7 +7,7 @@ import {editArticulationForVoice} from './studio-v4-articulation-batch.js';
 import './studio-v4-measure-toolbar.css';
 
 const direct=(n,tag)=>n?[...n.children].filter(c=>c.localName===tag):[];
-export function mountMeasureToolbar({state,v3,commit,setMessage}){
+export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()=>{}}){
   const host=document.createElement('section');
   host.className='jwoo-measure-toolbar';
   host.tabIndex=0;
@@ -116,8 +116,11 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
         (action==='delete'&&count<=end-start+1);
     }
     state.graphicBridge?.highlightMeasureRange?.(start,end);
+    onRangeChange({start,end,count,canEdit});
     if(!count)notify('악보를 열면 마디를 선택할 수 있습니다.');
     else if(state.showBaseline)notify('원본 보기를 끝내면 마디 편집을 사용할 수 있습니다.');
+    else if(count===1)notify('악보에 최소 1마디는 남겨야 합니다.');
+    else if(end-start+1===count)notify('모든 마디를 삭제할 수는 없습니다. 최소 1마디를 남겨 주세요.');
     else notify((start+1)+(start===end?'마디':'–'+(end+1)+'마디')+
       ' 선택 · 전체 '+count+'마디 · '+(clipboard?clipboard.count+'마디 복사본 보관 중':'복사본 없음'));
   }
@@ -253,7 +256,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
         return;
       }
       if(action==='delete'){
-        if(!confirm((region.start+1)+'–'+(region.end+1)+
+        if(!confirm((region.start+1)+(region.start===region.end?'':'–'+(region.end+1))+
           '마디를 모든 파트에서 삭제할까요? 해당 마디의 음표·가사·코드도 삭제됩니다. 실행 취소로 복원할 수 있습니다.'))return;
         const before=state.doc;
         await commit(doc=>deleteMeasureRange(doc,region),'선택한 마디 범위 삭제');
@@ -301,5 +304,5 @@ export function mountMeasureToolbar({state,v3,commit,setMessage}){
     closeContext();playingIndex=null;clipboard=null;start=0;end=0;anchor=0;seenDoc=null;barCount=-1;render();
   }
   render();
-  return {render,reset,pick,openContext,getRange:scope,followPlaybackMeasure};
+  return {render,reset,pick,openContext,getRange:()=>({start,end}),execute,followPlaybackMeasure};
 }

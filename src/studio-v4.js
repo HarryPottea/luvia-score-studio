@@ -1,7 +1,6 @@
 // J-WOO 4.0 integrated authoring workspace.
 // Reuses V3 commitExternal for immutable edits, history, rollback, and re-render.
 import {createBlankScore,placeNoteIntoRest,addExpression,setScoreLayoutBreak,appendBlankMeasures,setSimpleKeySignature,setScoreMeasureCount} from './studio-v4-core.js';
-import {deleteMeasureRange} from './studio-v4-measure-blocks.js';
 import {mountMeasureToolbar} from './studio-v4-measure-toolbar.js';
 import {buildPlaybackTimeline,clipPlaybackToMeasures,createAuditionPlayer} from './studio-v4-playback.js';
 import {saveLocalDraft,listLocalDrafts,loadLocalDraft,removeLocalDraft} from './studio-v4-drafts.js';
@@ -230,8 +229,8 @@ const panel=[
   '<label for="v4-measure-count">빈 4/4 마디 추가</label><select id="v4-measure-count"><option value="1">1마디</option><option value="4" selected>4마디</option><option value="8">8마디</option><option value="16">16마디</option></select>',
   '<button id="v4-add-measures" type="button">모든 파트에 빈 마디 추가</button>',
   '<div class="v4-measure-delete" role="group" aria-label="악보 마디 삭제">',
-  '<p id="v4-delete-measure-status" class="v4-tiny" role="status">09 / 음표 편집에서 삭제할 마디를 선택해 주세요.</p>',
-  '<button id="v4-delete-measure" type="button" disabled>선택한 마디 삭제</button>',
+  '<p id="v4-delete-measure-status" class="v4-tiny" role="status">위 마디 번호를 선택하거나 시작·끝 범위를 지정해 주세요.</p>',
+  '<button id="v4-delete-measure" type="button" disabled>선택 마디 삭제</button>',
   '<p class="v4-tiny">선택한 마디를 모든 파트에서 삭제하고 뒤의 마디를 당깁니다. 해당 마디의 음표·가사·코드도 삭제되며, 실행 취소로 되돌릴 수 있습니다. 복잡한 연결 기호나 조표·박자표 변경은 보호됩니다.</p></div>',
   '<label for="v4-key">조표 (장조 표기·음정 자체는 변경하지 않음)</label>',
   '<select id="v4-key"><option value="-3">E♭ (플랫 3)</option><option value="-2">B♭ (플랫 2)</option><option value="-1">F (플랫 1)</option><option value="0" selected>C (변화표 없음)</option><option value="1">G (샤프 1)</option><option value="2">D (샤프 2)</option><option value="3">A (샤프 3)</option><option value="4">E (샤프 4)</option><option value="5">B (샤프 5)</option></select>',
@@ -503,15 +502,18 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   });
   function syncMeasureDelete(){
     const current=currentMeasureCount(),button=$('v4-delete-measure'),status=$('v4-delete-measure-status');
-    const index=v3.getSelection().measureIndex;
-    const available=current!==null&&current>1&&!state.showBaseline;
+    const region=measureToolbar?.getRange?.();
+    const available=current!==null&&current>1&&!state.showBaseline&&
+      !!region&&region.end-region.start+1<current;
     button.disabled=!available;
     status.textContent=!state.doc?'악보를 열면 마디 삭제를 사용할 수 있습니다.':
       current===null?'파트별 마디 수가 달라 마디 삭제를 사용할 수 없습니다.':
-      current<=1?'악보에 최소 한 마디는 남겨야 합니다.':
+      current===1?'악보에 최소 한 마디는 남겨야 합니다.':
       state.showBaseline?'원본 보기를 종료한 뒤 마디를 삭제할 수 있습니다.':
-      '선택: '+(Math.min(index,current-1)+1)+'마디 / 총 '+current+
-      '마디 · 09 / 음표 편집에서 삭제할 마디를 선택하세요.';
+      !region?'마디 번호 또는 시작·끝 범위를 선택해 주세요.':
+      region.end-region.start+1===current?'모든 마디는 삭제할 수 없습니다. 최소 1마디를 남겨 주세요.':
+      '선택: '+(region.start+1)+(region.start===region.end?'':'–'+(region.end+1))+
+      '마디 / 총 '+current+'마디 · 선택 구간을 삭제합니다.';
   }
   function syncCurrentMeasureCount(){
     if(changingMeasureCount)return;
@@ -894,7 +896,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     if(symbolDrag.element)symbolDrag.element.style.translate='';
     symbolDrag=null;
   });
-  measureToolbar=mountMeasureToolbar({state,v3,commit,setMessage});
+  measureToolbar=mountMeasureToolbar({state,v3,commit,setMessage,
+    onRangeChange:()=>{if(measureToolbar)syncMeasureDelete();}});
   const inlineLyrics=mountInlineLyricEditor({
     state,v3,commit,setMessage,lyricVerseInput:$('v4-lyric-verse'),
     getNoteRect:position=>state.graphicBridge?.rectFor?.(position),
@@ -1254,17 +1257,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     endEventIndex:Number($('v4-pro-end').value)-1,
   }),'실제 붙임줄 연결·해제'));
   $('v4-add-measures').addEventListener('click',()=>void commit(doc=>appendBlankMeasures(doc,{count:Number($('v4-measure-count').value)}),'빈 마디 추가'));
-  $('v4-delete-measure').addEventListener('click',async()=>{
-    const current=currentMeasureCount(),index=selected().measureIndex;
-    if(!state.doc||current===null||current<=1||!Number.isSafeInteger(index)||index<0||index>=current)return;
-    if(!confirm((index+1)+'마디를 모든 파트에서 삭제합니다. 해당 마디에 있는 음표·쉼표·가사·코드도 함께 삭제됩니다. 09 / 음표 편집의 실행 취소로 복원할 수 있습니다. 계속할까요?'))return;
-    const before=state.doc;
-    await commit(doc=>deleteMeasureRange(doc,{start:index,end:index}),'선택한 '+(index+1)+'마디 삭제');
-    if(state.doc!==before){
-      syncMeasureDelete();
-      $('v4-delete-measure-status').textContent=(index+1)+'마디 삭제 완료 · '+current+' → '+(current-1)+'마디 · 실행 취소 가능';
-    }
-  });
+  $('v4-delete-measure').addEventListener('click',()=>void measureToolbar?.execute('delete'));
   $('v4-apply-key').addEventListener('click',()=>void commit(doc=>setSimpleKeySignature(doc,{fifths:Number($('v4-key').value)}),'전체 조표 변경'));
   $('v4-key-from-measure').addEventListener('click',()=>void commit(doc=>setKeyAtMeasure(doc,{measureIndex:selected().measureIndex,fifths:Number($('v4-key').value)}),'선택 마디 조표 변경'));
   $('v4-meter-empty').addEventListener('click',()=>void commit(doc=>{

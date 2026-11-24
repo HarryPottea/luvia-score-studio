@@ -87,6 +87,24 @@ function moveInitialAttributes(part,inserted){
   former.removeChild(attrs);
   added.insertBefore(attrs,added.firstChild);
 }
+function carryInitialAttributes(initialBar,nextBar){
+  const source=first(initialBar,'attributes');
+  if(!source)return null;
+  const existing=all(nextBar,'attributes');
+  if(existing.length>1||existing.length===1&&
+      [...nextBar.children].find(c=>c.localName!=='print')!==existing[0])
+    fail('다음 마디의 중간에 조표·박자표 변경이 있어 안전하게 이동할 수 없습니다.');
+  const carried=source.cloneNode(true);
+  if(existing.length){
+    const explicit=new Set([...existing[0].children].map(c=>
+      c.localName+':'+(c.getAttribute('number')||'')));
+    for(const child of [...carried.children]){
+      if(explicit.has(child.localName+':'+(child.getAttribute('number')||'')))
+        carried.removeChild(child);
+    }
+  }
+  return carried.children.length?carried:null;
+}
 function moveFinalBarline(part,oldEndIndex){
   const measures=all(part,'measure');
   const oldEnd=measures[oldEndIndex],newEnd=measures.at(-1);
@@ -171,9 +189,9 @@ export function deleteMeasureRange(source,{start,end}={}){
         fail('삭제 구간에 곡 중간 박자표·조표 변경이 있어 보호합니다.');
     }
     if(start===0){
-      if(all(row[0],'attributes').length>1||
-         all(row[end+1],'attributes').length)
+      if(all(row[0],'attributes').length>1)
         fail('첫 마디의 박자표·조표를 새 첫 마디로 옮길 수 없습니다.');
+      carryInitialAttributes(row[0],row[end+1]);
     }
     if(end===info.length-1){
       const last=all(row[end],'barline').filter(b=>b.getAttribute('location')!=='left');
@@ -185,7 +203,7 @@ export function deleteMeasureRange(source,{start,end}={}){
   const doc=source.cloneNode(true);
   for(const part of all(doc.documentElement,'part')){
     const row=all(part,'measure');
-    const initial=start===0?first(row[0],'attributes')?.cloneNode(true):null;
+    const initial=start===0?carryInitialAttributes(row[0],row[end+1]):null;
     const ending=end===info.length-1?
       all(row[end],'barline').filter(b=>b.getAttribute('location')!=='left')
         .map(b=>b.cloneNode(true)):[];

@@ -282,7 +282,9 @@ export function mountV3Controls({state,renderScore,refreshRhythmReport,refreshV2
   document.addEventListener('keydown',ev=>{
     if(!(ev.metaKey||ev.ctrlKey)||ev.altKey||ev.key.toLowerCase()!=='z')return;
     if(ev.target?.closest?.('input,textarea,select,[contenteditable="true"]'))return;
-    if(!state.doc||!document.activeElement?.closest?.('.site-shell'))return;
+    // Rendering can replace the focused SVG/button, leaving focus on <body>.
+    // Score history must still work while the score is open.
+    if(!state.doc||state.showBaseline)return;
     ev.preventDefault();travel(ev.shiftKey?'redo':'undo');
   });
   function directEdit(position,action){

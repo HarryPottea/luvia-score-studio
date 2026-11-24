@@ -129,6 +129,32 @@ test('delete leading measures carries initial key and meter to the new first bar
   assert.equal(first(rows(result.doc)[0][0],'attributes')?.localName,'attributes');
   assert.equal(marker(rows(result.doc)[0][0]),'102');
 });
+test('delete last leading rest even when first sounding bar declares its own key',()=>{
+  const source=fixture(3);
+  for(const row of rows(source)){
+    row[1].insertBefore(n('attributes',{},[n('key',{},[leaf('fifths',2)])]),row[1].firstChild);
+    row[1].insertBefore(n('note',{},[n('pitch',{},[leaf('step','C'),leaf('octave',4)]),
+      leaf('duration',192),leaf('type','whole')]),row[1].children.find(c=>c.localName==='note'));
+    row[1].removeChild(row[1].children.find(c=>c.localName==='note'&&first(c,'rest')));
+  }
+  const result=deleteMeasureRange(source,{start:0,end:0});
+  for(const row of rows(result.doc)){
+    assert.equal(row.length,2);
+    const attrs=row[0].children.filter(c=>c.localName==='attributes');
+    assert.equal(attrs.length,2);
+    assert.equal(first(attrs[0],'divisions')?.textContent,'48');
+    assert.equal(first(attrs[0],'key'),undefined);
+    assert.equal(first(first(attrs[1],'key'),'fifths')?.textContent,'2');
+    assert.equal(first(row[0].children.find(c=>c.localName==='note'),'pitch')?.localName,'pitch');
+  }
+  assert.equal(first(rows(source)[0][0],'attributes')?.localName,'attributes');
+});
+test('do not move an opening key over a mid-measure key change',()=>{
+  const source=fixture(2);
+  for(const row of rows(source))row[1].appendChild(n('attributes',{},[
+    n('key',{},[leaf('fifths',2)])]));
+  assert.throws(()=>deleteMeasureRange(source,{start:0,end:0}),/중간에 조표/);
+});
 test('copying fragments does not mutate earlier clipboard contents',()=>{
   const source=fixture();const clip=captureMeasureRange(source,{start:1,end:1});
   const changed=source.cloneNode(true);
