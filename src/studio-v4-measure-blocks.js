@@ -96,14 +96,21 @@ function carryInitialAttributes(initialBar,nextBar){
     fail('다음 마디의 중간에 조표·박자표 변경이 있어 안전하게 이동할 수 없습니다.');
   const carried=source.cloneNode(true);
   if(existing.length){
-    const explicit=new Set([...existing[0].children].map(c=>
-      c.localName+':'+(c.getAttribute('number')||'')));
-    for(const child of [...carried.children]){
-      if(explicit.has(child.localName+':'+(child.getAttribute('number')||'')))
-        carried.removeChild(child);
+    const key=c=>c.localName+':'+(c.getAttribute('number')||'');
+    for(const child of existing[0].children){
+      const duplicate=[...carried.children].find(c=>key(c)===key(child));
+      if(duplicate)carried.removeChild(duplicate);
+      carried.appendChild(child.cloneNode(true));
     }
+    // MusicXML attributes have a prescribed child order. Keep one leading
+    // attributes block so direct score editing does not mark the bar protected.
+    const order=['footnote','level','divisions','key','time','staves','part-symbol',
+      'instruments','clef','staff-details','transpose','for-part','directive','measure-style'];
+    const rank=n=>order.includes(n.localName)?order.indexOf(n.localName):order.length;
+    const sorted=[...carried.children].sort((a,b)=>rank(a)-rank(b));
+    for(const child of sorted)carried.appendChild(child);
   }
-  return carried.children.length?carried:null;
+  return carried;
 }
 function moveFinalBarline(part,oldEndIndex){
   const measures=all(part,'measure');
@@ -211,8 +218,12 @@ export function deleteMeasureRange(source,{start,end}={}){
     const remaining=all(part,'measure');
     if(initial){
       const firstBar=remaining[0];
-      const before=[...firstBar.children].find(c=>c.localName!=='print')||null;
-      firstBar.insertBefore(initial,before);
+      const existing=first(firstBar,'attributes');
+      if(existing)firstBar.replaceChild(initial,existing);
+      else{
+        const before=[...firstBar.children].find(c=>c.localName!=='print')||null;
+        firstBar.insertBefore(initial,before);
+      }
     }
     if(ending.length)for(const barline of ending)remaining.at(-1).appendChild(barline);
     renumber(part,info.number);

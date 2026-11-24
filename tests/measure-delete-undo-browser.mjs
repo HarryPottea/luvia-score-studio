@@ -74,6 +74,8 @@ try{
   assert.equal((output.match(/<measure number=/g)||[]).length,1);
   assert.match(output,/<fifths>2<\/fifths>/);
   assert.match(output,/<step>C<\/step>/);
+  assert.equal(await page.locator('#score-container .jwoo-note-target').count(),1,
+    'the first sounding note must remain directly editable');
   assert.deepEqual(errors,[]);
   console.log('Measure range delete, Cmd+Z, minimum bar and opening rest removal passed.');
 }finally{await browser?.close();server.kill('SIGTERM');}

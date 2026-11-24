@@ -141,10 +141,9 @@ test('delete last leading rest even when first sounding bar declares its own key
   for(const row of rows(result.doc)){
     assert.equal(row.length,2);
     const attrs=row[0].children.filter(c=>c.localName==='attributes');
-    assert.equal(attrs.length,2);
+    assert.equal(attrs.length,1);
     assert.equal(first(attrs[0],'divisions')?.textContent,'48');
-    assert.equal(first(attrs[0],'key'),undefined);
-    assert.equal(first(first(attrs[1],'key'),'fifths')?.textContent,'2');
+    assert.equal(first(first(attrs[0],'key'),'fifths')?.textContent,'2');
     assert.equal(first(row[0].children.find(c=>c.localName==='note'),'pitch')?.localName,'pitch');
   }
   assert.equal(first(rows(source)[0][0],'attributes')?.localName,'attributes');
