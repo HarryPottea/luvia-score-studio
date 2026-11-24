@@ -32,21 +32,28 @@ static class Program {
             if(Path.GetFullPath(paths.DataPath) != Path.GetFullPath(home)) throw new Exception("Unexpected OpenUtau data directory.");
             Directory.CreateDirectory(paths.SingersPath);
             Directory.CreateDirectory(paths.CachePath);
-            if(args[0]=="install-chiaki" && args.Length==2) {
+            if((args[0]=="install-chiaki" && args.Length==2)||(args[0]=="install-voice" && args.Length==3)) {
+                var expected=args[0]=="install-chiaki"?ChiakiHash:args[2];
+                if(expected.Length!=64||expected.Any(c=>!Uri.IsHexDigit(c)))throw new Exception("SHA256 required.");
                 using(var s=File.OpenRead(args[1])) {
-                    if(!Convert.ToHexString(SHA256.HashData(s)).Equals(ChiakiHash,StringComparison.OrdinalIgnoreCase)) throw new Exception("Official archive checksum mismatch.");
+                    if(!Convert.ToHexString(SHA256.HashData(s)).Equals(expected,StringComparison.OrdinalIgnoreCase)) throw new Exception("Official archive checksum mismatch.");
                 }
                 // Never install into an existing voice directory. Archive bytes are pinned.
-                if(Directory.EnumerateFileSystemEntries(paths.SingersPath).Any()) throw new Exception("Singer directory is not empty; use a fresh isolated installation.");
+                if(args[0]=="install-chiaki" && Directory.EnumerateFileSystemEntries(paths.SingersPath).Any()) throw new Exception("Singer directory is not empty.");
+                var target=Path.Combine(paths.SingersPath,"bank-"+expected.ToLowerInvariant());
+                if(Directory.Exists(target)||File.Exists(target))throw new Exception("Voicebank already installed.");
                 using(var zip=ZipFile.OpenRead(args[1])) {
                     long total=0; var names=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach(var entry in zip.Entries) {
                         var n=entry.FullName.Replace('\\','/').TrimEnd('/');
                         if(n.Length==0 || n.StartsWith('/') || n.Contains(':') || n.Split('/').Any(x=>x==".."||x=="."||x=="") || !names.Add(n) || ((entry.ExternalAttributes>>16)&0xF000)==0xA000) throw new Exception("Unsafe archive entry.");
+                        if(n.Split('/').Any(x=>x.EndsWith(".")||x.EndsWith(" ")||System.Text.RegularExpressions.Regex.IsMatch(x,@"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)",System.Text.RegularExpressions.RegexOptions.IgnoreCase))||System.Text.RegularExpressions.Regex.IsMatch(n,@"\.(exe|dll|dylib|so|bat|cmd|ps1|sh|app|js|py|vbs|msi|pkg|dmg)$",System.Text.RegularExpressions.RegexOptions.IgnoreCase))throw new Exception("Unsupported voicebank file.");
                         total=checked(total+entry.Length); if(total>4L*1024*1024*1024) throw new Exception("Voicebank exceeds extraction limit.");
                     }
                 }
-                new VoicebankInstaller(paths.SingersPath, (_,_)=>{}, Encoding.UTF8, Encoding.UTF8).Install(args[1],"diffsinger");
+                try {
+                    new VoicebankInstaller(target, (_,_)=>{}, Encoding.UTF8, Encoding.UTF8).Install(args[1],"diffsinger");
+                } catch { if(Directory.Exists(target))Directory.Delete(target,true);throw; }
                 return 0;
             }
             var pump=new MainPump(); SynchronizationContext.SetSynchronizationContext(pump);

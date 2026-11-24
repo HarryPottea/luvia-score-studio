@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15-intel]
+        os: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
     steps:
@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.16.0'
-      - run: node --check vocal-engine/server.mjs && node --check vocal-engine/macos/setup.mjs && node --test tests/vocal-core.test.mjs
+      - run: node --check vocal-engine/server.mjs && node --check vocal-engine/macos/setup.mjs && node --check vocal-engine/voice-import.mjs && node --test tests/vocal-core.test.mjs
       - run: bash vocal-engine/macos/build-preview.sh
       - uses: actions/upload-artifact@v4
         with:

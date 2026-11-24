@@ -6,7 +6,7 @@ const fail=m=>{throw new Error(m);};
 const int=(x,a,b)=>Number.isSafeInteger(x)&&x>=a&&x<=b;
 const tick=q=>{const x=Math.round(q*480);if(Math.abs(x-q*480)>1e-5)fail('480 PPQ로 정확히 표현할 수 없는 리듬입니다.');return x;};
 const pitchMap={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
-export const STYLES=Object.freeze({neutral:{power:0,breath:0,expression:65,vibrato:0},musical:{power:45,breath:-15,expression:95,vibrato:35},soft:{power:-35,breath:35,expression:80,vibrato:25},sad:{power:-20,breath:25,expression:90,vibrato:45},strong:{power:65,breath:-30,expression:85,vibrato:25}});
+export const STYLES=Object.freeze({neutral:{power:0,breath:0,expression:100,vibrato:0},musical:{power:45,breath:-15,expression:95,vibrato:35},soft:{power:-35,breath:35,expression:80,vibrato:25},sad:{power:-20,breath:25,expression:90,vibrato:45},strong:{power:65,breath:-30,expression:85,vibrato:25}});
 export function vocalLanes(doc){
   return all(doc?.documentElement,'part').flatMap(p=>{
     const pairs=new Map();

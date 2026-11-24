@@ -14,17 +14,17 @@ const renderer=process.env.JWOO_RENDERER||'', pairing=process.env.JWOO_PAIRING==
 const run=promisify(execFile);
 const backend=new URL(process.env.OPENUTAU_URL||'http://127.0.0.1:19471');
 if(key.length<24||(!renderer&&!backendKey)||!/^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin)&&!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)||backend.protocol!=='http:'||backend.hostname!=='127.0.0.1'||backend.port==='19470'||backend.pathname!=='/'||backend.username||backend.password||backend.search||backend.hash)throw Error('Configure JWOO_VOCAL_KEY (24+ chars), JWOO_ORIGIN, OPENUTAU_API_KEY and a separate loopback OPENUTAU_URL.');
-const config=JSON.parse(await readFile(process.env.JWOO_MODELS||'vocal-engine/models.local.json','utf8'));
+async function registry(){const config=JSON.parse(await readFile(process.env.JWOO_MODELS||'vocal-engine/models.local.json','utf8'));
 const allowed=new Map();
 for(const m of config.voices||[]){
  if(typeof m.id!=='string'||!m.id||allowed.has(m.id)||!['남성','여성','기타'].includes(m.gender)||typeof m.label!=='string'||typeof m.credit!=='string'||!/^https:\/\//.test(m.termsUrl)||m.korean!==true||m.usageAccepted!==true||!Array.isArray(m.expressions)||m.expressions.some(x=>!['tenc','brec','pexp','vibrato'].includes(x)))throw Error('Invalid or unapproved model configuration');
  allowed.set(m.id,{id:m.id,label:m.label,gender:m.gender,credit:m.credit,termsUrl:m.termsUrl,expressions:m.expressions});
-}
+}return allowed;}
 let rendering=false;
 const auth=(value)=>{const a=Buffer.from(value||''),b=Buffer.from('Bearer '+key);return a.length===b.length&&timingSafeEqual(a,b);};
 const upstream=(path,options={})=>fetch(new URL(path,backend),{...options,headers:{'X-Api-Key':backendKey,...options.headers},redirect:'error',signal:AbortSignal.timeout(path.includes('render')?570000:8000)});
 let voiceDiscovery=null;
-async function voices(){if(renderer){if(!voiceDiscovery)voiceDiscovery=run(renderer,['list'],{timeout:120000,maxBuffer:1024*1024}).then(r=>{const singers=JSON.parse(r.stdout);return singers.filter(s=>s.singerType==='DiffSinger'&&allowed.has(s.id)).map(s=>allowed.get(s.id));}).catch(e=>{voiceDiscovery=null;throw e;});return voiceDiscovery;}const [s,p]=await Promise.all([upstream('/api/singers'),upstream('/api/phonemizers')]);if(!s.ok||!p.ok)throw Error('Engine discovery failed');
+async function voices(refresh=false){const allowed=await registry();if(refresh)voiceDiscovery=null;if(renderer){if(!voiceDiscovery)voiceDiscovery=run(renderer,['list'],{timeout:120000,maxBuffer:1024*1024}).then(r=>{const singers=JSON.parse(r.stdout);return singers.filter(s=>s.singerType==='DiffSinger');}).catch(e=>{voiceDiscovery=null;throw e;});return (await voiceDiscovery).filter(s=>allowed.has(s.id)).map(s=>allowed.get(s.id));}const [s,p]=await Promise.all([upstream('/api/singers'),upstream('/api/phonemizers')]);if(!s.ok||!p.ok)throw Error('Engine discovery failed');
  const singers=await s.json(),phonemizers=await p.json();if(!Array.isArray(singers)||!Array.isArray(phonemizers)||!phonemizers.some(x=>x.type==='OpenUtau.Core.DiffSinger.DiffSingerKoreanPhonemizer'))throw Error('Korean phonemizer unavailable');
  return singers.filter(s=>String(s.singerType).toLowerCase()==='diffsinger'&&allowed.has(s.id)).map(s=>allowed.get(s.id));}
 async function body(req){let n=0;const chunks=[];for await(const c of req){n+=c.length;if(n>2*1024*1024)throw Error('Request too large');chunks.push(c);}return JSON.parse(Buffer.concat(chunks).toString('utf8'));}
@@ -60,11 +60,11 @@ const server=http.createServer(async(req,res)=>{
  if(req.method==='POST'&&req.url==='/pair'&&pairing){
   if(pairBusy||Date.now()-lastPair<15000){json(429,{error:'Pairing busy'});return;}
   pairBusy=true;lastPair=Date.now();
-  try{await run('/usr/bin/osascript',['-e','display dialog "J-WOO 웹사이트가 이 Mac의 보컬 엔진에 연결하려고 합니다. 이 연결을 승인할까요?" buttons {"거부", "연결 승인"} default button "연결 승인" cancel button "거부"'],{timeout:60000});json(200,{key});}catch{json(403,{error:'Pairing denied'});}finally{pairBusy=false;}return;
+  try{if(process.platform==='win32'){const command="Add-Type -AssemblyName System.Windows.Forms; if ([System.Windows.Forms.MessageBox]::Show('Allow J-WOO to connect to this computer?','J-WOO Vocal Engine','YesNo','Question') -ne 'Yes') { exit 1 }";await run('powershell.exe',['-NoProfile','-NonInteractive','-Command',command],{timeout:60000,windowsHide:true});}else await run('/usr/bin/osascript',['-e','display dialog "J-WOO 웹사이트가 이 Mac의 보컬 엔진에 연결하려고 합니다. 이 연결을 승인할까요?" buttons {"거부", "연결 승인"} default button "연결 승인" cancel button "거부"'],{timeout:60000});json(200,{key});}catch{json(403,{error:'Pairing denied'});}finally{pairBusy=false;}return;
  }
  if(!auth(req.headers.authorization)){json(401,{error:'Unauthorized'});return;}
  try{
- if(req.method==='GET'&&req.url==='/voices'){json(200,{voices:await voices()});return;}
+ if(req.method==='GET'&&req.url==='/voices'){json(200,{voices:await voices(true)});return;}
  if(req.method==='POST'&&req.url==='/render'){
   if(rendering){json(409,{error:'Already rendering'});return;}
   rendering=true;

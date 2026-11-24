@@ -13,19 +13,7 @@ git -C "$WORK/OpenUtau" fetch --depth 1 origin "$UPSTREAM"
 git -C "$WORK/OpenUtau" checkout --detach FETCH_HEAD
 [[ "$(git -C "$WORK/OpenUtau" rev-parse HEAD)" = "$UPSTREAM" ]]
 # Patch ONLY the isolated build copy; do not use existing ~/Library/OpenUtau.
-python3 - "$WORK/OpenUtau/OpenUtau.Core/Util/PathManager.cs" <<'PY'
-from pathlib import Path
-import sys
-p=Path(sys.argv[1]); s=p.read_text(encoding="utf-8-sig")
-needle="if (OS.IsMacOS()) {"
-replacement="""if (OS.IsMacOS() && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("JWOO_ENGINE_DATA"))) {
-                DataPath = Path.GetFullPath(Environment.GetEnvironmentVariable("JWOO_ENGINE_DATA"));
-                CachePath = Path.Combine(DataPath, "Cache");
-                HomePathIsAscii = true;
-            } else if (OS.IsMacOS()) {"""
-assert s.count(needle)==1
-p.write_text(s.replace(needle,replacement),encoding="utf-8")
-PY
+python3 "$ROOT/vocal-engine/native/prepare-upstream.py" "$WORK/OpenUtau"
 STAGE="$WORK/stage"
 mkdir -p "$STAGE/engine" "$STAGE/src" "$STAGE/runtime" "$STAGE/licenses" "$STAGE/vocal-engine" "$OUT"
 dotnet publish "$ROOT/vocal-engine/native/JwooRender.csproj" -c Release -r "$RID" --self-contained true -p:OpenUtauRoot="$WORK/OpenUtau" -o "$STAGE/engine"
@@ -43,6 +31,9 @@ cp "$ROOT/vocal-engine/server.mjs" "$STAGE/vocal-engine/"
 printf '{"type":"module"}\n' > "$STAGE/package.json"
 "$STAGE/runtime/node" --check "$STAGE/vocal-engine/server.mjs"
 cp "$ROOT/vocal-engine/macos/setup.mjs" "$STAGE/"
+cp "$ROOT/vocal-engine/voice-import.mjs" "$STAGE/"
+cp "$ROOT/vocal-engine/macos/Add-Voice.command" "$STAGE/"
+chmod +x "$STAGE/Add-Voice.command"
 cp "$ROOT/vocal-engine/macos/Install.command" "$STAGE/"
 chmod +x "$STAGE/Install.command" "$STAGE/runtime/node" "$STAGE/engine/JwooRender"
 # Native discovery must run against a clean temporary isolated profile, never a real user's data.

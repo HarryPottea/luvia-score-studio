@@ -24,7 +24,7 @@ for(const p of [final,agent]){try{await stat(p);throw Error('기존 파일이 �
 let installedDir=false,agentCreated=false,agentLoaded=false,markerCreated=false;
 const staging=await mkdtemp(path.join(root,'install-')),download=path.join(staging,'Chiaki.zip'),engineData=path.join(staging,'Data');
 try{
- for(const x of ['engine','runtime','src','licenses','vocal-engine','package.json'])await cp(path.join(src,x),path.join(staging,x),{recursive:true,errorOnExist:true,force:false});
+ for(const x of ['engine','runtime','src','licenses','vocal-engine','package.json','voice-import.mjs','Add-Voice.command'])await cp(path.join(src,x),path.join(staging,x),{recursive:true,errorOnExist:true,force:false});
  const url='https://github.com/chiakich/OpenUtau-chiaki/releases/download/voicebank-v7/Chiaki.zip';
  const res=await fetch(url,{redirect:'follow',signal:AbortSignal.timeout(900000)});
  if(!res.ok||!res.body||!['github.com','release-assets.githubusercontent.com','objects.githubusercontent.com'].includes(new URL(res.url).hostname))throw Error('공식 모델 다운로드 실패');
