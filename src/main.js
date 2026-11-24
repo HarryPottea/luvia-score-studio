@@ -21,8 +21,10 @@ import { mountScoreToolstrip } from './score-toolstrip.js';
 import { mountWorkspaceShell } from './workspace-shell.js';
 import { createCoalescedPreviewUpdate } from './preview-update-queue.js';
 import {stampSoftwareCopyright} from './studio-v4-software-copyright.js';
+import {listScoreParts,selectScoreParts} from './score-part-selection.js';
 import './style.css';
 import './workspace-shell.css';
+import './part-import-dialog.css';
 
 let v4 = null;
 const MAX_FILE = 15 * 1024 * 1024;
@@ -55,9 +57,9 @@ app.innerHTML = `
             <div class="settings-action"><button id="toggle-settings" type="button" aria-expanded="false" aria-controls="editor-controls" disabled>세부 설정 열기 <span aria-hidden="true">＋</span></button><p id="settings-action-hint" class="control-hint">새 악보를 만들거나 파일을 열면 세부 설정을 사용할 수 있습니다.</p></div>
             <div id="editor-controls" class="editor-controls" hidden>
               <div class="control-group"><div class="control-heading"><span>곡 정보</span><span>01</span></div><label for="score-title">곡 제목</label><input id="score-title" type="text" maxlength="120" placeholder="곡 제목" /><label for="score-composer">작곡가</label><input id="score-composer" type="text" maxlength="120" placeholder="작곡가" /></div>
-              <div class="control-group"><div class="control-heading"><span>파트 표시·이름</span><span>02</span></div><p class="control-hint">체크한 파트만 미리보기·인쇄에 표시됩니다. 마디 작업을 시작하면 체크한 파트만 편집하도록 자동 전환됩니다. 전환 전 전체 MusicXML 저장에는 모든 파트가 유지됩니다.</p><div id="parts-list" class="parts-list"></div></div>
+              <div class="control-group"><div class="control-heading"><span>파트 표시·이름</span><span>02</span></div><p class="control-hint">불러올 때 선택한 파트가 편집·저장 대상입니다. 이 체크박스는 미리보기와 인쇄 표시만 바꿉니다.</p><div id="parts-list" class="parts-list"></div></div>
               <div class="control-group"><div class="control-heading"><span>악보 보기·용지</span><span>03</span></div><label for="page-orientation">용지 방향</label><select id="page-orientation"><option value="A4_P">A4 세로</option><option value="A4_L">A4 가로</option></select><p id="a4-size-info" class="control-hint" aria-live="polite">A4 자동 조판 · 오선 크기는 악보 구성에 맞춰 고정됩니다.</p><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
-            <div class="control-group"><div class="control-heading"><span>파트별 보기·저장</span><span>04</span></div><p class="control-hint">현재 체크한 파트에서 마디 작업을 바로 시작할 수 있습니다. ‘파트 선택’은 보기·개별 저장에만 쓰입니다.</p><label for="export-part">보기·저장할 파트 선택</label><select id="export-part" aria-label="보기·내보낼 파트 선택"></select><div class="part-tools"><button id="view-part" type="button">선택 파트 보기</button><button id="view-all-parts" type="button">전체 파트 보기</button><button id="edit-part" type="button">체크한 파트만 편집 시작</button><button id="return-full-score" type="button" hidden>원래 전체 악보로 돌아가기</button></div><button class="part-export-button" id="download-part-xml" type="button">선택 파트 MusicXML 저장</button><button class="part-export-button part-export-batch" id="download-all-parts-zip" type="button">전체 파트 MusicXML ZIP 저장</button><p class="control-hint">마디 작업 시 체크하지 않은 파트는 제외되며, 원래 전체 악보는 이 탭의 메모리에 보관됩니다. 편집본을 유지하려면 MusicXML로 저장하세요.</p></div>
+            <div class="control-group"><div class="control-heading"><span>파트별 보기·저장</span><span>04</span></div><p class="control-hint">불러온 파트 중 하나만 미리 보거나 개별 파일로 저장할 수 있습니다. 편집 대상 파트는 새 파일을 열 때 선택합니다.</p><label for="export-part">보기·저장할 파트 선택</label><select id="export-part" aria-label="보기·내보낼 파트 선택"></select><div class="part-tools"><button id="view-part" type="button">선택 파트 보기</button><button id="view-all-parts" type="button">전체 파트 보기</button></div><button class="part-export-button" id="download-part-xml" type="button">선택 파트 MusicXML 저장</button><button class="part-export-button part-export-batch" id="download-all-parts-zip" type="button">불러온 파트 MusicXML ZIP 저장</button><p class="control-hint">보기 설정은 편집 대상을 바꾸지 않습니다. 마디 편집은 불러올 때 선택한 모든 파트에 적용됩니다.</p></div>
               <div class="control-group"><div class="control-heading"><span>리듬·쉼표 검사</span><span>05</span></div><p class="control-hint">복잡한 리듬은 표시만 합니다. 2/4·3/4·4/4 단일 성부에서 박자 경계가 맞는 연속 쉼표만 병합합니다.</p><div id="rhythm-report" class="rhythm-report" aria-live="polite">악보를 불러오면 검사 결과가 표시됩니다.</div><div class="rhythm-actions"><button id="check-rhythm" type="button">다시 검사</button><button id="apply-rhythm" type="button" disabled>안전한 쉼표 정리 적용</button><button id="undo-rhythm" type="button" disabled>정리 되돌리기</button></div><p class="control-hint">적용 전 원본 파일을 보존하세요. 변경 후에도 악보 표시와 연주 흐름을 검수해 주세요.</p></div>
             </div>
             <div class="privacy-note"><span aria-hidden="true">●</span> 곡 파일은 서버로 전송하지 않습니다.</div>
@@ -80,12 +82,19 @@ app.innerHTML = `
     </main>
     <footer class="site-footer"><span class="footer-brand">JAEWOO SCORE STUDIO</span><span class="footer-credit">© 2026 PARKJAEWOO. All rights reserved.</span><span class="footer-note">LOCAL SCORE EDITING · YOUR MUSIC, YOUR FILE.</span></footer>
   </div>
+  <dialog id="part-import-dialog" class="part-import-dialog" aria-labelledby="part-import-title" aria-describedby="part-import-description">
+    <div class="part-import-heading"><span>악보 불러오기</span><strong id="part-import-count"></strong></div>
+    <h2 id="part-import-title">편집할 파트를 선택하세요</h2>
+    <p id="part-import-description">선택한 파트만 편집·저장 데이터에 포함됩니다. 나중에 보기만 바꿔도 편집 대상은 달라지지 않습니다.</p>
+    <p id="part-import-filename" class="part-import-filename"></p>
+    <div class="part-import-selection-tools"><button id="part-import-all" type="button">전체 선택</button><button id="part-import-none" type="button">전체 선택 해제</button></div>
+    <div id="part-import-list" class="part-import-list" role="group" aria-label="불러올 악기 파트"></div>
+    <div class="part-import-actions"><button id="part-import-cancel" type="button">취소</button><button id="part-import-confirm" type="button">불러오기</button></div>
+  </dialog>
 `;
 
 const $ = (id) => document.getElementById(id);
 const state = { doc: null, originalDoc: null, filename: '', visible: new Set(), osmd: null, renderToken: 0, undoRhythmDoc: null, showBaseline: false, graphicBridge: null };
-let parentScore=null;
-let partSwitchBusy=false;
 const input = $('file-input');
 const drop = $('drop-zone');
 
@@ -138,11 +147,6 @@ function scoreMeasureSummary(){
   return scoreParts().length+'개 파트 · '+label;
 }
 function setMessage(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
-function syncPartEditButtons(){
-  $('edit-part').disabled=!state.doc||scoreParts().length<2||state.visible.size>=scoreParts().length||!!parentScore||partSwitchBusy;
-  $('return-full-score').hidden=!parentScore;
-  $('return-full-score').disabled=partSwitchBusy;
-}
 function syncSettingsToggle(){
   const button=$('toggle-settings'),ready=!!state.doc;
   button.disabled=!ready;
@@ -173,7 +177,6 @@ function showLoaded() {
   const parts = scoreParts();
   state.visible = new Set(parts.map(part => part.id));
   renderPartInputs();
-  syncPartEditButtons();
   refreshRhythmReport();
   v2.refresh();
   v3.reset();
@@ -227,7 +230,6 @@ function renderPartInputs() {
         state.visible.add(part.id);toggle.checked=true;
         setMessage('미리보기에는 최소 한 개의 파트가 필요합니다.');return;
       }
-      syncPartEditButtons();
       requestPreviewUpdate();
     });
     const name = document.createElement('input'); name.type = 'text'; name.maxLength = 80; name.value = part.name; name.setAttribute('aria-label', `${i + 1}번 파트 이름`);
@@ -251,15 +253,7 @@ function syncPartVisibilityInputs() {
 }
 
 function filteredDocument(visibleIds, sourceDoc = state.doc) {
-  const copy = sourceDoc.cloneNode(true);
-  for (const part of [...copy.querySelectorAll('part')]) if (!visibleIds.has(part.getAttribute('id'))) part.remove();
-  for (const def of [...copy.querySelectorAll('part-list > score-part')]) if (!visibleIds.has(def.getAttribute('id'))) def.remove();
-  // Part-group markers describe multi-part braces. A filtered score can leave their boundaries unmatched.
-  // Keep original groups only for the full score; a subset is presented without grouping.
-  if (visibleIds.size < scoreParts().length) {
-    for (const group of [...copy.querySelectorAll('part-list > part-group')]) group.remove();
-  }
-  return copy;
+  return selectScoreParts(sourceDoc,visibleIds);
 }
 
 function previewDocument() { return filteredDocument(state.visible); }
@@ -398,7 +392,7 @@ previewUpdater=createCoalescedPreviewUpdate({
 
 // A failed import must not replace unsaved work or erase undo/redo history.
 let openSequence=0;
-async function openScore(raw, filename, {keepParent=false}={}) {
+async function openScore(raw, filename, {selectedIds=null}={}) {
   const ticket=++openSequence;
   const prior={
     doc:state.doc,originalDoc:state.originalDoc,filename:state.filename,
@@ -408,7 +402,8 @@ async function openScore(raw, filename, {keepParent=false}={}) {
   };
   let parsed=null,active=null,switched=false;
   try {
-    parsed=parseXml(raw);
+    const source=typeof raw==='string'?parseXml(raw):raw;
+    parsed=selectedIds?selectScoreParts(source,selectedIds):source.cloneNode(true);
     const normalized=normalizeRedundantTimeSignatures(normalizeRedundantClefs(parsed).doc).doc;
     // A freshly opened score starts with four planned bars per system. Files
     // saved here retain their own selected-line exceptions in MusicXML.
@@ -437,7 +432,6 @@ async function openScore(raw, filename, {keepParent=false}={}) {
     v2.invalidateUndo();
     $('workspace').scrollIntoView({behavior:'smooth',block:'start'});
     v4?.onLoaded?.();
-    if(!keepParent){parentScore=null;syncPartEditButtons();}
     return true;
   }catch(error){
     // If another open began, it owns the new document. Never roll it back.
@@ -480,8 +474,59 @@ async function openScore(raw, filename, {keepParent=false}={}) {
   }
 }
 
+const partDialog=$('part-import-dialog');
+let pendingPartChoice=null;
+function finishPartChoice(ids){
+  const resolve=pendingPartChoice;
+  pendingPartChoice=null;
+  if(partDialog.open)partDialog.close();
+  resolve?.(ids);
+}
+partDialog.addEventListener('cancel',event=>{event.preventDefault();finishPartChoice(null);});
+$('part-import-cancel').addEventListener('click',()=>finishPartChoice(null));
+$('part-import-all').addEventListener('click',()=>{
+  for(const box of partDialog.querySelectorAll('#part-import-list input'))box.checked=true;
+  syncPartChoice();
+});
+$('part-import-none').addEventListener('click',()=>{
+  for(const box of partDialog.querySelectorAll('#part-import-list input'))box.checked=false;
+  syncPartChoice();
+});
+$('part-import-confirm').addEventListener('click',()=>{
+  const ids=[...partDialog.querySelectorAll('#part-import-list input:checked')].map(box=>box.value);
+  if(ids.length)finishPartChoice(new Set(ids));
+});
+function syncPartChoice(){
+  const all=partDialog.querySelectorAll('#part-import-list input').length;
+  const selected=partDialog.querySelectorAll('#part-import-list input:checked').length;
+  $('part-import-count').textContent=selected+' / '+all+'개 파트 선택';
+  $('part-import-confirm').disabled=!selected;
+}
+function chooseImportParts(parts,filename){
+  if(pendingPartChoice)finishPartChoice(null);
+  $('part-import-filename').textContent=filename;
+  const list=$('part-import-list');list.replaceChildren();
+  for(const [index,part] of parts.entries()){
+    const row=document.createElement('label');row.className='part-import-row';
+    const box=document.createElement('input');box.type='checkbox';box.value=part.id;box.checked=true;
+    box.setAttribute('aria-label',part.name+' 불러오기');
+    box.addEventListener('change',syncPartChoice);
+    const name=document.createElement('span');name.textContent=part.name;
+    const ordinal=document.createElement('small');ordinal.textContent=String(index+1).padStart(2,'0');
+    row.append(box,name,ordinal);list.append(row);
+  }
+  syncPartChoice();
+  return new Promise(resolve=>{
+    pendingPartChoice=resolve;
+    partDialog.showModal();
+    $('part-import-confirm').focus();
+  });
+}
+let fileRequest=0;
 async function handleFile(file) {
   if (!file) return;
+  const request=++fileRequest;
+  if(pendingPartChoice)finishPartChoice(null);
   setMessage('파일을 읽고 있습니다…');
   try {
     if (/\.(mid|midi)$/i.test(file.name)) {
@@ -491,7 +536,17 @@ async function handleFile(file) {
       const loaded = await openScore(result.xml, title);
       if (loaded) setMessage('MIDI ' + result.report.tracks + '개 파트 · ' + result.report.notes + '개 음표를 가져왔습니다. ' +
         result.report.quantizedNotes + '개 음표의 시점/길이가 16분음표 그리드로 조정되었습니다. 원본과 반드시 대조하세요.');
-    } else { await openScore(await xmlFromFile(file), file.name); }
+    } else {
+      const parsed=parseXml(await xmlFromFile(file));
+      if(request!==fileRequest)return;
+      const parts=listScoreParts(parsed);
+      const selectedIds=parts.length===1?new Set([parts[0].id]):await chooseImportParts(parts,file.name);
+      if(request!==fileRequest)return;
+      if(!selectedIds){setMessage('악보 불러오기를 취소했습니다. 이전 작업은 그대로 유지됩니다.');return;}
+      const loaded=await openScore(parsed,file.name,{selectedIds});
+      if(loaded&&selectedIds.size<parts.length)
+        setMessage(selectedIds.size+'개 파트만 편집 대상으로 불러왔습니다. 저장·출력에도 선택 결과가 적용됩니다.');
+    }
   } catch (error) {setMessage(error.message || '파일을 읽지 못했습니다.', true);}
 }
 
@@ -567,50 +622,13 @@ $('view-part').addEventListener('click', () => {
   if (!state.doc || !$('export-part').value) return;
   state.visible = new Set([$('export-part').value]);
   syncPartVisibilityInputs();
-  syncPartEditButtons();
   requestPreviewUpdate();
-  if(scoreParts().length>1)setMessage('선택 파트만 표시합니다. 이 상태에서 마디 작업을 하면 보이는 파트만 편집 대상으로 자동 전환됩니다.');
-});
-async function beginCheckedPartEdit(){
-  if(!state.doc||parentScore||partSwitchBusy)return false;
-  const selected=scoreParts().filter(part=>state.visible.has(part.id));
-  if(!selected.length||selected.length===scoreParts().length){
-    setMessage('편집할 파트만 체크하고 다른 파트의 체크를 해제해 주세요.',true);return false;
-  }
-  const parent={xml:serializeXmlDocument(state.doc),filename:state.filename,
-    originalDoc:state.originalDoc?.cloneNode(true)||null,editor:v3.captureState()};
-  const standalone=serializeXmlDocument(filteredDocument(new Set(selected.map(part=>part.id))));
-  const filename=baseScoreName(state.filename)+'-'+(selected.length===1?safeFileName(selected[0].name):selected.length+'개파트')+'-편집.musicxml';
-  partSwitchBusy=true;syncPartEditButtons();
-  try{
-    const loaded=await openScore(standalone,filename,{keepParent:true});
-    if(!loaded)return false;
-    parentScore=parent;
-    setMessage(selected.map(part=>part.name).join('·')+' 파트를 바로 편집 중입니다. 원래 전체 악보는 이 탭에 보관되며, '+
-      '마디 편집은 이제 체크한 파트에만 적용됩니다. 작업 후 MusicXML로 저장해 주세요.');
-    return true;
-  }finally{partSwitchBusy=false;syncPartEditButtons();}
-}
-$('edit-part').addEventListener('click',()=>void beginCheckedPartEdit());
-$('return-full-score').addEventListener('click',async()=>{
-  if(!parentScore||partSwitchBusy)return;
-  if(!confirm('단독 편집본을 MusicXML로 저장하셨나요? 전체 악보로 돌아가면 이 편집본은 화면에서 닫힙니다.'))return;
-  const parent=parentScore;
-  partSwitchBusy=true;syncPartEditButtons();
-  try{
-    const loaded=await openScore(parent.xml,parent.filename,{keepParent:true});
-    if(!loaded)return;
-    state.originalDoc=parent.originalDoc;
-    v3.restoreState(parent.editor);
-    parentScore=null;
-    setMessage('원래 전체 악보로 돌아왔습니다. 단독 편집본은 전체 악보에 자동 합쳐지지 않습니다.');
-  }finally{partSwitchBusy=false;syncPartEditButtons();}
+  if(scoreParts().length>1)setMessage('선택 파트만 표시합니다. 편집 대상은 불러온 전체 파트 그대로입니다.');
 });
 $('view-all-parts').addEventListener('click', () => {
   if (!state.doc) return;
   state.visible = new Set(scoreParts().map(part => part.id));
   syncPartVisibilityInputs();
-  syncPartEditButtons();
   requestPreviewUpdate();
 });
 function serializeXmlDocument(doc) {
@@ -703,7 +721,7 @@ function updateSelectionBadge(){
     (position.eventIndex+1)+'번 '+([...note.children].some(e=>e.localName==='rest')?'쉼표':'음표');
 }
 v3.onSelectionChange(() => {advanced.refresh();v4?.onSelectionChange?.();updateSelectionBadge();});
-v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore, beginCheckedPartEdit });
+v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore });
 mountStickyPreview();
 mountSettingsAccordions();
 mountScoreToolstrip();

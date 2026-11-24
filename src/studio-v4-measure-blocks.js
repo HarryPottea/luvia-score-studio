@@ -112,6 +112,41 @@ function carryInitialAttributes(initialBar,nextBar){
   }
   return carried;
 }
+function initialTempo(bar){
+  for(const child of bar.children){
+    if(child.localName==='note')break;
+    if(child.localName==='sound'&&child.getAttribute('tempo'))return true;
+    if(child.localName==='direction'&&first(child,'sound')?.getAttribute('tempo'))return true;
+  }
+  return false;
+}
+function tempoBeforeBoundary(row,end){
+  let tempo=null,metronome=null;
+  for(let i=0;i<=end;i++)for(const child of row[i].children){
+    const sound=child.localName==='sound'?child:
+      child.localName==='direction'?first(child,'sound'):null;
+    const value=sound?.getAttribute('tempo');
+    if(!value)continue;
+    tempo=value;
+    metronome=child.localName==='direction'?first(first(child,'direction-type'),'metronome'):null;
+  }
+  return tempo?{tempo,metronome}:null;
+}
+function insertInitialTempo(bar,previous){
+  if(!previous||initialTempo(bar))return;
+  const owner=bar.ownerDocument;
+  const sound=owner.createElement('sound');sound.setAttribute('tempo',previous.tempo);
+  let event=sound;
+  if(previous.metronome){
+    const direction=owner.createElement('direction');
+    const type=owner.createElement('direction-type');
+    type.appendChild(previous.metronome.cloneNode(true));
+    direction.appendChild(type);direction.appendChild(sound);event=direction;
+  }
+  const before=[...bar.children].find(child=>
+    !['print','attributes'].includes(child.localName))||null;
+  bar.insertBefore(event,before);
+}
 function moveFinalBarline(part,oldEndIndex){
   const measures=all(part,'measure');
   const oldEnd=measures[oldEndIndex],newEnd=measures.at(-1);
@@ -211,6 +246,7 @@ export function deleteMeasureRange(source,{start,end}={}){
   for(const part of all(doc.documentElement,'part')){
     const row=all(part,'measure');
     const initial=start===0?carryInitialAttributes(row[0],row[end+1]):null;
+    const previousTempo=start===0?tempoBeforeBoundary(row,end):null;
     const ending=end===info.length-1?
       all(row[end],'barline').filter(b=>b.getAttribute('location')!=='left')
         .map(b=>b.cloneNode(true)):[];
@@ -225,6 +261,7 @@ export function deleteMeasureRange(source,{start,end}={}){
         firstBar.insertBefore(initial,before);
       }
     }
+    if(start===0)insertInitialTempo(remaining[0],previousTempo);
     if(ending.length)for(const barline of ending)remaining.at(-1).appendChild(barline);
     renumber(part,info.number);
   }

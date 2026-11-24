@@ -1,0 +1,24 @@
+.part-import-dialog{box-sizing:border-box;width:min(540px,calc(100vw - 28px));max-height:min(82vh,760px);margin:auto;padding:28px;border:1px solid #75806b;border-radius:5px;background:#252d24;color:#f3f5eb;box-shadow:0 22px 70px #10151099;font:inherit;overflow:auto}
+.part-import-dialog::backdrop{background:#101710bb;backdrop-filter:blur(3px)}
+.part-import-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;border-bottom:1px solid #596555;padding-bottom:13px;color:#b8c6ac;font-size:12px;font-weight:700}
+.part-import-heading strong{color:#d9ff7a;font-size:12px}
+.part-import-dialog h2{margin:25px 0 9px;color:#f6f7ef;font-size:clamp(22px,5vw,30px);line-height:1.2;letter-spacing:-.045em}
+.part-import-dialog p{line-height:1.55}
+#part-import-description{margin:0;color:#c4cebd;font-size:13px}
+.part-import-filename{margin:20px 0 12px;padding:10px 12px;background:#344032;border-left:3px solid #d9ff7a;color:#f0f4e7;font-size:12px;overflow-wrap:anywhere}
+.part-import-selection-tools{display:flex;justify-content:flex-end;gap:8px;margin-bottom:11px}
+.part-import-selection-tools button{padding:7px 10px;border:1px solid #77856e;border-radius:3px;background:transparent;color:#eef3e7;font:inherit;font-size:12px;cursor:pointer}
+.part-import-selection-tools button:hover{background:#3a4937}
+.part-import-list{display:grid;gap:6px;max-height:min(36vh,350px);overflow:auto;padding:2px}
+.part-import-row{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid #596555;border-radius:3px;background:#303a2e;cursor:pointer}
+.part-import-row:has(input:checked){border-color:#b6d36d;background:#374332}
+.part-import-row input{width:17px;height:17px;margin:0;accent-color:#d9ff7a;flex:none}
+.part-import-row span{min-width:0;overflow-wrap:anywhere;font-size:14px;font-weight:650}
+.part-import-row small{margin-left:auto;color:#b3bda9;font-size:11px;white-space:nowrap}
+.part-import-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:25px;padding-top:15px;border-top:1px solid #596555}
+.part-import-actions button{min-width:100px;padding:11px 17px;border:1px solid #8a9b7a;border-radius:3px;background:transparent;color:#f4f7ed;font:inherit;font-size:13px;font-weight:750;cursor:pointer}
+#part-import-confirm{border-color:#d9ff7a;background:#d9ff7a;color:#1d2519}
+#part-import-confirm:disabled{opacity:.38;cursor:not-allowed}
+.part-import-dialog :is(button,input):focus-visible{outline:2px solid #d9ff7a;outline-offset:3px}
+@media(max-width:520px){.part-import-dialog{padding:20px}.part-import-actions button{flex:1}.part-import-row small{display:none}}
+@media(prefers-reduced-motion:reduce){.part-import-dialog::backdrop{backdrop-filter:none}}

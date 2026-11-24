@@ -129,6 +129,27 @@ test('delete leading measures carries initial key and meter to the new first bar
   assert.equal(first(rows(result.doc)[0][0],'attributes')?.localName,'attributes');
   assert.equal(marker(rows(result.doc)[0][0]),'102');
 });
+test('delete leading measures carries the effective tempo without duplicating a new opening tempo',()=>{
+  const source=fixture(6,1),row=rows(source)[0];
+  row[0].appendChild(n('sound',{tempo:'72'}));
+  row[2].appendChild(n('direction',{},[
+    n('direction-type',{},[n('metronome',{},[leaf('beat-unit','quarter'),leaf('per-minute','96')])]),
+    n('sound',{tempo:'96'})]));
+  const result=deleteMeasureRange(source,{start:0,end:2});
+  const firstBar=rows(result.doc)[0][0];
+  const carried=firstBar.children.find(c=>c.localName==='direction'&&first(c,'sound')?.getAttribute('tempo')==='96');
+  assert.ok(carried);
+  assert.equal(first(first(carried,'direction-type'),'metronome')?.localName,'metronome');
+  assert.equal(first(firstBar,'attributes')?.localName,'attributes');
+  assert.equal(rows(source)[0].length,6);
+
+  const existing=fixture(3,1),existingRow=rows(existing)[0];
+  existingRow[0].appendChild(n('sound',{tempo:'72'}));
+  existingRow[1].insertBefore(n('sound',{tempo:'110'}),existingRow[1].firstChild);
+  const preserved=deleteMeasureRange(existing,{start:0,end:0});
+  assert.equal(rows(preserved.doc)[0][0].children.filter(c=>c.localName==='sound').length,1);
+  assert.equal(first(rows(preserved.doc)[0][0],'sound').getAttribute('tempo'),'110');
+});
 test('delete last leading rest even when first sounding bar declares its own key',()=>{
   const source=fixture(3);
   for(const row of rows(source)){

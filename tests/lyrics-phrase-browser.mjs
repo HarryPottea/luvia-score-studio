@@ -50,10 +50,10 @@ try{
   download=page.waitForEvent('download');await page.click('#download-xml');
   output=await fs.readFile(await (await download).path(),'utf8');
   assert.equal((output.match(/<lyric number="1">/g)||[]).length,2);
-  if(await page.locator('#toggle-settings').getAttribute('aria-expanded')==='false')
-    await page.click('#toggle-settings');
-  await page.locator('.jwoo-fold-all button').getByText('모두 펼치기').click();
-  await page.click('#v3-undo');
+  // The menu-based inspector may be closed; the document-wide shortcut remains
+  // available without reopening settings during lyric editing.
+  await page.evaluate(()=>document.activeElement?.blur());
+  await page.keyboard.press('Meta+z');
   download=page.waitForEvent('download');await page.click('#download-xml');
   output=await fs.readFile(await (await download).path(),'utf8');
   assert.equal((output.match(/<lyric number="1">/g)||[]).length,4);
