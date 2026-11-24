@@ -1,0 +1,28 @@
+name: J-WOO Windows vocal engine preview
+on:
+  pull_request:
+    branches: [main]
+    paths: ['vocal-engine/**','src/vocal-core.js','.github/workflows/vocal-windows.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - run: node --check vocal-engine/server.mjs; node --check vocal-engine/windows/setup.mjs; node --check vocal-engine/voice-import.mjs; node --test tests/vocal-core.test.mjs
+      - run: ./vocal-engine/windows/build-preview.ps1
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jwoo-vocal-preview-win-x64
+          path: artifacts/vocal-windows/
+          if-no-files-found: error

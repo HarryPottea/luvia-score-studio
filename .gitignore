@@ -2,3 +2,7 @@ node_modules/
 dist/
 .DS_Store
 *.logicx
+
+# Local voicebank settings and credentials
+vocal-engine/models.local.json
+vocal-engine/.env

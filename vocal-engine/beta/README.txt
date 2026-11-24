@@ -1,0 +1,7 @@
+# J-WOO 5.0 Windows local Beta
+Internal preview, Windows 10/11 x64. No production deployment. Unverified unsigned engine; do not bypass Windows security warnings. Build logs also reported upstream dependency security warnings: do not use untrusted documents or model archives. This is not a finished product.
+1. Download the GitHub Actions artifact, extract its outer ZIP, verify the inner ZIP against the accompanying SHA-256 file, and extract that ZIP into a new folder.
+2. Run Start-Beta.cmd, after verifying the package. It opens the official Chiaki terms and asks whether to download the official model (~451 MB). Refusal leaves the model uninstalled. A console must remain open during use. No login startup or administrator access is registered by Beta.
+3. Open http://127.0.0.1:19472/ on the same PC. Load a melody score with Korean lyrics; open VOCAL STUDIO; approve the OS pairing dialog. Generate and listen to a vocal WAV. Actual vocal quality, timing and rights must be verified.
+4. Male voice is not bundled or automatically installed. Stop the Beta, run Register-Voice-Beta.cmd with an official, licensed Korean DiffSinger ZIP and explicit gender, credit and terms acknowledgement, then restart. No claim of male model availability or rendering.
+5. Ctrl+C stops both localhost servers. Beta model data is kept under %LOCALAPPDATA%\J-WOO Vocal Beta; no production engine data is changed. No automatic updates or external hosting.

@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {buildVocalPlan,buildUstx,validatePlan,secondsAt,STYLES} from '../src/vocal-core.js';
+const node=(localName,children=[],textContent='',attrs={})=>({localName,children,textContent,getAttribute:k=>attrs[k]??null,hasAttribute:k=>k in attrs});
+const v=(k,x)=>node(k,[],String(x));
+const n=(lyric,rest=false)=>node('note',[rest?node('rest'):node('pitch',[v('step','C'),v('octave',4)]),v('duration',1),...(rest?[]:[node('lyric',[v('text',lyric)])])]);
+const attrs=node('attributes',[v('divisions',1),node('time',[v('beats',4),v('beat-type',4)])]);
+const doc=notes=>({documentElement:node('score-partwise',[node('part',[node('measure',[attrs,...notes])],'',{id:'P1'})])});
+const model={id:'fixture-female',expressions:['tenc','brec','pexp','vibrato']};
+test('preserves leading rest and melody; pure vocal USTX',()=>{const p=buildVocalPlan(doc([n('',true),n('가'),n('나'),n('다')]),{partId:'P1'});assert.equal(p.notes[0].position,480);assert.equal(p.duration,1920);assert.equal(secondsAt(p,p.duration),2);const u=buildUstx(p,model,STYLES.musical);assert.match(u,/DIFFSINGER/);assert.match(u,/"lyric":"가"/);assert.match(u,/wave_parts: \[\]/);assert.match(u,/"abbr":"tenc"/);});
+test('rejects absent lyric',()=>assert.throws(()=>buildVocalPlan(doc([n('')]),{partId:'P1'}),/가사/));
+test('rejects overlapping notes and unsupported controls',()=>{const p=buildVocalPlan(doc([n('가'),n('나')]),{partId:'P1'});assert.throws(()=>buildUstx(p,{id:'x',expressions:[]},STYLES.musical),/지원하지/);assert.throws(()=>validatePlan({...p,notes:[p.notes[0],p.notes[0]]}));});
+test('tempo change uses integrated seconds',()=>{const p={duration:960,notes:[{position:0,duration:480,tone:60,lyric:'가'}],tempos:[{position:0,bpm:120},{position:480,bpm:60}]};validatePlan(p);assert.equal(secondsAt(p,960),1.5);});
+
+const pitched=(step,lyric,{chord=false,duration=1,extend=false}={})=>node('note',[...(chord?[node('chord')]:[]),node('pitch',[v('step',step),v('octave',4)]),v('duration',duration),...(lyric||extend?[node('lyric',[...(lyric?[v('text',lyric)]:[]),...(extend?[node('extend')]:[])])]:[])]);
+test('missing lyric creates silence without shifting timeline',()=>{const p=buildVocalPlan(doc([n('가'),n(''),n('나'),n('')]),{partId:'P1'});assert.deepEqual(p.notes.map(x=>x.position),[0,960]);assert.equal(p.duration,1920);assert.equal(p.selection.skipped,2);});
+test('explicit ah fills missing lyrics only on request',()=>{const p=buildVocalPlan(doc([n(''),n('가')]),{partId:'P1',missingLyric:'ah'});assert.deepEqual(p.notes.map(x=>x.lyric),['아','가']);assert.equal(p.selection.filled,1);});
+test('chord chooses lyric note and keeps original timeline',()=>{const d=doc([pitched('C','가'),pitched('E','',{chord:true}),pitched('G','',{chord:true}),n('나'),n('다'),n('라')]);const before=JSON.stringify(d);const p=buildVocalPlan(d,{partId:'P1'});assert.equal(p.notes[0].tone,60);assert.equal(p.notes[1].position,480);assert.equal(p.selection.chords,1);assert.equal(JSON.stringify(d),before);});
+test('explicit highest and lowest chord pitch preserve shared lyric',()=>{const d=doc([pitched('C',''),pitched('E','가',{chord:true}),pitched('G','',{chord:true}),n('나')]);const h=buildVocalPlan(d,{partId:'P1',chordMode:'highest'}),l=buildVocalPlan(d,{partId:'P1',chordMode:'lowest'});assert.equal(h.notes[0].tone,67);assert.equal(l.notes[0].tone,60);assert.equal(h.notes[0].lyric,'가');assert.equal(l.notes[0].lyric,'가');assert.equal(h.selection.sharedLyrics,1);assert.throws(()=>buildVocalPlan(d,{partId:'P1',chordMode:'strict'}),/화음/);});
+test('explicit continuation is preserved, ordinary blank is not inferred as continuation',()=>{const p=buildVocalPlan(doc([n('가'),pitched('E','',{extend:true}),n(''),n('나')]),{partId:'P1'});assert.deepEqual(p.notes.map(x=>[x.position,x.lyric]),[[0,'가'],[480,'+'],[1440,'나']]);});
+test('different-onset overlapping sung notes remain blocked',()=>{const d=doc([pitched('C','가',{duration:2}),node('backup',[v('duration',1)]),pitched('D','나')]);assert.throws(()=>buildVocalPlan(d,{partId:'P1'}),/겹칩니다/);});
+test('ambiguous shared chord lyrics not guessed',()=>{const d=doc([pitched('C','가'),pitched('E','나',{chord:true}),pitched('G','',{chord:true})]);assert.throws(()=>buildVocalPlan(d,{partId:'P1',chordMode:'highest'}),/가사가 여러 개/);});

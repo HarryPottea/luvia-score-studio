@@ -1,0 +1,19 @@
+{
+  "voices": [
+    {
+      "id": "REPLACE_WITH_INSTALLED_ID",
+      "label": "Chiaki",
+      "gender": "여성",
+      "credit": "Chiaki",
+      "termsUrl": "https://chiaki.ch/en/character/chiaki",
+      "korean": true,
+      "usageAccepted": false,
+      "expressions": [
+        "tenc",
+        "brec",
+        "pexp",
+        "vibrato"
+      ]
+    }
+  ]
+}

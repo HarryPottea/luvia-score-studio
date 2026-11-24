@@ -1,0 +1,54 @@
+name: J-WOO Windows local Beta
+on:
+  pull_request:
+    branches: [main]
+    paths: ['vocal-engine/beta/**','.github/workflows/vocal-beta-windows.yml','src/vocal-studio.js']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package-beta:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/vocal-core.test.mjs
+      - run: npm run build
+      - uses: actions/download-artifact@v4
+        with:
+          name: jwoo-vocal-preview-win-x64
+          run-id: '45377169607'
+          github-token: ${{ github.token }}
+          path: engine-artifact
+      - name: Package isolated local Beta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = 'engine-artifact/J-WOO-Vocal-Engine-win-x64-preview.zip'
+          $expected = (Get-Content "$zip.sha256" -Raw).Trim()
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $expected) { throw 'Engine checksum mismatch' }
+          Expand-Archive $zip -DestinationPath beta-engine
+          New-Item -ItemType Directory beta-stage,beta-output | Out-Null
+          foreach ($p in 'engine','runtime','licenses','package.json') { Copy-Item "beta-engine/$p" beta-stage -Recurse }
+          New-Item -ItemType Directory beta-stage/src,beta-stage/vocal-engine | Out-Null
+          Copy-Item src/vocal-core.js beta-stage/src/
+          Copy-Item vocal-engine/server.mjs beta-stage/vocal-engine/
+          Copy-Item vocal-engine/voice-import.mjs beta-stage/
+          Copy-Item vocal-engine/beta/* beta-stage/
+          Copy-Item dist beta-stage/site -Recurse
+          & beta-stage/runtime/node.exe --check beta-stage/start-beta.mjs
+          if ($LASTEXITCODE) { throw 'Beta syntax failure' }
+          & beta-stage/runtime/node.exe beta-stage/start-beta.mjs --smoke
+          if ($LASTEXITCODE) { throw 'Beta local startup verification failed' }
+          Compress-Archive beta-stage/* -DestinationPath beta-output/J-WOO-5-Windows-Beta.zip
+          (Get-FileHash beta-output/J-WOO-5-Windows-Beta.zip -Algorithm SHA256).Hash | Set-Content beta-output/J-WOO-5-Windows-Beta.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: J-WOO-5-Windows-Beta
+          path: beta-output/
+          if-no-files-found: error
