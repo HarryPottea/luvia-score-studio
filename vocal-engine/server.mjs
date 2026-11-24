@@ -10,6 +10,7 @@ import path from 'node:path';
 import {buildUstx,validatePlan,secondsAt} from '../src/vocal-core.js';
 const key=process.env.JWOO_VOCAL_KEY||'',backendKey=process.env.OPENUTAU_API_KEY||'';
 const origin=process.env.JWOO_ORIGIN||'';
+const port=Number(process.env.JWOO_PORT||19470);if(![19470,19473].includes(port))throw Error('Invalid local engine port');
 const renderer=process.env.JWOO_RENDERER||'', pairing=process.env.JWOO_PAIRING==='1';
 const run=promisify(execFile);
 const backend=new URL(process.env.OPENUTAU_URL||'http://127.0.0.1:19471');
@@ -53,7 +54,7 @@ async function renderNative(ustx,plan){
 }
 const server=http.createServer(async(req,res)=>{
  const json=(code,obj)=>{res.writeHead(code,{'Content-Type':'application/json'});res.end(JSON.stringify(obj));};
- if(req.headers.host!=='127.0.0.1:19470'||req.headers.origin!==origin){json(403,{error:'Origin denied'});return;}
+ if(req.headers.host!==('127.0.0.1:'+port)||req.headers.origin!==origin){json(403,{error:'Origin denied'});return;}
  res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');res.setHeader('Cache-Control','no-store');
  if(req.method==='OPTIONS'){res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type');res.setHeader('Access-Control-Allow-Private-Network','true');res.writeHead(204);res.end();return;}
  if(req.method==='GET'&&req.url==='/health'){json(200,{engine:'jwoo-vocal',version:1,pairing});return;}
@@ -74,4 +75,4 @@ const server=http.createServer(async(req,res)=>{
  json(404,{error:'Not found'});
  }catch(e){console.error('Vocal engine:',e.message);if(!res.headersSent)json(422,{error:'Vocal engine request failed'});else res.end();}
 });
-server.requestTimeout=30000;server.headersTimeout=10000;server.listen(19470,'127.0.0.1',()=>console.log('J-WOO vocal bridge on loopback port 19470'));
+server.requestTimeout=30000;server.headersTimeout=10000;server.listen(port,'127.0.0.1',()=>console.log('J-WOO vocal bridge on loopback port '+port));
