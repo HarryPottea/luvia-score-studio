@@ -23,7 +23,8 @@ for(const m of config.voices||[]){
 let rendering=false;
 const auth=(value)=>{const a=Buffer.from(value||''),b=Buffer.from('Bearer '+key);return a.length===b.length&&timingSafeEqual(a,b);};
 const upstream=(path,options={})=>fetch(new URL(path,backend),{...options,headers:{'X-Api-Key':backendKey,...options.headers},redirect:'error',signal:AbortSignal.timeout(path.includes('render')?570000:8000)});
-async function voices(){if(renderer){const r=await run(renderer,['list'],{timeout:120000,maxBuffer:1024*1024});const singers=JSON.parse(r.stdout);return singers.filter(s=>s.singerType==='DiffSinger'&&allowed.has(s.id)).map(s=>allowed.get(s.id));}const [s,p]=await Promise.all([upstream('/api/singers'),upstream('/api/phonemizers')]);if(!s.ok||!p.ok)throw Error('Engine discovery failed');
+let voiceDiscovery=null;
+async function voices(){if(renderer){if(!voiceDiscovery)voiceDiscovery=run(renderer,['list'],{timeout:120000,maxBuffer:1024*1024}).then(r=>{const singers=JSON.parse(r.stdout);return singers.filter(s=>s.singerType==='DiffSinger'&&allowed.has(s.id)).map(s=>allowed.get(s.id));}).catch(e=>{voiceDiscovery=null;throw e;});return voiceDiscovery;}const [s,p]=await Promise.all([upstream('/api/singers'),upstream('/api/phonemizers')]);if(!s.ok||!p.ok)throw Error('Engine discovery failed');
  const singers=await s.json(),phonemizers=await p.json();if(!Array.isArray(singers)||!Array.isArray(phonemizers)||!phonemizers.some(x=>x.type==='OpenUtau.Core.DiffSinger.DiffSingerKoreanPhonemizer'))throw Error('Korean phonemizer unavailable');
  return singers.filter(s=>String(s.singerType).toLowerCase()==='diffsinger'&&allowed.has(s.id)).map(s=>allowed.get(s.id));}
 async function body(req){let n=0;const chunks=[];for await(const c of req){n+=c.length;if(n>2*1024*1024)throw Error('Request too large');chunks.push(c);}return JSON.parse(Buffer.concat(chunks).toString('utf8'));}

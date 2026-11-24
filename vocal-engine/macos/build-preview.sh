@@ -27,7 +27,7 @@ assert s.count(needle)==1
 p.write_text(s.replace(needle,replacement),encoding="utf-8")
 PY
 STAGE="$WORK/stage"
-mkdir -p "$STAGE/engine" "$STAGE/src" "$STAGE/runtime" "$STAGE/licenses" "$OUT"
+mkdir -p "$STAGE/engine" "$STAGE/src" "$STAGE/runtime" "$STAGE/licenses" "$STAGE/vocal-engine" "$OUT"
 dotnet publish "$ROOT/vocal-engine/native/JwooRender.csproj" -c Release -r "$RID" --self-contained true -p:OpenUtauRoot="$WORK/OpenUtau" -o "$STAGE/engine"
 # Vendor the exact runtime supplied by the CI toolchain; keep distribution notices.
 NODE="$(command -v node)"
@@ -39,7 +39,9 @@ cp "$WORK/OpenUtau/LICENSE.txt" "$STAGE/licenses/OpenUtau-LICENSE.txt"
 # Preserve native dependency license/notice files available from restored packages.
 find "$HOME/.nuget/packages" -type f \( -iname 'license*' -o -iname 'notice*' \) -size -2M -print0 | while IFS= read -r -d '' f; do rel="${f#"$HOME/.nuget/packages/"}"; mkdir -p "$STAGE/licenses/nuget/$(dirname "$rel")"; cp "$f" "$STAGE/licenses/nuget/$rel"; done
 cp "$ROOT/src/vocal-core.js" "$STAGE/src/"
-cp "$ROOT/vocal-engine/server.mjs" "$STAGE/"
+cp "$ROOT/vocal-engine/server.mjs" "$STAGE/vocal-engine/"
+printf '{"type":"module"}\n' > "$STAGE/package.json"
+"$STAGE/runtime/node" --check "$STAGE/vocal-engine/server.mjs"
 cp "$ROOT/vocal-engine/macos/setup.mjs" "$STAGE/"
 cp "$ROOT/vocal-engine/macos/Install.command" "$STAGE/"
 chmod +x "$STAGE/Install.command" "$STAGE/runtime/node" "$STAGE/engine/JwooRender"
