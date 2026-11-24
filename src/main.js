@@ -1,3 +1,4 @@
+import {mountVocalStudio} from './vocal-studio.js';
 import JSZip from 'jszip';
 import { buildPartZip, baseScoreName, safeFileName } from './part-export.js';
 import { scanScoreRhythm, applySafeRestCleanup } from './rhythm-dom.js';
@@ -727,3 +728,5 @@ mountSettingsAccordions();
 mountScoreToolstrip();
 mountWorkspaceShell();
 updateSelectionBadge();
+
+mountVocalStudio({state,scoreParts});

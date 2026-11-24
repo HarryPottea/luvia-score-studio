@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {buildVocalPlan,buildUstx,validatePlan,secondsAt,STYLES} from '../src/vocal-core.js';
+const node=(localName,children=[],textContent='',attrs={})=>({localName,children,textContent,getAttribute:k=>attrs[k]??null,hasAttribute:k=>k in attrs});
+const v=(k,x)=>node(k,[],String(x));
+const n=(lyric,rest=false)=>node('note',[rest?node('rest'):node('pitch',[v('step','C'),v('octave',4)]),v('duration',1),...(rest?[]:[node('lyric',[v('text',lyric)])])]);
+const attrs=node('attributes',[v('divisions',1),node('time',[v('beats',4),v('beat-type',4)])]);
+const doc=notes=>({documentElement:node('score-partwise',[node('part',[node('measure',[attrs,...notes])],'',{id:'P1'})])});
+const model={id:'fixture-female',expressions:['tenc','brec','pexp','vibrato']};
+test('preserves leading rest and melody; pure vocal USTX',()=>{const p=buildVocalPlan(doc([n('',true),n('가'),n('나'),n('다')]),{partId:'P1'});assert.equal(p.notes[0].position,480);assert.equal(p.duration,1920);assert.equal(secondsAt(p,p.duration),2);const u=buildUstx(p,model,STYLES.musical);assert.match(u,/DIFFSINGER/);assert.match(u,/"lyric":"가"/);assert.match(u,/wave_parts: \[\]/);assert.match(u,/"abbr":"tenc"/);});
+test('rejects absent lyric',()=>assert.throws(()=>buildVocalPlan(doc([n('')]),{partId:'P1'}),/가사/));
+test('rejects overlapping notes and unsupported controls',()=>{const p=buildVocalPlan(doc([n('가'),n('나')]),{partId:'P1'});assert.throws(()=>buildUstx(p,{id:'x',expressions:[]},STYLES.musical),/지원하지/);assert.throws(()=>validatePlan({...p,notes:[p.notes[0],p.notes[0]]}));});
+test('tempo change uses integrated seconds',()=>{const p={duration:960,notes:[{position:0,duration:480,tone:60,lyric:'가'}],tempos:[{position:0,bpm:120},{position:480,bpm:60}]};validatePlan(p);assert.equal(secondsAt(p,960),1.5);});
