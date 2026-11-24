@@ -217,3 +217,5 @@
 .jwoo-symbol-drag-mode .vf-keysignature,.jwoo-symbol-drag-mode .vf-timesignature,.jwoo-symbol-drag-mode .vf-clef,.jwoo-symbol-drag-mode .jwoo-rest-target{cursor:grab;touch-action:none}
 .jwoo-symbol-drag-mode .jwoo-symbol-hit-area{touch-action:none}
 .jwoo-symbol-hide-mode .vf-keysignature,.jwoo-symbol-hide-mode .vf-timesignature,.jwoo-symbol-hide-mode .vf-clef,.jwoo-symbol-hide-mode .jwoo-rest-target{cursor:crosshair;touch-action:manipulation}
+.v4-selected-line{margin:16px 0;padding:14px;border:1px solid #64745c;border-radius:4px;background:#252d24}
+.v4-selected-line .v4-subhead{margin-top:0}

@@ -7,7 +7,7 @@ import {redistributeVoiceRhythm,reshapeTupletRhythm,parseRhythmTypes} from '../s
 import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
 import {transposeChordChromatically} from '../src/studio-v4-chord-transpose.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
-import {planLayoutCadence,applyLayoutCadence} from '../src/studio-v4-layout-cadence.js';
+import {planLayoutCadence,applyLayoutCadence,readLayoutCadence} from '../src/studio-v4-layout-cadence.js';
 import {normalizeRedundantClefs} from '../src/studio-v4-clef-normalize.js';
 import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
 import {
@@ -462,6 +462,27 @@ test('engraving: manual break conflicts are protected until user opts into repla
   assert.equal(preserved.getAttribute('new-page'),null);
   assert.equal(preserved.getAttribute('staff-spacing'),'18','Other print settings remain intact');
   assert.throws(()=>planLayoutCadence(original,{barsPerSystem:7}),/지원 범위/);
+});
+test('engraving: one selected line can use three bars and retain the choice after reopening',()=>{
+  const source=layoutFixture(),original=serialize(source);
+  const options={barsPerSystem:4,lineOverrides:{2:3},replaceExisting:true};
+  const plan=planLayoutCadence(source,options);
+  assert.deepEqual(plan.lineRanges.map(row=>row.bars),[4,3,1]);
+  const applied=applyLayoutCadence(source,options).doc;
+  assert.equal(serialize(source),original);
+  for(const p of children(applied.documentElement,'part')){
+    const measures=children(p,'measure');
+    assert.equal(first(measures[4],'print').getAttribute('new-system'),'yes');
+    assert.equal(first(measures[7],'print').getAttribute('new-system'),'yes');
+    assert.equal(first(measures[3],'print'),undefined);
+  }
+  const saved=readLayoutCadence(applied);
+  assert.deepEqual(saved,{barsPerSystem:4,lineOverrides:{2:3}});
+  const reopened=applyLayoutCadence(applied,{...saved,replaceExisting:true}).doc;
+  assert.equal(serialize(reopened),serialize(applied));
+  const reset=applyLayoutCadence(applied,{barsPerSystem:4,replaceExisting:true}).doc;
+  assert.equal(first(children(part(reset),'measure')[7],'print'),undefined);
+  assert.deepEqual(readLayoutCadence(reset),{barsPerSystem:4,lineOverrides:{}});
 });
 test('engraving: repeated unchanged clef is removed while real changes and source survive',()=>{
   const clef=sign=>E('clef',[T('sign',sign),T('line',2)]);

@@ -37,7 +37,7 @@ import {prepareScoreAndPartExport} from './studio-v4-pdf-export-plan.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import {readSymbolOffset,readSymbolHidden,setSymbolOffset,setSymbolHidden,applySymbolOffsets,symbolAtElement,symbolOffsetLimit} from './studio-v4-symbol-position.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
-import {applyLayoutCadence,planLayoutCadence} from './studio-v4-layout-cadence.js';
+import {applyLayoutCadence,planLayoutCadence,readLayoutCadence,clearLayoutCadence} from './studio-v4-layout-cadence.js';
 import {planDensityLayout,applyDensityLayout,planIndependentPartLayout,applyIndependentPartLayout} from './studio-v4-auto-layout.js';
 import {changeSingleEmptyMeasureMeter} from './studio-v4-meter-single.js';
 import './studio-v4.css';
@@ -263,11 +263,16 @@ const panel=[
   '<button id="v4-apply-layout" type="button">악보 전체 파트에 나눔 지시 적용</button>',
   '<p class="v4-tiny">MusicXML에 인쇄 지시를 기록합니다. 실제 줄·페이지 구분 반영 여부는 렌더러 및 브라우저에서 확인하세요.</p>',
   '<div class="v4-cadence-panel"><p class="v4-subhead">한 줄의 마디 수</p>',
-  '<label for="v4-cadence-bars">한 줄에 배치할 마디 수</label><select id="v4-cadence-bars"><option value="2">2마디</option><option value="3">3마디</option><option value="4" selected>4마디</option><option value="5">5마디</option><option value="6">6마디</option><option value="8">8마디</option></select>',
+  '<label for="v4-cadence-bars">전체 기본 줄당 마디 수</label><select id="v4-cadence-bars"><option value="2">2마디</option><option value="3">3마디</option><option value="4" selected>4마디</option><option value="5">5마디</option><option value="6">6마디</option><option value="8">8마디</option></select>',
   '<p class="v4-tiny">페이지당 줄 수는 지정하지 않습니다. 페이지가 차면 악보가 다음 페이지로 이어집니다.</p>',
   '<label class="v4-timeline-move-check"><input id="v4-cadence-replace" type="checkbox" /> 기존 수동 줄·페이지 나눔 대체 허용</label>',
   '<button id="v4-cadence-apply" type="button">모든 파트에 줄당 마디 수 적용</button>',
   '<p id="v4-cadence-status" class="v4-tiny" role="status" aria-live="polite">기존 페이지 나눔이 있으면 대체 허용을 선택해야 자동 페이지 흐름으로 바뀝니다. ⌘Z / Ctrl+Z로 되돌릴 수 있습니다.</p>',
+  '<div class="v4-selected-line"><p class="v4-subhead">특정 줄만 다르게 배치</p>',
+  '<label for="v4-line-select">바꿀 줄 (마디 범위)</label><select id="v4-line-select"></select>',
+  '<label for="v4-line-bars">선택 줄의 마디 수</label><select id="v4-line-bars"><option value="2">2마디</option><option value="3" selected>3마디</option><option value="4">4마디</option><option value="5">5마디</option><option value="6">6마디</option><option value="8">8마디</option></select>',
+  '<button id="v4-line-apply" type="button">선택 줄 마디 수 적용</button>',
+  '<p id="v4-line-status" class="v4-tiny" role="status" aria-live="polite">예: 2줄만 3마디로 바꾸면 뒤 줄은 다시 기본 4마디씩 이어집니다.</p></div>',
   '<button id="v4-auto-layout" type="button">곡 밀도 기반 자동 줄·페이지 나눔</button>',
   '<p id="v4-auto-layout-status" class="v4-tiny" role="status" aria-live="polite">음표·가사·화음 밀도에 따라 모든 파트의 줄과 페이지 시작을 자동 제안합니다.</p>',
   '<button id="v4-part-layout" type="button">악기별 파트보 개별 자동 조판</button>',
@@ -432,6 +437,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     syncSymbolControls();
     document.dispatchEvent(new Event('jwoo:score-updated'));
     syncCurrentMeasureCount();
+    syncCadenceLineControls();
     syncMeasureDelete();
     $('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;
     $('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;
@@ -454,7 +460,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       draftStatus('변경 사항을 이 기기에 자동 임시 저장하는 중…');
     }catch(error){draftStatus('자동 저장 준비 실패: '+error.message);}
   }
-  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncMeasureDelete();syncChordSelection();syncSymbolControls();document.dispatchEvent(new Event('jwoo:score-updated'));$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;$('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;$('v4-add-part').disabled=!state.doc||state.showBaseline;void refreshDrafts();void refreshCheckpoints();}
+  function onLoaded(){inlineLyrics.onLoaded();measureToolbar?.reset();syncCurrentMeasureCount();syncCadenceLineControls();syncMeasureDelete();syncChordSelection();syncSymbolControls();document.dispatchEvent(new Event('jwoo:score-updated'));$('v4-checkpoint-save').disabled=!state.doc||state.showBaseline||savingCheckpoint;$('v4-project-export').disabled=!state.doc||state.showBaseline||projectBusy;$('v4-add-part').disabled=!state.doc||state.showBaseline;void refreshDrafts();void refreshCheckpoints();}
   $('v4-new').addEventListener('click',async()=>{
     if(state.doc&&!confirm('새 악보를 만들면 현재 작업 화면이 교체됩니다. 먼저 MusicXML 파일로 저장했는지 확인해 주세요. 계속할까요?'))return;
     try{
@@ -463,12 +469,38 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       if(ok){setMessage('새 악보 생성 완료 · 쉼표를 선택해 4.0 음표 삽입 기능으로 작곡을 시작하세요.');}
     }catch(error){setMessage('새 악보 생성 실패: '+error.message,true);}
   });
-  function currentMeasureCount(){
-    if(!state.doc)return null;
-    const parts=[...state.doc.documentElement.children].filter(n=>n.localName==='part');
+  function allPartMeasureCount(doc){
+    if(!doc)return null;
+    const parts=[...doc.documentElement.children].filter(n=>n.localName==='part');
     const counts=parts.map(p=>[...p.children].filter(n=>n.localName==='measure').length);
     return counts.length&&counts[0]>0&&counts.every(n=>n===counts[0])?counts[0]:null;
   }
+  function currentMeasureCount(){return allPartMeasureCount(state.doc);}
+  function syncCadenceLineControls(){
+    const select=$('v4-line-select'),button=$('v4-line-apply');
+    const cadence=state.doc?readLayoutCadence(state.doc):null;
+    select.replaceChildren();
+    if(!cadence){
+      select.add(new Option('먼저 전체 기본 마디 수를 적용하세요',''));
+      select.disabled=true;button.disabled=true;return;
+    }
+    const prior=Number(select.dataset.selectedLine||1);
+    const plan=planLayoutCadence(state.doc,{...cadence,replaceExisting:true});
+    for(const range of plan.lineRanges){
+      select.add(new Option(range.line+'줄 · '+(range.startMeasureIndex+1)+'–'+
+        (range.endMeasureIndex+1)+'마디',String(range.line)));
+    }
+    select.value=String(Math.min(prior,plan.lineRanges.length));
+    select.dataset.selectedLine=select.value;
+    $('v4-cadence-bars').value=String(cadence.barsPerSystem);
+    $('v4-line-bars').value=String(cadence.lineOverrides[select.value]??cadence.barsPerSystem);
+    select.disabled=false;button.disabled=false;
+  }
+  $('v4-line-select').addEventListener('change',()=>{
+    const select=$('v4-line-select');select.dataset.selectedLine=select.value;
+    const cadence=readLayoutCadence(state.doc);
+    if(cadence)$('v4-line-bars').value=String(cadence.lineOverrides[select.value]??cadence.barsPerSystem);
+  });
   function syncMeasureDelete(){
     const current=currentMeasureCount(),button=$('v4-delete-measure'),status=$('v4-delete-measure-status');
     const index=v3.getSelection().measureIndex;
@@ -721,7 +753,14 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
   async function commit(transform,label){
     if(!state.doc){setMessage('먼저 악보를 열어 주세요.',true);return;}
     if(state.showBaseline){setMessage('원본 보기에서 편집할 수 없습니다. 현재 악보 보기로 전환해 주세요.',true);return;}
-    await v3.commitExternal(transform,label);
+    await v3.commitExternal(doc=>{
+      const result=transform(doc);
+      if(!result?.doc)return result;
+      const cadence=readLayoutCadence(result.doc);
+      if(!cadence||
+        allPartMeasureCount(doc)===allPartMeasureCount(result.doc))return result;
+      return {...result,doc:applyLayoutCadence(result.doc,{...cadence,replaceExisting:true}).doc};
+    },label);
   }
   function selected(){return v3.getSelection();}
   const symbolName={rest:'쉼표',key:'조표',time:'박자표',clef:'음자리표'};
@@ -1243,13 +1282,14 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     void commit(doc=>rebarWrittenScore(doc,{meter:requested}),'작성된 악보 전체 리바링');
   });
 
-  $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>setScoreLayoutBreak(doc,{
-    measureIndex:selected().measureIndex,kind:$('v4-layout').value,
-  }),'줄·페이지 나눔'));
+  $('v4-apply-layout').addEventListener('click',()=>void commit(doc=>{
+    const result=setScoreLayoutBreak(doc,{measureIndex:selected().measureIndex,kind:$('v4-layout').value});
+    clearLayoutCadence(result.doc);return result;
+  },'줄·페이지 나눔'));
   $('v4-cadence-apply').addEventListener('click',async()=>{
     if(!state.doc)return;
     const options={barsPerSystem:Number($('v4-cadence-bars').value),
-      replaceExisting:$('v4-cadence-replace').checked};
+      replaceExisting:$('v4-cadence-replace').checked||!!readLayoutCadence(state.doc)};
     const status=$('v4-cadence-status');
     let plan;
     try{
@@ -1265,6 +1305,26 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
         plan.systemStarts+'곳 기록 완료 · 페이지는 자동 배치';
     }else status.textContent='악보가 변경되지 않았습니다. 위 편집 상태를 확인해 주세요.';
   });
+  $('v4-line-apply').addEventListener('click',async()=>{
+    if(!state.doc)return;
+    const status=$('v4-line-status'),cadence=readLayoutCadence(state.doc);
+    if(!cadence){status.textContent='먼저 전체 기본 줄당 마디 수를 적용해 주세요.';return;}
+    const line=Number($('v4-line-select').value),bars=Number($('v4-line-bars').value);
+    const lineOverrides={...cadence.lineOverrides};
+    if(bars===cadence.barsPerSystem)delete lineOverrides[line];
+    else lineOverrides[line]=bars;
+    const options={barsPerSystem:cadence.barsPerSystem,lineOverrides,replaceExisting:true};
+    let plan;
+    try{plan=planLayoutCadence(state.doc,options);
+      if(!plan.lineRanges.some(range=>range.line===line))throw new Error('선택한 줄을 찾지 못했습니다.');
+    }catch(error){status.textContent='선택 줄 적용 불가: '+(error.message||'설정을 확인해 주세요.');setMessage(status.textContent,true);return;}
+    const before=state.doc;
+    await commit(doc=>applyLayoutCadence(doc,options),'선택 줄 마디 수 변경');
+    status.textContent=state.doc!==before?
+      line+'줄 '+bars+'마디 적용 · 이후 줄은 기본 '+cadence.barsPerSystem+
+      '마디 · 총 '+plan.total+'마디 유지 · 실행 취소 가능':
+      '변경되지 않았습니다. 편집 상태를 확인해 주세요.';
+  });
   $('v4-auto-layout').addEventListener('click',async()=>{
     if(!state.doc)return;
     const options={pageFormat:$('page-orientation').value,
@@ -1277,7 +1337,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       setMessage(status.textContent,true);return;
     }
     const before=state.doc;
-    await commit(doc=>applyDensityLayout(doc,options),'악보 밀도 기반 자동 줄·페이지 나눔');
+    await commit(doc=>{const result=applyDensityLayout(doc,options);
+      clearLayoutCadence(result.doc);return result;},'악보 밀도 기반 자동 줄·페이지 나눔');
     status.textContent=state.doc!==before?
       '자동 배치 적용 · '+plan.totalMeasures+'마디 · '+plan.systems+'줄 · 예상 '+plan.pages+
       '페이지 · 모든 '+plan.parts+'파트 동기화 · 시각적 겹침은 인쇄 전에 확인해 주세요.':
@@ -1292,7 +1353,8 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     try{plan=planIndependentPartLayout(state.doc,options);}
     catch(error){status.textContent='개별 파트보 조판 차단: '+(error.message||'설정 오류');setMessage(status.textContent,true);return;}
     const before=state.doc;
-    await commit(doc=>applyIndependentPartLayout(doc,options),'악기별 독립 줄·페이지 나눔');
+    await commit(doc=>{const result=applyIndependentPartLayout(doc,options);
+      clearLayoutCadence(result.doc);return result;},'악기별 독립 줄·페이지 나눔');
     status.textContent=state.doc!==before?
       '악기 '+plan.parts+'파트 · 파트별 합계 '+plan.systems+'줄 · 예상 '+plan.pagesEstimated+
       '페이지 · 각 악기별 페이지를 별도 검수하세요.':

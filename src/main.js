@@ -15,6 +15,7 @@ import { assertMusicXmlRoundTrip } from './studio-v4-xml-roundtrip.js';
 import { stripExternalMusicXmlDoctype } from './studio-v4-safe-xml-prolog.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { normalizeRedundantClefs } from './studio-v4-clef-normalize.js';
+import { applyLayoutCadence, readLayoutCadence } from './studio-v4-layout-cadence.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
 import { mountScoreToolstrip } from './score-toolstrip.js';
 import { mountWorkspaceShell } from './workspace-shell.js';
@@ -399,7 +400,19 @@ async function openScore(raw, filename) {
   let parsed=null,active=null,switched=false;
   try {
     parsed=parseXml(raw);
-    active=normalizeRedundantClefs(parsed).doc;
+    const normalized=normalizeRedundantClefs(parsed).doc;
+    // A freshly opened score starts with four planned bars per system. Files
+    // saved here retain their own selected-line exceptions in MusicXML.
+    const savedCadence=readLayoutCadence(normalized);
+    try{
+      active=applyLayoutCadence(normalized,{barsPerSystem:savedCadence?.barsPerSystem??4,
+        lineOverrides:savedCadence?.lineOverrides??{},replaceExisting:true}).doc;
+    }catch(error){
+      if(savedCadence)throw error;
+      // Complex imports remain accessible even when uniform line planning is
+      // unsupported (for example, parts with different measure counts).
+      active=normalized;
+    }
     v4?.beforeOpen?.();
     if(ticket!==openSequence)return false;
     state.doc=active;
