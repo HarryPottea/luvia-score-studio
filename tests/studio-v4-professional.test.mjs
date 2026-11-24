@@ -8,7 +8,7 @@ import {buildPlaybackTimeline} from '../src/studio-v4-playback.js';
 import {transposeChordChromatically} from '../src/studio-v4-chord-transpose.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from '../src/studio-v4-crossbar.js';
 import {planLayoutCadence,applyLayoutCadence,readLayoutCadence} from '../src/studio-v4-layout-cadence.js';
-import {normalizeRedundantClefs} from '../src/studio-v4-clef-normalize.js';
+import {normalizeRedundantClefs,normalizeRedundantTimeSignatures} from '../src/studio-v4-clef-normalize.js';
 import {changeSingleEmptyMeasureMeter} from '../src/studio-v4-meter-single.js';
 import {
   editVoiceRhythm,createEighthTriplet,toggleSlur,addHairpin,nudgeVoiceNoteOnGrid,relocateVoiceNote,replaceVoiceNoteWithRest,splitVoiceNoteWithTie
@@ -499,6 +499,20 @@ test('engraving: repeated unchanged clef is removed while real changes and sourc
   assert.equal(children(first(bars[0],'attributes'),'clef').length,1);
   assert.equal(first(bars[2],'attributes'),undefined);
   assert.equal(first(first(bars[3],'attributes'),'clef').children[0].textContent,'F');
+});
+test('engraving: repeated 4/4 is removed but a real meter change remains',()=>{
+  const meter=(beats,type)=>E('time',[T('beats',beats),T('beat-type',type)]);
+  const source=new Doc(E('score-partwise',[E('part',[
+    E('measure',[E('attributes',[meter(4,4)])],{number:'1'}),
+    E('measure',[E('attributes',[meter(4,4)])],{number:'2'}),
+    E('measure',[E('attributes',[meter(3,4)])],{number:'3'}),
+  ],{id:'P1'})]));
+  const before=serialize(source),result=normalizeRedundantTimeSignatures(source);
+  assert.equal(result.removed,1);
+  assert.equal(serialize(source),before);
+  const bars=children(part(result.doc),'measure');
+  assert.equal(first(bars[1],'attributes'),undefined);
+  assert.equal(first(first(bars[2],'attributes'),'time').children[0].textContent,'3');
 });
 
 

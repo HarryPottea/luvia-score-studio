@@ -180,8 +180,8 @@ test('protect slurs and ties in copied bars and at deletion seams',()=>{
   const a=fixture();
   first(a.documentElement.children[0].children[2],'note')
     .appendChild(n('notations',{},[n('slur',{type:'start'})]));
-  assert.throws(()=>captureMeasureRange(a,{start:2,end:2}),/종료되지 않은/);
-  assert.throws(()=>deleteMeasureRange(a,{start:3,end:3}),/종료되지 않은/);
+  assert.throws(()=>captureMeasureRange(a,{start:2,end:2}),/선택 구간 밖/);
+  assert.throws(()=>deleteMeasureRange(a,{start:3,end:3}),/선택 구간 밖/);
   assert.equal(rows(a)[0].length,6);
 });
 test('delete four leading rests without rejecting later repeat or pedal marks',()=>{
@@ -201,6 +201,14 @@ test('repeat mark inside deleted bars is still protected',()=>{
   const source=fixture(7);
   rows(source)[0][2].appendChild(n('barline',{},[n('repeat',{direction:'forward'})]));
   assert.throws(()=>deleteMeasureRange(source,{start:0,end:3}),/3마디에 반복·페달/);
+});
+test('malformed tuplet starts later do not veto deletion before them',()=>{
+  const source=fixture(7),row=rows(source)[0];
+  for(const index of [5,6])first(row[index],'note').appendChild(n('notations',{},[
+    n('tuplet',{type:'start',number:'1'})]));
+  const result=deleteMeasureRange(source,{start:0,end:3});
+  assert.equal(rows(result.doc)[0].length,3);
+  assert.throws(()=>deleteMeasureRange(source,{start:6,end:6}),/시작이 중복/);
 });
 test('protect structural meter edits and irregular score measurements',()=>{
   const a=fixture();

@@ -29,3 +29,33 @@ export function normalizeRedundantClefs(source){
   }
   return {doc,removed};
 }
+
+// Logic may restate an unchanged meter at the first bar of a new system.
+// OSMD then shows an unnecessary courtesy 4/4 at the previous system's end.
+// Keep actual meter changes and time-signature appearance directives intact.
+export function normalizeRedundantTimeSignatures(source){
+  if(source?.documentElement?.localName!=='score-partwise')
+    throw new Error('MusicXML partwise 악보만 박자표를 정리할 수 있습니다.');
+  const doc=source.cloneNode(true);
+  let removed=0;
+  for(const part of children(doc.documentElement,'part')){
+    const active=new Map();
+    for(const measure of children(part,'measure')){
+      for(const attrs of children(measure,'attributes')){
+        for(const time of children(attrs,'time')){
+          const lane=time.getAttribute('number')||'1';
+          const next=[...time.children].map(child=>
+            child.localName+':'+child.textContent.trim()).join('|');
+          const prior=active.get(lane);
+          const hasAppearanceSettings=[...time.attributes].some(attr=>
+            attr.name!=='number')||[...time.children].some(child=>
+            !['beats','beat-type'].includes(child.localName)||child.attributes.length);
+          if(prior===next&&!hasAppearanceSettings){attrs.removeChild(time);removed++;}
+          else active.set(lane,next);
+        }
+        if(!attrs.children.length)measure.removeChild(attrs);
+      }
+    }
+  }
+  return {doc,removed};
+}

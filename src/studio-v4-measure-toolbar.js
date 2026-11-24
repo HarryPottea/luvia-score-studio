@@ -256,6 +256,11 @@ export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()
         return;
       }
       if(action==='delete'){
+        const parts=direct(state.doc.documentElement,'part');
+        if(parts.length>1&&state.visible.size===1)
+          throw new Error('지금은 한 파트만 보이지만 마디 삭제는 전체 '+parts.length+
+            '개 파트에 적용됩니다. 보이는 파트만 편집하려면 출력 메뉴에서 '+
+            '‘선택 파트만 편집 시작’을 누르세요.');
         if(!confirm((region.start+1)+(region.start===region.end?'':'–'+(region.end+1))+
           '마디를 모든 파트에서 삭제할까요? 해당 마디의 음표·가사·코드도 삭제됩니다. 실행 취소로 복원할 수 있습니다.'))return;
         const before=state.doc;

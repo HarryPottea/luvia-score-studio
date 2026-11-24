@@ -65,10 +65,11 @@ function consume(open,events){
     }
   }
 }
-function statesForPart(part,affected=()=>false){
+function statesForPart(part,affected,through){
   const bars=all(part,'measure'),open=new Set(),seams=[new Set()];
-  // A malformed sequence in the surrounding score is not safe to move.
-  for(const [index,bar] of bars.entries()){
+  // Only the path to the edited boundary affects whether that boundary is
+  // closed. Unchanged notation after it must not veto an earlier edit.
+  for(const [index,bar] of bars.slice(0,through).entries()){
     // Unchanged measures may contain repeat/pedal marks. They do not make a
     // disjoint deletion unsafe; only marks on the edited measures do.
     if(affected(index)&&hasUnsupported(bar))
@@ -76,13 +77,12 @@ function statesForPart(part,affected=()=>false){
     consume(open,eventsAtMeasure(bar));
     seams.push(new Set(open));
   }
-  if(open.size)reject('종료되지 않은 붙임줄·이음줄·악상 연결이 있는 악보를 보호합니다.');
   return seams;
 }
 export function assertClosedMeasureBoundary(parts,index){
   if(!Number.isSafeInteger(index)||index<0)reject('마디 경계가 잘못되었습니다.');
   for(const part of parts){
-    const seams=statesForPart(part,i=>i===index-1||i===index);
+    const seams=statesForPart(part,i=>i===index-1||i===index,index);
     if(index>=seams.length)reject('마디 경계가 악보 범위 밖입니다.');
     if(seams[index].size)reject('선택 경계에 마디를 가로지르는 붙임줄·이음줄·셈여림이 있습니다.');
   }
@@ -91,7 +91,7 @@ export function assertClosedMeasureRange(parts,start,end){
   if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<start)
     reject('연결 검사를 수행할 마디 범위가 올바르지 않습니다.');
   for(const part of parts){
-    const seams=statesForPart(part,i=>i>=start&&i<=end);
+    const seams=statesForPart(part,i=>i>=start&&i<=end,end+1);
     if(end+1>=seams.length)reject('선택한 마디가 악보 범위 밖입니다.');
     if(seams[start].size||seams[end+1].size)
       reject('선택 구간 밖으로 이어지는 붙임줄·이음줄·셈여림이 있습니다.');
