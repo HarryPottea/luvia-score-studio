@@ -65,11 +65,14 @@ function consume(open,events){
     }
   }
 }
-function statesForPart(part){
+function statesForPart(part,affected=()=>false){
   const bars=all(part,'measure'),open=new Set(),seams=[new Set()];
   // A malformed sequence in the surrounding score is not safe to move.
-  for(const bar of bars){
-    if(hasUnsupported(bar))reject('반복·페달·기타 고급 연결 표기는 이 마디 편집에서 보호됩니다.');
+  for(const [index,bar] of bars.entries()){
+    // Unchanged measures may contain repeat/pedal marks. They do not make a
+    // disjoint deletion unsafe; only marks on the edited measures do.
+    if(affected(index)&&hasUnsupported(bar))
+      reject((index+1)+'마디에 반복·페달·기타 고급 연결 표기가 있어 삭제를 보호합니다.');
     consume(open,eventsAtMeasure(bar));
     seams.push(new Set(open));
   }
@@ -79,7 +82,7 @@ function statesForPart(part){
 export function assertClosedMeasureBoundary(parts,index){
   if(!Number.isSafeInteger(index)||index<0)reject('마디 경계가 잘못되었습니다.');
   for(const part of parts){
-    const seams=statesForPart(part);
+    const seams=statesForPart(part,i=>i===index-1||i===index);
     if(index>=seams.length)reject('마디 경계가 악보 범위 밖입니다.');
     if(seams[index].size)reject('선택 경계에 마디를 가로지르는 붙임줄·이음줄·셈여림이 있습니다.');
   }
@@ -88,7 +91,7 @@ export function assertClosedMeasureRange(parts,start,end){
   if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<start)
     reject('연결 검사를 수행할 마디 범위가 올바르지 않습니다.');
   for(const part of parts){
-    const seams=statesForPart(part);
+    const seams=statesForPart(part,i=>i>=start&&i<=end);
     if(end+1>=seams.length)reject('선택한 마디가 악보 범위 밖입니다.');
     if(seams[start].size||seams[end+1].size)
       reject('선택 구간 밖으로 이어지는 붙임줄·이음줄·셈여림이 있습니다.');

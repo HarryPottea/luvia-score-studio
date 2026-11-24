@@ -184,6 +184,24 @@ test('protect slurs and ties in copied bars and at deletion seams',()=>{
   assert.throws(()=>deleteMeasureRange(a,{start:3,end:3}),/종료되지 않은/);
   assert.equal(rows(a)[0].length,6);
 });
+test('delete four leading rests without rejecting later repeat or pedal marks',()=>{
+  const source=fixture(7);
+  for(const row of rows(source)){
+    row[6].appendChild(n('barline',{location:'right'},[
+      n('repeat',{direction:'backward'})]));
+    row[5].appendChild(n('direction',{},[n('direction-type',{},[
+      n('pedal',{type:'start'})])]));
+  }
+  const result=deleteMeasureRange(source,{start:0,end:3});
+  assert.equal(rows(result.doc)[0].length,3);
+  assert.equal(first(rows(result.doc)[0][2],'barline')?.localName,'barline');
+  assert.equal(first(rows(source)[0][6],'barline')?.localName,'barline');
+});
+test('repeat mark inside deleted bars is still protected',()=>{
+  const source=fixture(7);
+  rows(source)[0][2].appendChild(n('barline',{},[n('repeat',{direction:'forward'})]));
+  assert.throws(()=>deleteMeasureRange(source,{start:0,end:3}),/3마디에 반복·페달/);
+});
 test('protect structural meter edits and irregular score measurements',()=>{
   const a=fixture();
   rows(a)[0][2].insertBefore(n('attributes',{},[n('time',{},[leaf('beats',3)])]),
