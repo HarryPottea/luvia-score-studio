@@ -323,7 +323,7 @@ const chordPanel=[
   '</section>',
 ].join('');
 
-export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
+export function mountStudioV4({state,v3,openScore,setMessage,renderScore,beginCheckedPartEdit}){
   const $=id=>document.getElementById(id);
   document.querySelector('.settings-action').insertAdjacentHTML('afterend',intro);
   $('editor-controls').insertAdjacentHTML('beforeend',panel);
@@ -896,7 +896,7 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     if(symbolDrag.element)symbolDrag.element.style.translate='';
     symbolDrag=null;
   });
-  measureToolbar=mountMeasureToolbar({state,v3,commit,setMessage,
+  measureToolbar=mountMeasureToolbar({state,v3,commit,setMessage,beginCheckedPartEdit,
     onRangeChange:()=>{if(measureToolbar)syncMeasureDelete();}});
   const inlineLyrics=mountInlineLyricEditor({
     state,v3,commit,setMessage,lyricVerseInput:$('v4-lyric-verse'),

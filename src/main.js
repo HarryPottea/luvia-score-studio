@@ -55,9 +55,9 @@ app.innerHTML = `
             <div class="settings-action"><button id="toggle-settings" type="button" aria-expanded="false" aria-controls="editor-controls" disabled>세부 설정 열기 <span aria-hidden="true">＋</span></button><p id="settings-action-hint" class="control-hint">새 악보를 만들거나 파일을 열면 세부 설정을 사용할 수 있습니다.</p></div>
             <div id="editor-controls" class="editor-controls" hidden>
               <div class="control-group"><div class="control-heading"><span>곡 정보</span><span>01</span></div><label for="score-title">곡 제목</label><input id="score-title" type="text" maxlength="120" placeholder="곡 제목" /><label for="score-composer">작곡가</label><input id="score-composer" type="text" maxlength="120" placeholder="작곡가" /></div>
-              <div class="control-group"><div class="control-heading"><span>파트 표시·이름</span><span>02</span></div><p class="control-hint">체크박스는 현재 미리보기와 상단 인쇄에만 적용됩니다. 전체 MusicXML·파트별 저장에서는 모든 파트가 유지됩니다.</p><div id="parts-list" class="parts-list"></div></div>
+              <div class="control-group"><div class="control-heading"><span>파트 표시·이름</span><span>02</span></div><p class="control-hint">체크한 파트만 미리보기·인쇄에 표시됩니다. 마디 작업을 시작하면 체크한 파트만 편집하도록 자동 전환됩니다. 전환 전 전체 MusicXML 저장에는 모든 파트가 유지됩니다.</p><div id="parts-list" class="parts-list"></div></div>
               <div class="control-group"><div class="control-heading"><span>악보 보기·용지</span><span>03</span></div><label for="page-orientation">용지 방향</label><select id="page-orientation"><option value="A4_P">A4 세로</option><option value="A4_L">A4 가로</option></select><p id="a4-size-info" class="control-hint" aria-live="polite">A4 자동 조판 · 오선 크기는 악보 구성에 맞춰 고정됩니다.</p><label class="check-row"><input id="measure-numbers" type="checkbox" checked /> 마디 번호 표시</label></div>
-            <div class="control-group"><div class="control-heading"><span>파트별 보기·저장</span><span>04</span></div><p class="control-hint">파트만 보는 것과 단독 편집은 다릅니다. 선택 파트를 별도 작업본으로 바로 열어 편집할 수 있습니다.</p><label for="export-part">파트 선택</label><select id="export-part" aria-label="내보낼 파트 선택"></select><div class="part-tools"><button id="view-part" type="button">선택 파트 보기</button><button id="view-all-parts" type="button">전체 파트 보기</button><button id="edit-part" type="button">선택 파트만 편집 시작</button><button id="return-full-score" type="button" hidden>원래 전체 악보로 돌아가기</button></div><button class="part-export-button" id="download-part-xml" type="button">선택 파트 MusicXML 저장</button><button class="part-export-button part-export-batch" id="download-all-parts-zip" type="button">전체 파트 MusicXML ZIP 저장</button><p class="control-hint">단독 편집본에서는 다른 파트가 제외되지만 원래 전체 악보는 이 탭의 메모리에 보관됩니다. 탭을 닫기 전에는 MusicXML로 저장하세요. MusicXML ZIP은 모든 파트를 각각 저장합니다.</p></div>
+            <div class="control-group"><div class="control-heading"><span>파트별 보기·저장</span><span>04</span></div><p class="control-hint">현재 체크한 파트에서 마디 작업을 바로 시작할 수 있습니다. ‘파트 선택’은 보기·개별 저장에만 쓰입니다.</p><label for="export-part">보기·저장할 파트 선택</label><select id="export-part" aria-label="보기·내보낼 파트 선택"></select><div class="part-tools"><button id="view-part" type="button">선택 파트 보기</button><button id="view-all-parts" type="button">전체 파트 보기</button><button id="edit-part" type="button">체크한 파트만 편집 시작</button><button id="return-full-score" type="button" hidden>원래 전체 악보로 돌아가기</button></div><button class="part-export-button" id="download-part-xml" type="button">선택 파트 MusicXML 저장</button><button class="part-export-button part-export-batch" id="download-all-parts-zip" type="button">전체 파트 MusicXML ZIP 저장</button><p class="control-hint">마디 작업 시 체크하지 않은 파트는 제외되며, 원래 전체 악보는 이 탭의 메모리에 보관됩니다. 편집본을 유지하려면 MusicXML로 저장하세요.</p></div>
               <div class="control-group"><div class="control-heading"><span>리듬·쉼표 검사</span><span>05</span></div><p class="control-hint">복잡한 리듬은 표시만 합니다. 2/4·3/4·4/4 단일 성부에서 박자 경계가 맞는 연속 쉼표만 병합합니다.</p><div id="rhythm-report" class="rhythm-report" aria-live="polite">악보를 불러오면 검사 결과가 표시됩니다.</div><div class="rhythm-actions"><button id="check-rhythm" type="button">다시 검사</button><button id="apply-rhythm" type="button" disabled>안전한 쉼표 정리 적용</button><button id="undo-rhythm" type="button" disabled>정리 되돌리기</button></div><p class="control-hint">적용 전 원본 파일을 보존하세요. 변경 후에도 악보 표시와 연주 흐름을 검수해 주세요.</p></div>
             </div>
             <div class="privacy-note"><span aria-hidden="true">●</span> 곡 파일은 서버로 전송하지 않습니다.</div>
@@ -139,7 +139,7 @@ function scoreMeasureSummary(){
 }
 function setMessage(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
 function syncPartEditButtons(){
-  $('edit-part').disabled=!state.doc||scoreParts().length<2||!!parentScore||partSwitchBusy;
+  $('edit-part').disabled=!state.doc||scoreParts().length<2||state.visible.size>=scoreParts().length||!!parentScore||partSwitchBusy;
   $('return-full-score').hidden=!parentScore;
   $('return-full-score').disabled=partSwitchBusy;
 }
@@ -227,6 +227,7 @@ function renderPartInputs() {
         state.visible.add(part.id);toggle.checked=true;
         setMessage('미리보기에는 최소 한 개의 파트가 필요합니다.');return;
       }
+      syncPartEditButtons();
       requestPreviewUpdate();
     });
     const name = document.createElement('input'); name.type = 'text'; name.maxLength = 80; name.value = part.name; name.setAttribute('aria-label', `${i + 1}번 파트 이름`);
@@ -566,27 +567,31 @@ $('view-part').addEventListener('click', () => {
   if (!state.doc || !$('export-part').value) return;
   state.visible = new Set([$('export-part').value]);
   syncPartVisibilityInputs();
+  syncPartEditButtons();
   requestPreviewUpdate();
-  if(scoreParts().length>1)setMessage('선택 파트만 표시합니다. 마디 삭제를 이 파트에만 적용하려면 '+
-    '출력 메뉴의 ‘선택 파트만 편집 시작’을 누르세요.');
+  if(scoreParts().length>1)setMessage('선택 파트만 표시합니다. 이 상태에서 마디 작업을 하면 보이는 파트만 편집 대상으로 자동 전환됩니다.');
 });
-$('edit-part').addEventListener('click',async()=>{
-  if(!state.doc||parentScore||partSwitchBusy)return;
-  const id=$('export-part').value,part=scoreParts().find(item=>item.id===id);
-  if(!part||scoreParts().length<2){setMessage('단독 편집할 파트를 선택해 주세요.',true);return;}
+async function beginCheckedPartEdit(){
+  if(!state.doc||parentScore||partSwitchBusy)return false;
+  const selected=scoreParts().filter(part=>state.visible.has(part.id));
+  if(!selected.length||selected.length===scoreParts().length){
+    setMessage('편집할 파트만 체크하고 다른 파트의 체크를 해제해 주세요.',true);return false;
+  }
   const parent={xml:serializeXmlDocument(state.doc),filename:state.filename,
     originalDoc:state.originalDoc?.cloneNode(true)||null,editor:v3.captureState()};
-  const standalone=serializeXmlDocument(filteredDocument(new Set([id])));
-  const filename=baseScoreName(state.filename)+'-'+safeFileName(part.name)+'-편집.musicxml';
+  const standalone=serializeXmlDocument(filteredDocument(new Set(selected.map(part=>part.id))));
+  const filename=baseScoreName(state.filename)+'-'+(selected.length===1?safeFileName(selected[0].name):selected.length+'개파트')+'-편집.musicxml';
   partSwitchBusy=true;syncPartEditButtons();
   try{
     const loaded=await openScore(standalone,filename,{keepParent:true});
-    if(!loaded)return;
+    if(!loaded)return false;
     parentScore=parent;
-    setMessage(part.name+' 단독 편집본을 열었습니다. 원래 전체 악보는 이 탭에 보관되며, '+
-      '마디 편집은 이제 이 파트에만 적용됩니다. 작업 후 MusicXML로 저장해 주세요.');
+    setMessage(selected.map(part=>part.name).join('·')+' 파트를 바로 편집 중입니다. 원래 전체 악보는 이 탭에 보관되며, '+
+      '마디 편집은 이제 체크한 파트에만 적용됩니다. 작업 후 MusicXML로 저장해 주세요.');
+    return true;
   }finally{partSwitchBusy=false;syncPartEditButtons();}
-});
+}
+$('edit-part').addEventListener('click',()=>void beginCheckedPartEdit());
 $('return-full-score').addEventListener('click',async()=>{
   if(!parentScore||partSwitchBusy)return;
   if(!confirm('단독 편집본을 MusicXML로 저장하셨나요? 전체 악보로 돌아가면 이 편집본은 화면에서 닫힙니다.'))return;
@@ -605,6 +610,7 @@ $('view-all-parts').addEventListener('click', () => {
   if (!state.doc) return;
   state.visible = new Set(scoreParts().map(part => part.id));
   syncPartVisibilityInputs();
+  syncPartEditButtons();
   requestPreviewUpdate();
 });
 function serializeXmlDocument(doc) {
@@ -697,7 +703,7 @@ function updateSelectionBadge(){
     (position.eventIndex+1)+'번 '+([...note.children].some(e=>e.localName==='rest')?'쉼표':'음표');
 }
 v3.onSelectionChange(() => {advanced.refresh();v4?.onSelectionChange?.();updateSelectionBadge();});
-v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore });
+v4 = mountStudioV4({ state, v3, openScore, setMessage, renderScore, beginCheckedPartEdit });
 mountStickyPreview();
 mountSettingsAccordions();
 mountScoreToolstrip();

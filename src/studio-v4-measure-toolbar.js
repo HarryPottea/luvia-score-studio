@@ -7,7 +7,7 @@ import {editArticulationForVoice} from './studio-v4-articulation-batch.js';
 import './studio-v4-measure-toolbar.css';
 
 const direct=(n,tag)=>n?[...n.children].filter(c=>c.localName===tag):[];
-export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()=>{}}){
+export function mountMeasureToolbar({state,v3,commit,setMessage,beginCheckedPartEdit,onRangeChange=()=>{}}){
   const host=document.createElement('section');
   host.className='jwoo-measure-toolbar';
   host.tabIndex=0;
@@ -45,7 +45,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()
     '<button type="button" data-act="articulation">선택 마디의 성부 표현 기호 일괄 편집</button>',
     '</div>',
     '<p class="jwoo-bar-hint">마디 번호를 누르거나 악보 음표를 클릭해 선택하세요. Shift+클릭은 여러 마디 선택,',
-    ' 모바일에서는 시작·끝 번호로 범위를 지정합니다. 모든 파트에 동일하게 적용되며 실행 취소할 수 있습니다.',
+    ' 모바일에서는 시작·끝 번호로 범위를 지정합니다. 체크한 파트만 보일 때 마디 작업은 해당 파트 편집본으로 자동 전환되며 실행 취소할 수 있습니다.',
     ' 선택 바 안에서는 Ctrl/⌘+C 복사 · Ctrl/⌘+V 붙여넣기 · Ctrl/⌘+D 복제 · Delete 삭제를 사용할 수 있습니다.',
     ' 연결 기호나 조표·박자표 변경이 위험하면 편집을 차단합니다. 한 성부를 선택하면 다른 성부 음표·박자·가사를 보존하며, 코드 기호가 있는 마디와 연결 범위 밖으로 이어지는 붙임줄은 차단합니다.</p>',
   ].join('');
@@ -179,6 +179,10 @@ export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()
   async function execute(action){
     try{
       const region=scope();
+      if(['copy','paste','duplicate','insert','delete'].includes(action)&&
+        state.visible.size<direct(state.doc.documentElement,'part').length){
+        if(!await beginCheckedPartEdit())return;
+      }
       if(action==='respell'){
         const activePart=$('v3-part')?.value,
           voice=$('jwoo-transpose-voice').value,
@@ -256,13 +260,8 @@ export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()
         return;
       }
       if(action==='delete'){
-        const parts=direct(state.doc.documentElement,'part');
-        if(parts.length>1&&state.visible.size===1)
-          throw new Error('지금은 한 파트만 보이지만 마디 삭제는 전체 '+parts.length+
-            '개 파트에 적용됩니다. 보이는 파트만 편집하려면 출력 메뉴에서 '+
-            '‘선택 파트만 편집 시작’을 누르세요.');
         if(!confirm((region.start+1)+(region.start===region.end?'':'–'+(region.end+1))+
-          '마디를 모든 파트에서 삭제할까요? 해당 마디의 음표·가사·코드도 삭제됩니다. 실행 취소로 복원할 수 있습니다.'))return;
+          '마디를 현재 악보의 파트에서 삭제할까요? 해당 마디의 음표·가사·코드도 삭제됩니다. 실행 취소로 복원할 수 있습니다.'))return;
         const before=state.doc;
         await commit(doc=>deleteMeasureRange(doc,region),'선택한 마디 범위 삭제');
         if(before!==state.doc){end=start;anchor=start;render();}
