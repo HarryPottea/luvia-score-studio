@@ -1,0 +1,31 @@
+name: J-WOO macOS vocal engine preview
+on:
+  pull_request:
+    branches: [main]
+    paths: ['vocal-engine/**','src/vocal-core.js','.github/workflows/vocal-macos.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - run: node --check vocal-engine/server.mjs && node --check vocal-engine/macos/setup.mjs && node --test tests/vocal-core.test.mjs
+      - run: bash vocal-engine/macos/build-preview.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jwoo-vocal-preview-${{ matrix.os }}
+          path: artifacts/vocal-mac/
+          if-no-files-found: error
