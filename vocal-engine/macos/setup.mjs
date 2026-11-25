@@ -7,7 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {pipeline} from 'node:stream/promises';
 import {Readable,Transform} from 'node:stream';
 const src=process.argv[2],home=homedir(),root=path.join(home,'Library/Application Support/J-WOO Vocal Engine'),data=path.join(root,'Data');
-const origin='https://harrypottea.github.io',site=origin+'/luvia-score-studio/';
+const origin='https://j-woo.production-cew.com',site=origin+'/';
 if(platform()!=='darwin'||!['arm64','x64'].includes(arch())||!src)throw Error('지원하지 않는 시스템');
 if(totalmem()<4*1024**3)throw Error('메모리 4GB 미만은 지원하지 않습니다.');
 let nativeArm=false;try{nativeArm=execFileSync('/usr/sbin/sysctl',['-n','hw.optional.arm64'],{encoding:'utf8'}).trim()==='1';}catch{}
