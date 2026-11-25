@@ -7,7 +7,7 @@ import {execFileSync,spawn} from 'node:child_process';
 import {pipeline} from 'node:stream/promises';
 import {Readable,Transform} from 'node:stream';
 const src=process.argv[2],root=path.join(process.env.LOCALAPPDATA||'', 'J-WOO Vocal Engine');
-const origin='https://harrypottea.github.io',site=origin+'/luvia-score-studio/';
+const origin='https://j-woo.production-cew.com',site=origin+'/';
 if(platform()!=='win32'||arch()!=='x64'||!src||!process.env.LOCALAPPDATA||!process.env.APPDATA||Number(release().split('.')[0])<10)throw Error('Windows 10/11 x64 필요');
 if(totalmem()<4*1024**3)throw Error('메모리 4GB 이상 필요');
 await mkdir(root,{recursive:true});const f=await statfs(root);if(f.bavail*f.bsize<8*1024**3)throw Error('8GB 여유 공간 필요');

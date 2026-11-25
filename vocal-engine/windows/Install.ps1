@@ -7,5 +7,5 @@ $yes=[System.Windows.Forms.MessageBox]::Show('Confirm you have read and accept t
 if($yes -ne 'Yes'){exit}
 & "$PSScriptRoot\runtime\node.exe" "$PSScriptRoot\setup.mjs" "$PSScriptRoot"
 if($LASTEXITCODE -ne 0){throw 'Installation failed'}
-Start-Process 'https://harrypottea.github.io/luvia-score-studio/'
+Start-Process 'https://j-woo.production-cew.com/'
 [System.Windows.Forms.MessageBox]::Show('Installed. Approve the connection in Vocal Studio. To register a licensed male Korean voice, run Add-Voice.cmd.', 'J-WOO') | Out-Null
