@@ -243,7 +243,7 @@ test('graphical binding requires exact score and live SVG notehead correspondenc
   const targets=Array.from({length:4},()=>({isConnected:true,addEventListener(){},classList:{add(){},toggle(){}},setAttribute(){}}));
   const graphical=targets.map((element,index)=>({
     sourceNote:{
-      isRest:()=>false,Pitch:{ToStringShort:(offset=0)=>'C'+String(1+offset)},Length:{RealValue:.25},
+      isRest:()=>false,Pitch:{FundamentalNote:0,Octave:1,AccidentalHalfTones:0},Length:{RealValue:.25},
       ParentVoiceEntry:{Timestamp:{RealValue:index*.25}},
     },
     getNoteheadSVGs:()=>[element],

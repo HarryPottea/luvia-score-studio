@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sourcePitch,matchScoreEvents} from '../src/score-hit.js';
-import {renderedLineRanges,planRenderedLineEdit} from '../src/studio-v4-layout-cadence.js';
+import {renderedLineRanges,planRenderedLineEdit,renderWithCadenceRepair} from '../src/studio-v4-layout-cadence.js';
 import {applyLayoutPreset} from '../src/layout-profile.js';
 test('numeric OSMD pitch binds natural, sharp, flat, double accidentals without glyph text',()=>{
   for(const [fundamental,step,alter] of [[5,'F',1],[11,'B',-1],[0,'C',0],[2,'D',2],[4,'E',-2]]){
@@ -41,4 +41,22 @@ test('lyric spacing is applied in engraving units without accumulating',()=>{
   const osmd={EngravingRules:{LyricsYOffsetToStaffHeight:0}};
   applyLayoutPreset(osmd,'standard',null);applyLayoutPreset(osmd,'standard',null);
   assert.equal(osmd.EngravingRules.LyricsYOffsetToStaffHeight,0.8);
+});
+
+test('width-generated middle singleton repair removes only redundant cadence break',()=>{
+  const score=doc(10);
+  const cadenceField={localName:'miscellaneous-field',children:[],getAttribute:()=> 'jwoo-system-cadence-v1',textContent:'{"version":1,"barsPerSystem":4,"lineOverrides":{}}'};
+  score.documentElement.children.unshift({localName:'identification',children:[{localName:'miscellaneous',children:[cadenceField]}]});
+  const sources=Array.from({length:10},(_,i)=>({printNewSystemXml:i===4||i===8,printNewPageXml:false}));
+  const osmd={GraphicSheet:{},render(){
+    const counts=sources[4].printNewSystemXml?[3,1,4,2]:[3,4,1,2];
+    // Renderer can fit the 4th bar together with the following three, leaving
+    // the next two bars together after respecting the remaining break.
+    const effective=sources[4].printNewSystemXml?counts:[3,3,2,2];
+    let i=0;this.GraphicSheet.MeasureList=effective.flatMap(n=>{const system={};return Array.from({length:n},()=>[{ParentStaffLine:{ParentMusicSystem:system},parentSourceMeasure:sources[i++]}]);});
+  }};
+  renderWithCadenceRepair(osmd,score);
+  assert.equal(sources[4].printNewSystemXml,false);
+  assert.equal(sources[8].printNewSystemXml,true);
+  assert.deepEqual(renderedLineRanges(osmd,10).map(r=>r.bars),[3,3,2,2]);
 });
