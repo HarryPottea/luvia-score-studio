@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {readFile} from 'node:fs/promises';
+import {readFile,mkdir} from 'node:fs/promises';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {chromium} from 'playwright';
-const url='http://127.0.0.1:4190/';
-const server=spawn('node',['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port','4190','--strictPort'],{stdio:'ignore'});
+const url='http://127.0.0.1:4173/';
+const server=spawn('node',['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port','4173','--strictPort'],{stdio:'inherit'});
 let browser;
 try{
   let ready=false;
   for(let i=0;i<80;i++){try{if((await fetch(url)).ok){ready=true;break;}}catch{}await sleep(250);}
-  assert.ok(ready);
+  assert.ok(ready,'Vite preview must be available');
   browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   const page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
   await page.goto(url);
@@ -17,6 +17,10 @@ try{
   await page.click('#v4-new');
   await page.locator('#score-container svg').first().waitFor();
   await page.locator('[data-studio-menu="layout"]').click();
+  assert.equal(await page.locator('.studio-navigator').isVisible(),true);
+  const geometry=await page.evaluate(()=>{const r=s=>document.querySelector(s).getBoundingClientRect();return {workspaceLeft:r('.workspace').left,workspaceWidth:r('.workspace').width,viewport:innerWidth,navRight:r('.studio-navigator').right,scoreLeft:r('.preview-column').left,scoreRight:r('.preview-column').right,inspectorLeft:r('.controls').left,toolbar:getComputedStyle(document.querySelector('.studio-tool-rail')).backgroundColor};});
+  assert.equal(geometry.workspaceLeft,0);assert.equal(geometry.workspaceWidth,geometry.viewport);assert.ok(geometry.navRight<=geometry.scoreLeft+1);assert.ok(geometry.scoreRight<=geometry.inspectorLeft+1);assert.equal(geometry.toolbar,'rgb(246, 246, 235)');
+  assert.ok(await page.locator('.studio-page').count()>0);
   await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
   const input=page.locator('#jwoo-rehearsal-label');
   const mark=text=>page.locator('#score-container svg text').filter({hasText:new RegExp('^'+text+'$')});
@@ -33,5 +37,12 @@ try{
   assert.match(xml,/<rehearsal[^>]*>CHORUS<\/rehearsal>/);
   await page.click('#jwoo-rehearsal-remove');
   await page.waitForFunction(()=>!Array.from(document.querySelectorAll('#score-container svg text')).some(n=>n.textContent==='CHORUS'));
+  await mkdir('artifacts/browser-smoke',{recursive:true});
+  await page.screenshot({path:'artifacts/browser-smoke/editorial-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  const mobile=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,nav:getComputedStyle(document.querySelector('.studio-navigator')).display}));
+  assert.equal(mobile.nav,'none');assert.ok(mobile.scroll<=mobile.width+1,JSON.stringify(mobile));
+  await page.screenshot({path:'artifacts/browser-smoke/editorial-mobile.png',fullPage:true});
+  console.log('EDITORIAL_LAYOUT_PASS: full-width, docked panels, ivory toolbar, mobile');
   console.log('REHEARSAL_BROWSER_PASS: insert, render, replace, MusicXML export, remove');
 }finally{await browser?.close();server.kill('SIGTERM');}
