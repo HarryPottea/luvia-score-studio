@@ -68,6 +68,18 @@ export function mountWorkspaceShell(){
   const canvas=document.getElementById('preview-shell'),score=document.getElementById('score-container');
   const partList=document.getElementById('parts-list');
   const navParts=left.querySelector('.studio-part-list'),navPages=left.querySelector('.studio-pages');
+  const pageNodes=()=>[...score.querySelectorAll('svg')].filter(svg=>!svg.parentElement?.closest('svg'));
+  function pageOffset(page){
+    return canvas.scrollTop+page.getBoundingClientRect().top-canvas.getBoundingClientRect().top-canvas.clientTop;
+  }
+  function goToPage(index){
+    const page=pageNodes()[index];
+    if(!page)return;
+    const padding=parseFloat(getComputedStyle(canvas).paddingTop)||0;
+    const target=Math.max(0,Math.min(pageOffset(page)-padding,canvas.scrollHeight-canvas.clientHeight));
+    canvas.scrollTop=target;
+    updatePage(index);
+  }
   function syncNavigator(){
     navParts.replaceChildren();
     for(const row of partList.querySelectorAll('.part-row')){
@@ -81,7 +93,7 @@ export function mountWorkspaceShell(){
       item.addEventListener('click',()=>{check.click();syncNavigator();});
       navParts.append(item);
     }
-    const pages=[...score.querySelectorAll('svg')].filter(svg=>!svg.parentElement?.closest('svg'));
+    const pages=pageNodes();
     navPages.replaceChildren();
     pages.forEach((page,i)=>{
       const button=document.createElement('button');button.type='button';button.className='studio-page';
@@ -89,7 +101,7 @@ export function mountWorkspaceShell(){
       const thumbnail=document.createElement('span');thumbnail.className='studio-page-paper';thumbnail.setAttribute('aria-hidden','true');
       const number=document.createElement('span');number.textContent=String(i+1);
       button.append(thumbnail,number);
-      button.addEventListener('click',()=>{canvas.scrollTo({top:canvas.scrollTop+page.getBoundingClientRect().top-canvas.getBoundingClientRect().top-10,behavior:'auto'});updatePage();});
+      button.addEventListener('click',()=>goToPage(i));
       navPages.append(button);
     });
     left.querySelector('.studio-page-count').textContent=String(pages.length);
@@ -98,19 +110,26 @@ export function mountWorkspaceShell(){
     status.querySelector('.studio-paper-status').textContent=document.getElementById('page-orientation').value==='A4_L'?'A4 가로':'A4 세로';
     updatePage();
   }
-  function updatePage(){
-    const pages=[...score.querySelectorAll('svg')].filter(svg=>!svg.parentElement?.closest('svg'));
-    const top=canvas.getBoundingClientRect().top+12;
+  function updatePage(requested){
+    const pages=pageNodes();
+    const padding=parseFloat(getComputedStyle(canvas).paddingTop)||0;
+    const top=canvas.getBoundingClientRect().top+canvas.clientTop+padding+3;
     let index=0;
     for(let i=0;i<pages.length;i++)if(pages[i].getBoundingClientRect().top<=top)index=i;
+    const limit=canvas.scrollHeight-canvas.clientHeight;
+    if(limit>1&&canvas.scrollTop>=limit-2)index=Math.max(0,pages.length-1);
+    if(Number.isInteger(requested)&&limit<=1)index=requested;
     status.querySelector('.studio-page-status').textContent=pages.length?(index+1)+' / '+pages.length:'0 / 0';
     for(const button of navPages.children){
       if(Number(button.dataset.page)===index)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
     }
   }
-  canvas.addEventListener('scroll',updatePage,{passive:true});
+  canvas.addEventListener('scroll',()=>updatePage(),{passive:true});
+  window.addEventListener('resize',()=>requestAnimationFrame(()=>updatePage()),{passive:true});
+  if(typeof ResizeObserver==='function')new ResizeObserver(()=>updatePage()).observe(canvas);
   status.querySelector('.studio-fit').addEventListener('click',()=>navPages.querySelector('[aria-current=page]')?.click());
   document.addEventListener('jwoo:score-updated',syncNavigator);
+  new MutationObserver(syncNavigator).observe(score,{attributes:true,attributeFilter:['data-render-revision']});
   new MutationObserver(syncNavigator).observe(partList,{childList:true});
   left.querySelector('[data-nav=score]').addEventListener('click',()=>{active='score';workspace.classList.add('studio-panel-open');if(editor.hidden)document.getElementById('toggle-settings')?.click();render();});
 

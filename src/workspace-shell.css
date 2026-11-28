@@ -114,3 +114,36 @@
   .workspace,.work-grid,.preview-column{display:block!important;height:auto!important;min-height:0!important;background:#fff!important;box-shadow:none!important;border:0!important;margin:0!important;padding:0!important}
   .preview-shell{max-height:none!important;min-height:0!important;overflow:visible!important;background:#fff!important;padding:0!important}
 }
+
+/* Viewport-owned application shell: never let an A4 page size its grid row.
+   Screen only; print must retain natural page flow. */
+@media screen{
+  html,body,#app{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+  .site-shell{height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .site-shell>.topbar,.site-shell>.site-footer{flex:0 0 auto}
+  .site-shell>main{flex:1 1 0;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .site-shell .workspace{flex:1 1 0;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .workspace>.studio-tool-rail{flex:0 0 auto}
+  .workspace>.work-grid,.workspace.studio-panel-open>.work-grid{flex:1 1 0;height:auto;min-height:0;min-width:0;overflow:hidden}
+  .work-grid>.preview-column,.workspace.studio-panel-open .work-grid>.preview-column{
+    align-self:stretch;height:100%;min-height:0;max-height:100%;min-width:0;overflow:hidden;
+  }
+  .work-grid>.preview-column>.preview-toolbar,.work-grid>.preview-column>.message{flex:0 0 auto}
+  .work-grid>.preview-column>#preview-shell{
+    flex:1 1 0;min-height:0;min-width:0;max-height:none;overflow:auto;
+    overscroll-behavior:contain;scroll-behavior:auto;scrollbar-gutter:stable;
+    -webkit-overflow-scrolling:touch;
+  }
+  .work-grid>.preview-column>#preview-shell>.score-container{flex:none;overflow:visible;min-height:0}
+  .studio-navigator,.work-grid>.controls{overscroll-behavior:contain;min-height:0;max-height:100%}
+  .studio-page{min-width:0;cursor:pointer}
+}
+@media screen and (max-width:760px){
+  .workspace>.work-grid,.workspace.studio-panel-open>.work-grid{display:flex;flex-direction:column}
+  .work-grid>.preview-column,.workspace.studio-panel-open .work-grid>.preview-column{
+    flex:1 1 0;height:auto;min-height:0;max-height:none;width:100%;
+  }
+  .workspace.studio-panel-open .work-grid>.controls{flex:0 1 42%;max-height:42%;min-height:0;overflow:auto}
+  .site-shell:not(.has-active-score) .workspace.studio-panel-open .work-grid>.controls{flex:1 1 0;max-height:none}
+  .work-grid>.preview-column>#preview-shell{padding:12px 4px;min-height:0;max-height:none}
+}
