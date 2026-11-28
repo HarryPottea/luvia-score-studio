@@ -65,9 +65,10 @@ try{
   const closed=await geometry();assert.ok(closed.scrollHeight>closed.height+100);assert.equal(closed.body,0);
   await buttons.nth(1).click();await page.waitForFunction(()=>document.querySelector('.studio-page[data-page="1"]')?.getAttribute('aria-current')==='page');
   const previousRevision=await page.locator('#score-container').getAttribute('data-render-revision');
-  await page.locator('[data-studio-menu="layout"]').click();
-  await page.locator('[data-inspector-page="paper"]').click();
-  await page.locator('#page-orientation').selectOption('A4_L');
+  await page.locator('[data-studio-menu="score"]').click();
+  const paper=page.locator('#page-orientation');
+  if(!await paper.isVisible())await page.locator('.control-group').filter({has:paper}).locator('.control-heading .jwoo-fold-toggle').click();
+  await paper.selectOption('A4_L');
   await page.waitForFunction(rev=>document.querySelector('#score-container')?.dataset.renderRevision!==rev&&document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false',previousRevision);
   const refreshed=await thumbnails();
   assert.ok(refreshed.length>0&&refreshed.every(t=>t.width>t.height&&t.ink>50&&!initialThumbs.some(old=>old.url===t.url)),JSON.stringify(refreshed));

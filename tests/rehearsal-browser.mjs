@@ -21,6 +21,21 @@ try{
   const geometry=await page.evaluate(()=>{const r=s=>document.querySelector(s).getBoundingClientRect();return {workspaceLeft:r('.workspace').left,workspaceWidth:r('.workspace').width,viewport:innerWidth,navRight:r('.studio-navigator').right,scoreLeft:r('.preview-column').left,scoreRight:r('.preview-column').right,inspectorLeft:r('.controls').left,toolbar:getComputedStyle(document.querySelector('.studio-tool-rail')).backgroundColor};});
   assert.equal(geometry.workspaceLeft,0);assert.equal(geometry.workspaceWidth,geometry.viewport);assert.ok(geometry.navRight<=geometry.scoreLeft+1);assert.ok(geometry.scoreRight<=geometry.inspectorLeft+1);assert.equal(geometry.toolbar,'rgb(246, 246, 235)');
   assert.ok(await page.locator('.studio-page').count()>0);
+  const headerGeometry=()=>page.locator('.v4-editor > .control-heading').evaluate(h=>{
+    const title=h.querySelector('span:first-child'),toggle=h.querySelector('.jwoo-fold-toggle');
+    const range=document.createRange();range.selectNodeContents(title);
+    const textRects=[...range.getClientRects()].filter(r=>r.width>0);
+    const tr=title.getBoundingClientRect(),br=toggle.getBoundingClientRect();
+    return {lines:textRects.length,titleRight:tr.right,toggleLeft:br.left,buttonWidth:br.width,headerWidth:h.clientWidth};
+  });
+  for(const width of [1440,1000]){
+    await page.setViewportSize({width,height:900});
+    const header=await headerGeometry();
+    assert.equal(header.lines,1,JSON.stringify(header));
+    assert.ok(header.titleRight<=header.toggleLeft+1&&header.buttonWidth<header.headerWidth/2,JSON.stringify(header));
+  }
+  await page.setViewportSize({width:1440,height:1000});
+  console.log('INSPECTOR_TITLE_PASS: horizontal heading and compact toggle');
   await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
   const input=page.locator('#jwoo-rehearsal-label');
   const mark=text=>page.locator('#score-container svg text').filter({hasText:new RegExp('^'+text+'$')});
@@ -37,23 +52,6 @@ try{
   assert.match(xml,/<rehearsal[^>]*>CHORUS<\/rehearsal>/);
   await page.click('#jwoo-rehearsal-remove');
   await page.waitForFunction(()=>!Array.from(document.querySelectorAll('#score-container svg text')).some(n=>n.textContent==='CHORUS'));
-  await page.locator('[data-inspector-page="systems"]').click();
-  assert.equal(await page.locator('#v4-line-select').isVisible(),true);
-  assert.equal(await page.locator('#jwoo-rehearsal-label').isVisible(),false);
-  await page.locator('[data-inspector-page="key-meter"]').click();
-  assert.equal(await page.locator('#v4-key').isVisible(),true);
-  assert.equal(await page.locator('#v4-line-select').isVisible(),false);
-  await page.locator('[data-studio-menu="lyrics"]').click();
-  await page.locator('[data-inspector-page="batch"]').click();
-  assert.equal(await page.locator('#v4-lyrics-batch-text').isVisible(),true);
-  await page.locator('[data-inspector-page="shift"]').click();
-  assert.equal(await page.locator('#v4-lyric-shift-left').isVisible(),true);
-  assert.equal(await page.locator('#v4-lyrics-batch-text').isVisible(),false);
-  await page.locator('[data-studio-menu="notes"]').click();
-  await page.locator('[data-inspector-page="pro-note"]').click();
-  assert.equal(await page.locator('#v4-pro-step').isVisible(),true);
-  assert.equal(await page.locator('#v4-add-voice').isVisible(),false);
-  console.log('COMPACT_INSPECTOR_PASS: layout, lyrics, composing pages');
   await mkdir('artifacts/browser-smoke',{recursive:true});
   await page.screenshot({path:'artifacts/browser-smoke/editorial-desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});

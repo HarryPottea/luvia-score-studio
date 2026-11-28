@@ -1,4 +1,3 @@
-import {mountInspectorPages} from './inspector-pages.js';
 // Presentation-only workspace navigation. Existing editor nodes, listeners,
 // history and MusicXML state remain in place inside the inspector.
 const menus=[
@@ -176,7 +175,6 @@ export function mountWorkspaceShell(){
   const groups=[...editor.children].filter(el=>el.classList.contains('control-group'));
   groups.forEach((group,index)=>group.dataset.studioGroups=(groupMenus[index]||['notes']).join(' '));
   const sections=[...editor.querySelectorAll('.v4-editor > .jwoo-panel-body > .jwoo-v4-section')];
-  const inspectorPages=mountInspectorPages({inspector,editor,groups,sections,unfold});
   let active='file';
   function render(){
     const open=workspace.classList.contains('studio-panel-open');
@@ -195,7 +193,16 @@ export function mountWorkspaceShell(){
       group.classList.toggle('studio-filter-hidden',!group.dataset.studioGroups.split(' ').includes(active));
     }
     sections.forEach((section,index)=>section.classList.toggle('studio-filter-hidden',!(v4Sections[active]||[]).includes(index)));
-    inspectorPages.apply(active);
+    if(!file){
+      const preferred={score:0,notes:8,lyrics:10,layout:10,export:7}[active];
+      const candidate=groups[preferred];
+      unfold(candidate);
+      if(candidate?.classList.contains('v4-editor')){
+        const section=sections.find(item=>!item.classList.contains('studio-filter-hidden'));
+        unfold(section);
+        if(active==='lyrics')unfold(section?.querySelector('.v4-batch-lyrics'));
+      }
+    }
   }
   function openMenu(key){
     if(active===key&&workspace.classList.contains('studio-panel-open')){
@@ -224,7 +231,7 @@ export function mountWorkspaceShell(){
     if(!button)return;
     const label=button.textContent.trim();
     const key=({새악보:'file',파트:'score',음표:'notes',마디:'layout',가사:'lyrics',코드:'lyrics',출력:'export'})[label.replace(/\s/g,'')];
-    if(key){active=key;workspace.classList.add('studio-panel-open');render();const selector=({새악보:'#v4-new',파트:'#parts-list',음표:'#v3-events',마디:'#v4-current-total',가사:'#v4-lyrics-batch-text',코드:'#v4-chord-input',출력:'#v4-print-book'})[label.replace(/\s/g,'')];if(selector)inspectorPages.reveal(document.querySelector(selector));}
+    if(key){active=key;workspace.classList.add('studio-panel-open');render();}
   },true);
   const firstLoad=new MutationObserver(()=>{
     if(document.querySelector('.site-shell.has-active-score')&&workspace.dataset.studioInitial==='false'){
