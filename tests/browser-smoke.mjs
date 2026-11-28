@@ -97,6 +97,40 @@ try {
   console.log('BROWSER_STAGE=IOS_PREICON_BASELINE_READY');
   console.log('BROWSER_STAGE=J_WOO_ICONS_LOADED');
 
+  // Real OSMD/VexFlow regression: key-signature sharp, printed flat/natural,
+  // repeated accidental, and an orphan row selected by actual displayed range.
+  const regressionPage=await browser.newPage({viewport:{width:1440,height:1000}});
+  try{
+    await regressionPage.goto(url,{waitUntil:'domcontentloaded'});
+    const pitches=[['F',1,''],['B',-1,'flat'],['F',0,'natural'],['C',1,'sharp'],['G',0,'']];
+    const accidentalXml='<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0">'+
+      '<part-list><score-part id="P1"><part-name>Vocal</part-name></score-part></part-list><part id="P1">'+
+      pitches.map(([step,alter,accidental],i)=>'<measure number="'+(i+1)+'">'+
+        (i===0?'<attributes><divisions>4</divisions><key><fifths>1</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>':'')+
+        '<note><pitch><step>'+step+'</step><alter>'+alter+'</alter><octave>4</octave></pitch><duration>16</duration><type>whole</type>'+
+        (accidental?'<accidental>'+accidental+'</accidental>':'')+'<lyric number="1"><syllabic>single</syllabic><text>가</text></lyric></note></measure>').join('')+
+      '</part></score-partwise>';
+    await regressionPage.locator('#file-input').setInputFiles({name:'accidental-system-regression.musicxml',mimeType:'application/vnd.recordare.musicxml+xml',buffer:Buffer.from(accidentalXml)});
+    await regressionPage.waitForFunction(()=>document.querySelector('#message')?.textContent?.includes('악보가 준비되었습니다.'));
+    await regressionPage.locator('.jwoo-fold-all button').getByText('모두 펼치기').click();
+    const heads=regressionPage.locator('#score-container .jwoo-note-target');
+    assert.equal(await heads.count(),5,'All five pitched notes including explicit natural and key-signature sharp must bind');
+    for(let i=0;i<5;i++){
+      const head=heads.nth(i);await head.click();
+      assert.equal(await head.getAttribute('aria-pressed'),'true','Accidental note '+(i+1)+' must be pointer-selectable');
+    }
+    const lineSelect=regressionPage.locator('#v4-line-select');
+    const rows=await lineSelect.locator('option').allTextContents();
+    assert.deepEqual(rows,['1줄 · 1–4마디 (4마디)','2줄 · 5–5마디 (1마디)']);
+    await lineSelect.selectOption('2');
+    await regressionPage.selectOption('#v4-line-bars','2');
+    await regressionPage.click('#v4-line-apply');
+    await regressionPage.waitForFunction(()=>document.querySelector('#v4-line-status')?.textContent?.includes('2줄 2마디 적용'));
+    assert.deepEqual(await lineSelect.locator('option').allTextContents(),['1줄 · 1–3마디 (3마디)','2줄 · 4–5마디 (2마디)']);
+    console.log('BROWSER_STAGE=ACCIDENTAL_CLICK_AND_ORPHAN_ROW_REGRESSION');
+  }finally{await regressionPage.close();}
+
+
   // J-WOO 4.0 integrated composer: new score -> rest entry -> notation ->
   // layout directive -> local draft persistence -> SVG export -> audition.
   assert.equal(await page.locator('#v4-new').count(),1);
