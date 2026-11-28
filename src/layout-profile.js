@@ -25,5 +25,7 @@ export function applyLayoutPreset(osmd, value, doc) {
     const base = rules[prop];
     if (typeof base==='number' && Number.isFinite(base) && base>0) rules[prop]=base*factor;
   }
+  // One staff-space of extra lyric clearance, shared by preview and vector output.
+  if(typeof rules.LyricsYOffsetToStaffHeight==='number')rules.LyricsYOffsetToStaffHeight=0.8;
   return preset;
 }

@@ -5,6 +5,7 @@ import {OpenSheetMusicDisplay} from 'opensheetmusicdisplay';
 import {editableScoreRenderOptions} from './osmd-render-policy.js';
 import {applySymbolOffsets} from './studio-v4-symbol-position.js';
 import {applyLayoutPreset} from './layout-profile.js';
+import {renderWithCadenceRepair} from './studio-v4-layout-cadence.js';
 import {applyFixedA4Profile,fixedA4Profile} from './a4-engraving.js';
 import {inspectPrintableSvg} from './studio-v4-svg-inspect.js';
 import {adaptLyricRendering} from './studio-v4-lyric-spacing-audit.js';
@@ -62,7 +63,7 @@ export async function renderPartSvgPages({doc,parts,pageFormat='A4_P',layout='au
       await osmd.load(partDoc);
       applyFixedA4Profile(osmd,partDoc,pageFormat);
       applyLayoutPreset(osmd,layout,partDoc);
-      osmd.render();
+      renderWithCadenceRepair(osmd,partDoc);
       const expression=await adaptExpressionRendering(osmd,holder,{maxAttempts:2});
       const measured=await adaptLyricRendering(osmd,holder,{maxAttempts:2});
       applySymbolOffsets(osmd,partDoc,holder,
