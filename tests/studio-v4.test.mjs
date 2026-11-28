@@ -403,3 +403,31 @@ test('playhead refuses corrupt time boundaries and negative timestamps',()=>{
   assert.equal(measureAtPlaybackSecond({measureSeconds:[0,3]},-1),null);
   assert.equal(measureAtPlaybackSecond({measureSeconds:[0,3]},Number.NaN),null);
 });
+
+import {readRehearsalMark,setRehearsalMark} from '../src/studio-v4-rehearsal.js';
+test('song form marks insert at onset in all parts, replace, remove, preserve notes and original',()=>{
+  const source=fixture({parts:2,noteKind:'rest',complex:true});
+  const next=setRehearsalMark(source,{measureIndex:0,label:'VERSE 1'}).doc;
+  assert.equal(readRehearsalMark(source,0).present,false);
+  assert.deepEqual(readRehearsalMark(next,0),{label:'VERSE 1',present:true,editable:true});
+  for(const part of many(next.documentElement,'part')){
+    const m=first(part,'measure');
+    assert.deepEqual(m.children.map(n=>n.localName),['attributes','direction','note','backup']);
+    const mark=first(first(first(m,'direction'),'direction-type'),'rehearsal');
+    assert.equal(mark.getAttribute('enclosure'),'rectangle');
+  }
+  const replaced=setRehearsalMark(next,{measureIndex:0,label:'CHORUS'}).doc;
+  assert.equal(readRehearsalMark(replaced,0).label,'CHORUS');
+  const removed=setRehearsalMark(replaced,{measureIndex:0,label:''}).doc;
+  assert.equal(readRehearsalMark(removed,0).present,false);
+  assert.deepEqual(firstMeasure(removed).children.map(n=>n.localName),['attributes','note','backup']);
+});
+test('song form editing refuses invalid or complex existing directions',()=>{
+  const source=fixture();
+  assert.throws(()=>setRehearsalMark(source,{measureIndex:1,label:'A'}));
+  assert.throws(()=>setRehearsalMark(source,{measureIndex:0,label:'x'.repeat(33)}));
+  const next=setRehearsalMark(source,{measureIndex:0,label:'A'}).doc;
+  first(firstMeasure(next),'direction').appendChild(el('sound',[],{tempo:'120'}));
+  assert.equal(readRehearsalMark(next,0).editable,false);
+  assert.throws(()=>setRehearsalMark(next,{measureIndex:0,label:''}));
+});

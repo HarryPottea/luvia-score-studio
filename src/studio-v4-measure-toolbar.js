@@ -4,6 +4,7 @@ import {captureMeasureRange,pasteMeasureRange,duplicateMeasureRange,
 import {transposeMeasurePassage} from './studio-v4-passage-transpose.js';
 import {transposeWrittenVoice,respellWrittenVoice} from './studio-v4-voice-transpose.js';
 import {editArticulationForVoice} from './studio-v4-articulation-batch.js';
+import {readRehearsalMark,setRehearsalMark} from './studio-v4-rehearsal.js';
 import './studio-v4-measure-toolbar.css';
 
 const direct=(n,tag)=>n?[...n.children].filter(c=>c.localName===tag):[];
@@ -29,6 +30,13 @@ export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()
     '<button type="button" data-act="insert">앞에 빈 마디</button>',
     '<button type="button" data-act="delete" class="jwoo-danger">선택 마디 삭제</button>',
     '</div>',
+    '<div class="jwoo-transpose-controls" role="group" aria-label="송폼 리허설 마크">',
+    '<strong>송폼 / 리허설 마크</strong>',
+    '<p id="jwoo-rehearsal-status" class="jwoo-bar-hint" role="status">마디 하나를 선택하세요.</p>',
+    '<label for="jwoo-rehearsal-label">구간 이름</label><input id="jwoo-rehearsal-label" type="text" maxlength="32" list="jwoo-rehearsal-presets" placeholder="예: VERSE 1, A" />',
+    '<datalist id="jwoo-rehearsal-presets"><option value="INTRO"></option><option value="VERSE 1"></option><option value="VERSE 2"></option><option value="PRE-CHORUS"></option><option value="CHORUS"></option><option value="INTERLUDE"></option><option value="BRIDGE"></option><option value="SOLO"></option><option value="OUTRO"></option><option value="A"></option><option value="B"></option><option value="C"></option></datalist>',
+    '<div class="jwoo-bar-actions"><button id="jwoo-rehearsal-set" type="button">추가 / 변경</button><button id="jwoo-rehearsal-remove" type="button">삭제</button></div>',
+    '<p class="jwoo-bar-hint">선택 마디 시작에 표시합니다. 모든 파트와 MusicXML에 저장되며 실행 취소할 수 있습니다.</p></div>',
     '<div class="jwoo-transpose-controls">',
     '<label>반음 이동 <input type="number" id="jwoo-transpose-semitones" min="-12" max="12" value="2" step="1" /></label>',
     '<label>임시표 <select id="jwoo-transpose-spelling"><option value="sharp">샤프 우선</option><option value="flat">플랫 우선</option></select></label>',
@@ -69,6 +77,7 @@ export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()
   const $=id=>document.getElementById(id);
   let anchor=0,start=0,end=0,clipboard=null,seenDoc=null,barCount=0,selectedCount=0,playingIndex=null;
   const status=$('jwoo-block-status'),strip=$('jwoo-bar-strip');
+  let rehearsalDoc=null,rehearsalIndex=-1;
   const actionButtons=[...host.querySelectorAll('[data-act]')];
   const currentInfo=()=>{
     const parts=direct(state.doc?.documentElement,'part');
@@ -115,6 +124,18 @@ export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()
       button.disabled=!canEdit||(action==='paste'&&!clipboard)||
         (action==='delete'&&count<=end-start+1);
     }
+    const single=canEdit&&start===end;
+    let mark=null;
+    if(single)try{mark=readRehearsalMark(state.doc,start);}catch{}
+    const input=$('jwoo-rehearsal-label'),enabled=single&&mark?.editable===true;
+    if(rehearsalDoc!==state.doc||rehearsalIndex!==(single?start:-1)){
+      input.value=mark?.label||'';rehearsalDoc=state.doc;rehearsalIndex=single?start:-1;
+    }
+    input.disabled=!enabled;$('jwoo-rehearsal-set').disabled=!enabled;
+    $('jwoo-rehearsal-remove').disabled=!enabled||!mark?.present;
+    $('jwoo-rehearsal-status').textContent=!single?'마디 하나를 선택하세요.':
+      !enabled?'복합 리허설 마크는 원본 보존을 위해 편집할 수 없습니다.':
+      (start+1)+'마디 · '+(mark.present?mark.label:'리허설 마크 없음');
     state.graphicBridge?.highlightMeasureRange?.(start,end);
     onRangeChange({start,end,count,canEdit});
     if(!count)notify('악보를 열면 마디를 선택할 수 있습니다.');
@@ -170,6 +191,19 @@ export function mountMeasureToolbar({state,v3,commit,setMessage,onRangeChange=()
     anchor=from-1;start=from-1;end=to-1;render();
   }
   $('jwoo-range-apply').addEventListener('click',setRangeFromFields);
+  async function editRehearsal(remove=false){
+    if(!currentInfo()||state.showBaseline||start!==end)return;
+    const label=remove?'':$('jwoo-rehearsal-label').value.trim();
+    if(!remove&&!label){notify('송폼 이름을 입력해 주세요.',true);return;}
+    const before=state.doc,measureIndex=start;
+    await commit(doc=>setRehearsalMark(doc,{measureIndex,label}),remove?'리허설 마크 삭제':'리허설 마크 적용');
+    if(state.doc!==before)render();
+  }
+  $('jwoo-rehearsal-set').addEventListener('click',()=>void editRehearsal());
+  $('jwoo-rehearsal-remove').addEventListener('click',()=>void editRehearsal(true));
+  $('jwoo-rehearsal-label').addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&!event.isComposing){event.preventDefault();void editRehearsal();}
+  });
   function scope(){
     const count=currentInfo();
     if(!count||state.showBaseline)throw new Error('현재 악보에서만 마디를 편집할 수 있습니다.');
