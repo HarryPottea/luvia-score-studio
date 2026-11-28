@@ -47,9 +47,73 @@ export function mountWorkspaceShell(){
   close.className='studio-panel-close';close.textContent='설정창 닫기 ×';
   close.setAttribute('aria-label','설정창 닫기');
   menu.append(list,close);
-  grid.before(menu);
+  const header=document.querySelector('.topbar');
+  const brand=header.querySelector('.brand');
+  brand.querySelector('span:last-child').textContent='J-WOO.';
+  const tagline=document.createElement('span');tagline.className='studio-tagline';tagline.textContent='MUSIC TO SCORE.';
+  brand.after(tagline);
+  header.insertBefore(menu,header.querySelector('.top-right'));
   tools.classList.add('studio-tool-rail');
-  grid.prepend(tools);
+  grid.before(tools);
+  const left=document.createElement('aside');
+  left.className='studio-navigator';left.setAttribute('aria-label','악기 및 페이지 탐색');
+  left.innerHTML='<div class="studio-nav-heading"><strong>악기</strong><button type="button" data-nav="score" aria-label="악기 설정">＋</button></div>'+
+    '<div class="studio-part-list"></div><div class="studio-nav-heading"><strong>페이지</strong><span class="studio-page-count"></span></div><div class="studio-pages"></div>'+
+    '<div class="studio-nav-foot">LOCAL SCORE EDITING</div>';
+  grid.prepend(left);
+  const foot=document.querySelector('.site-footer');
+  const status=document.createElement('div');status.className='studio-status';
+  status.innerHTML='<span class="studio-document-name">열린 악보 없음</span><span class="studio-page-status">0 / 0</span><span class="studio-paper-status">A4</span><button type="button" class="studio-fit" aria-label="현재 페이지 처음으로">페이지 처음 ↑</button>';
+  foot.prepend(status);
+  const canvas=document.getElementById('preview-shell'),score=document.getElementById('score-container');
+  const partList=document.getElementById('parts-list');
+  const navParts=left.querySelector('.studio-part-list'),navPages=left.querySelector('.studio-pages');
+  function syncNavigator(){
+    navParts.replaceChildren();
+    for(const row of partList.querySelectorAll('.part-row')){
+      const check=row.querySelector('input[type=checkbox]'),name=row.querySelector('input[type=text]');
+      if(!check||!name)continue;
+      const item=document.createElement('button');item.type='button';item.className='studio-part';
+      item.setAttribute('aria-pressed',String(check.checked));
+      const label=document.createElement('span');label.textContent=name.value;
+      const eye=document.createElement('span');eye.setAttribute('aria-hidden','true');eye.textContent=check.checked?'●':'○';
+      item.append(label,eye);item.title=name.value+' 표시 전환';
+      item.addEventListener('click',()=>{check.click();syncNavigator();});
+      navParts.append(item);
+    }
+    const pages=[...score.querySelectorAll('svg')].filter(svg=>!svg.parentElement?.closest('svg'));
+    navPages.replaceChildren();
+    pages.forEach((page,i)=>{
+      const button=document.createElement('button');button.type='button';button.className='studio-page';
+      button.setAttribute('aria-label',(i+1)+'페이지로 이동');button.dataset.page=String(i);
+      const thumbnail=document.createElement('span');thumbnail.className='studio-page-paper';thumbnail.setAttribute('aria-hidden','true');
+      const number=document.createElement('span');number.textContent=String(i+1);
+      button.append(thumbnail,number);
+      button.addEventListener('click',()=>{canvas.scrollTo({top:canvas.scrollTop+page.getBoundingClientRect().top-canvas.getBoundingClientRect().top-10,behavior:'auto'});updatePage();});
+      navPages.append(button);
+    });
+    left.querySelector('.studio-page-count').textContent=String(pages.length);
+    const name=document.querySelector('#drop-zone strong')?.textContent;
+    status.querySelector('.studio-document-name').textContent=pages.length?name:'열린 악보 없음';
+    status.querySelector('.studio-paper-status').textContent=document.getElementById('page-orientation').value==='A4_L'?'A4 가로':'A4 세로';
+    updatePage();
+  }
+  function updatePage(){
+    const pages=[...score.querySelectorAll('svg')].filter(svg=>!svg.parentElement?.closest('svg'));
+    const top=canvas.getBoundingClientRect().top+12;
+    let index=0;
+    for(let i=0;i<pages.length;i++)if(pages[i].getBoundingClientRect().top<=top)index=i;
+    status.querySelector('.studio-page-status').textContent=pages.length?(index+1)+' / '+pages.length:'0 / 0';
+    for(const button of navPages.children){
+      if(Number(button.dataset.page)===index)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
+    }
+  }
+  canvas.addEventListener('scroll',updatePage,{passive:true});
+  status.querySelector('.studio-fit').addEventListener('click',()=>navPages.querySelector('[aria-current=page]')?.click());
+  document.addEventListener('jwoo:score-updated',syncNavigator);
+  new MutationObserver(syncNavigator).observe(partList,{childList:true});
+  left.querySelector('[data-nav=score]').addEventListener('click',()=>{active='score';workspace.classList.add('studio-panel-open');if(editor.hidden)document.getElementById('toggle-settings')?.click();render();});
+
   inspector.id='studio-inspector';
   const heading=inspector.querySelector('.workspace-kicker');
   if(heading)heading.textContent='J-WOO / INSPECTOR';
@@ -125,11 +189,13 @@ export function mountWorkspaceShell(){
   const firstLoad=new MutationObserver(()=>{
     if(document.querySelector('.site-shell.has-active-score')&&workspace.dataset.studioInitial==='false'){
       workspace.dataset.studioInitial='true';
-      workspace.classList.remove('studio-panel-open');render();
+      if(window.matchMedia('(min-width:1060px)').matches){active='score';workspace.classList.add('studio-panel-open');}
+      else workspace.classList.remove('studio-panel-open');
+      render();
     }
   });
   firstLoad.observe(document.querySelector('.site-shell'),{attributes:true,attributeFilter:['class']});
   workspace.dataset.studioInitial='false';
   workspace.classList.add('studio-panel-open');
-  render();
+  render();syncNavigator();
 }
