@@ -65,7 +65,7 @@ try{
   const closed=await geometry();assert.ok(closed.scrollHeight>closed.height+100);assert.equal(closed.body,0);
   await buttons.nth(1).click();await page.waitForFunction(()=>document.querySelector('.studio-page[data-page="1"]')?.getAttribute('aria-current')==='page');
   const previousRevision=await page.locator('#score-container').getAttribute('data-render-revision');
-  await page.locator('[data-studio-menu="score"]').click();
+  await page.locator('button[data-studio-menu="score"]').click();
   const paper=page.locator('#page-orientation');
   if(!await paper.isVisible())await page.locator('.control-group').filter({has:paper}).locator('.control-heading .jwoo-fold-toggle').click();
   await paper.selectOption('A4_L');
