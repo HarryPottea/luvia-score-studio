@@ -149,3 +149,24 @@
 }
 
 .studio-page-image{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none}
+
+/* Compact function picker: one working section instead of a long stack. */
+.studio-inspector-pages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin:0 0 12px;padding:7px 0 12px;border-bottom:1px solid var(--studio-line);position:sticky;top:-18px;background:#242520;z-index:3}
+.studio-inspector-pages button{min-width:0;min-height:30px;padding:5px 4px;border:1px solid #56584e;border-radius:3px;background:#30322b;color:var(--paper);font-size:11px;font-weight:700;line-height:1.25}
+.studio-inspector-pages button[aria-pressed=true]{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+.studio-inspector-pages button:hover:not([aria-pressed=true]){border-color:var(--lime);color:var(--lime)}
+.controls:has(.studio-inspector-pages:not([hidden])) .settings-action{display:none}
+.controls:has(.studio-inspector-pages:not([hidden])) .privacy-note{display:none}
+.controls .editor-controls{margin-top:0}
+.controls .editor-controls>.control-group{padding:8px 0;margin:0;border:0}
+.controls .editor-controls .control-heading{margin:0 0 8px;font-size:12px}
+.controls .editor-controls .control-group label{margin:6px 0 4px;line-height:1.35}
+.controls .editor-controls :is(input:not([type=checkbox]):not([type=range]),select,textarea){min-height:30px;padding-block:5px;font-size:12px}
+.controls .editor-controls .v4-tiny{line-height:1.45;font-size:10px;margin-block:5px}
+.controls .editor-controls .jwoo-v4-section{padding-bottom:0;margin-top:0;border:0}
+.controls .editor-controls .jwoo-v4-section>.v4-subhead{margin:0 0 8px}
+.controls .studio-detail{border-top:1px solid var(--studio-line);margin-top:8px;padding-top:7px}
+.controls .studio-detail summary{font-size:11px;cursor:pointer;color:var(--paper);font-weight:700;padding:4px 0}
+.controls .studio-detail:not([open])>div{display:none}
+@media(max-width:760px){.studio-inspector-pages{position:static;grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media print{.studio-inspector-pages{display:none!important}}

@@ -120,6 +120,7 @@ try {
       const head=heads.nth(i);await head.click();
       assert.equal(await head.getAttribute('aria-pressed'),'true','Accidental note '+(i+1)+' must be pointer-selectable');
     }
+    await regressionPage.locator('[data-inspector-page="systems"]').click();
     const lineSelect=regressionPage.locator('#v4-line-select');
     const rows=await lineSelect.locator('option').allTextContents();
     assert.deepEqual(rows,['1줄 · 1–3마디 (3마디)','2줄 · 4–4마디 (1마디)','3줄 · 5–8마디 (4마디)','4줄 · 9–10마디 (2마디)']);

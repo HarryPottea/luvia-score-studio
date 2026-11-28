@@ -66,6 +66,7 @@ try{
   await buttons.nth(1).click();await page.waitForFunction(()=>document.querySelector('.studio-page[data-page="1"]')?.getAttribute('aria-current')==='page');
   const previousRevision=await page.locator('#score-container').getAttribute('data-render-revision');
   await page.locator('[data-studio-menu="layout"]').click();
+  await page.locator('[data-inspector-page="paper"]').click();
   await page.locator('#page-orientation').selectOption('A4_L');
   await page.waitForFunction(rev=>document.querySelector('#score-container')?.dataset.renderRevision!==rev&&document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false',previousRevision);
   const refreshed=await thumbnails();
