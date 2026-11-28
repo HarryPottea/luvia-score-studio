@@ -19,6 +19,29 @@ try{
   await page.waitForFunction(()=>document.querySelectorAll('.studio-page').length>=2&&document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false');
   const buttons=page.locator('.studio-page');
   const n=await buttons.count();
+  // Check actual image decoding and score ink, not just the presence of an icon.
+  const thumbnails=async()=>page.evaluate(async()=>{
+    const images=[...document.querySelectorAll('.studio-page-image')];
+    const sources=[...document.querySelectorAll('#score-container svg')].filter(svg=>!svg.parentElement?.closest('svg'));
+    return Promise.all(images.map(async(img,i)=>{
+      await img.decode();
+      const xml=await (await fetch(img.src)).text();
+      const svg=new DOMParser().parseFromString(xml,'image/svg+xml').documentElement;
+      const raster=document.createElement('canvas');raster.width=100;raster.height=142;
+      const ctx=raster.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,100,142);
+      ctx.drawImage(img,0,0,100,142);
+      const pixels=ctx.getImageData(0,0,100,142).data;
+      let ink=0;for(let p=0;p<pixels.length;p+=4)if(pixels[p]<180&&pixels[p+1]<180&&pixels[p+2]<180)ink++;
+      return {url:img.src,width:img.naturalWidth,height:img.naturalHeight,ink,
+        glyphs:svg.querySelectorAll('path').length,sourceGlyphs:sources[i].querySelectorAll('path').length,
+        overlays:svg.querySelectorAll('.jwoo-hit-area,.jwoo-selection-ring,.jwoo-note-drag-preview').length};
+    }));
+  });
+  const initialThumbs=await thumbnails();
+  assert.equal(initialThumbs.length,n);
+  assert.ok(initialThumbs.every(t=>t.width>0&&t.height>0&&t.ink>50&&t.glyphs>0&&t.glyphs===t.sourceGlyphs&&t.overlays===0),JSON.stringify(initialThumbs));
+  assert.equal(new Set(initialThumbs.map(t=>t.url)).size,n);
+  console.log('REAL_THUMBNAILS_PASS: decoded score SVG with real ink for every page');
   const geometry=()=>page.evaluate(()=>{const c=document.getElementById('preview-shell'),r=c.getBoundingClientRect();return {top:c.scrollTop,scrollHeight:c.scrollHeight,height:c.clientHeight,body:window.scrollY,docHeight:document.documentElement.scrollHeight,viewport:innerHeight,rectTop:r.top,rectBottom:r.bottom,overflow:getComputedStyle(c).overflowY,header:document.querySelector('.topbar').getBoundingClientRect().top};});
   const initial=await geometry();
   console.log('INITIAL',JSON.stringify(initial),n);
@@ -41,6 +64,15 @@ try{
   await page.locator('.studio-panel-close').click();
   const closed=await geometry();assert.ok(closed.scrollHeight>closed.height+100);assert.equal(closed.body,0);
   await buttons.nth(1).click();await page.waitForFunction(()=>document.querySelector('.studio-page[data-page="1"]')?.getAttribute('aria-current')==='page');
+  const previousRevision=await page.locator('#score-container').getAttribute('data-render-revision');
+  await page.locator('button[data-studio-menu="score"]').click();
+  const paper=page.locator('#page-orientation');
+  if(!await paper.isVisible())await page.locator('.control-group').filter({has:paper}).locator('.control-heading .jwoo-fold-toggle').click();
+  await paper.selectOption('A4_L');
+  await page.waitForFunction(rev=>document.querySelector('#score-container')?.dataset.renderRevision!==rev&&document.querySelector('#preview-shell')?.getAttribute('aria-busy')==='false',previousRevision);
+  const refreshed=await thumbnails();
+  assert.ok(refreshed.length>0&&refreshed.every(t=>t.width>t.height&&t.ink>50&&!initialThumbs.some(old=>old.url===t.url)),JSON.stringify(refreshed));
+  console.log('THUMBNAIL_REFRESH_PASS: real landscape score images after re-render');
   await page.setViewportSize({width:390,height:844});
   await page.locator('#preview-shell').evaluate(e=>e.scrollTop=0);
   const mobile=await geometry();console.log('MOBILE',JSON.stringify(mobile));

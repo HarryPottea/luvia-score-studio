@@ -69,6 +69,29 @@ export function mountWorkspaceShell(){
   const partList=document.getElementById('parts-list');
   const navParts=left.querySelector('.studio-part-list'),navPages=left.querySelector('.studio-pages');
   const pageNodes=()=>[...score.querySelectorAll('svg')].filter(svg=>!svg.parentElement?.closest('svg'));
+  // Snapshot the already-rendered SVG into an isolated image. No extra OSMD
+  // rendering, no upload, no duplicate live SVG IDs or editor event targets.
+  let thumbnailPages=[],thumbnailUrls=[];
+  function renderThumbnail(page,host){
+    const copy=page.cloneNode(true);
+    copy.querySelectorAll('.jwoo-hit-area,.jwoo-selection-ring,.jwoo-note-drag-preview').forEach(n=>n.remove());
+    copy.querySelectorAll('[tabindex],[aria-pressed],[role]').forEach(n=>{
+      n.removeAttribute('tabindex');n.removeAttribute('aria-pressed');n.removeAttribute('role');
+    });
+    copy.querySelectorAll('.jwoo-note-selected,.jwoo-playback-active,.jwoo-measure-selected').forEach(n=>
+      n.classList.remove('jwoo-note-selected','jwoo-playback-active','jwoo-measure-selected'));
+    const box=page.viewBox?.baseVal;
+    const width=box?.width||page.width?.baseVal?.value||210;
+    const height=box?.height||page.height?.baseVal?.value||297;
+    host.style.aspectRatio=width+' / '+height;
+    if(!box?.width||!box?.height)copy.setAttribute('viewBox','0 0 '+width+' '+height);
+    copy.setAttribute('width',String(width));copy.setAttribute('height',String(height));
+    const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(copy)],{type:'image/svg+xml;charset=utf-8'}));
+    thumbnailUrls.push(url);
+    const img=document.createElement('img');img.alt='';img.className='studio-page-image';
+    img.decoding='async';img.draggable=false;img.src=url;
+    host.append(img);
+  }
   function pageOffset(page){
     return canvas.scrollTop+page.getBoundingClientRect().top-canvas.getBoundingClientRect().top-canvas.clientTop;
   }
@@ -94,16 +117,21 @@ export function mountWorkspaceShell(){
       navParts.append(item);
     }
     const pages=pageNodes();
-    navPages.replaceChildren();
-    pages.forEach((page,i)=>{
+    if(pages.length!==thumbnailPages.length||pages.some((page,i)=>page!==thumbnailPages[i])){
+      navPages.replaceChildren();
+      for(const url of thumbnailUrls)URL.revokeObjectURL(url);
+      thumbnailUrls=[];thumbnailPages=pages;
+      pages.forEach((page,i)=>{
       const button=document.createElement('button');button.type='button';button.className='studio-page';
       button.setAttribute('aria-label',(i+1)+'페이지로 이동');button.dataset.page=String(i);
       const thumbnail=document.createElement('span');thumbnail.className='studio-page-paper';thumbnail.setAttribute('aria-hidden','true');
+      renderThumbnail(page,thumbnail);
       const number=document.createElement('span');number.textContent=String(i+1);
       button.append(thumbnail,number);
       button.addEventListener('click',()=>goToPage(i));
       navPages.append(button);
-    });
+      });
+    }
     left.querySelector('.studio-page-count').textContent=String(pages.length);
     const name=document.querySelector('#drop-zone strong')?.textContent;
     status.querySelector('.studio-document-name').textContent=pages.length?name:'열린 악보 없음';

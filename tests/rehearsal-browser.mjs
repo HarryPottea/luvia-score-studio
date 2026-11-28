@@ -21,6 +21,21 @@ try{
   const geometry=await page.evaluate(()=>{const r=s=>document.querySelector(s).getBoundingClientRect();return {workspaceLeft:r('.workspace').left,workspaceWidth:r('.workspace').width,viewport:innerWidth,navRight:r('.studio-navigator').right,scoreLeft:r('.preview-column').left,scoreRight:r('.preview-column').right,inspectorLeft:r('.controls').left,toolbar:getComputedStyle(document.querySelector('.studio-tool-rail')).backgroundColor};});
   assert.equal(geometry.workspaceLeft,0);assert.equal(geometry.workspaceWidth,geometry.viewport);assert.ok(geometry.navRight<=geometry.scoreLeft+1);assert.ok(geometry.scoreRight<=geometry.inspectorLeft+1);assert.equal(geometry.toolbar,'rgb(246, 246, 235)');
   assert.ok(await page.locator('.studio-page').count()>0);
+  const headerGeometry=()=>page.locator('.v4-editor > .control-heading').evaluate(h=>{
+    const title=h.querySelector('span:first-child'),toggle=h.querySelector('.jwoo-fold-toggle');
+    const range=document.createRange();range.selectNodeContents(title);
+    const textRects=[...range.getClientRects()].filter(r=>r.width>0);
+    const tr=title.getBoundingClientRect(),br=toggle.getBoundingClientRect();
+    return {lines:textRects.length,titleRight:tr.right,toggleLeft:br.left,buttonWidth:br.width,headerWidth:h.clientWidth};
+  });
+  for(const width of [1440,1000]){
+    await page.setViewportSize({width,height:900});
+    const header=await headerGeometry();
+    assert.equal(header.lines,1,JSON.stringify(header));
+    assert.ok(header.titleRight<=header.toggleLeft+1&&header.buttonWidth<header.headerWidth/2,JSON.stringify(header));
+  }
+  await page.setViewportSize({width:1440,height:1000});
+  console.log('INSPECTOR_TITLE_PASS: horizontal heading and compact toggle');
   await page.locator('#jwoo-bar-strip .jwoo-bar-chip').nth(1).click();
   const input=page.locator('#jwoo-rehearsal-label');
   const mark=text=>page.locator('#score-container svg text').filter({hasText:new RegExp('^'+text+'$')});

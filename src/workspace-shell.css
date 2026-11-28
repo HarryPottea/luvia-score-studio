@@ -35,7 +35,7 @@
 .studio-pages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .studio-page{display:grid;gap:4px;justify-items:center;background:transparent;border:1px solid transparent;color:var(--paper);font-size:10px;padding:4px;border-radius:3px}
 .studio-page[aria-current=page]{border-color:var(--lime)}
-.studio-page-paper{display:block;width:100%;aspect-ratio:210/297;background:repeating-linear-gradient(to bottom,#f8f8f1 0 9px,#deded2 9px 11px,#f8f8f1 11px 15px);border:5px solid #f8f8f1;box-shadow:0 1px 3px #0004}
+.studio-page-paper{display:block;width:100%;aspect-ratio:210/297;background:#fff;border:1px solid #deded2;overflow:hidden;box-shadow:0 1px 3px #0004}
 .studio-page-count,.studio-nav-foot{font-size:10px;color:var(--studio-muted)}
 .studio-nav-foot{margin-top:auto;padding-top:16px;letter-spacing:.1em}
 .work-grid>.controls{display:none;grid-column:3;grid-row:1;align-self:stretch;min-height:0;max-height:none;overflow:auto;background:#242520;border-left:1px solid var(--studio-line);padding:18px 16px 24px;scrollbar-width:thin;color:var(--paper)}
@@ -146,4 +146,24 @@
   .workspace.studio-panel-open .work-grid>.controls{flex:0 1 42%;max-height:42%;min-height:0;overflow:auto}
   .site-shell:not(.has-active-score) .workspace.studio-panel-open .work-grid>.controls{flex:1 1 0;max-height:none}
   .work-grid>.preview-column>#preview-shell{padding:12px 4px;min-height:0;max-height:none}
+}
+
+.studio-page-image{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none}
+
+/* Accordion toggles are compact header controls, not full-width editor actions.
+   Keep the original inspector structure and title text horizontally readable. */
+.controls .editor-controls .control-heading{
+  display:flex;align-items:center;gap:6px;min-width:0;
+}
+.controls .editor-controls .control-heading>span:first-child{
+  flex:1 1 auto;min-width:0;word-break:keep-all;overflow-wrap:normal;
+}
+.controls .editor-controls .control-heading>span:nth-child(2){flex:0 0 auto;white-space:nowrap}
+.controls .editor-controls .control-heading>.jwoo-fold-toggle,
+.controls .editor-controls .v4-subhead>.jwoo-fold-toggle{
+  width:auto;min-width:0;flex:0 0 auto;white-space:nowrap;
+  margin:0;padding:4px 7px;min-height:26px;font-size:10px;
+}
+.controls .editor-controls .v4-editor>.control-heading>span:first-child{
+  font-size:12px;white-space:nowrap;letter-spacing:-.045em;
 }
