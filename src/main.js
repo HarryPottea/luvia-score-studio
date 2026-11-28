@@ -430,7 +430,8 @@ async function openScore(raw, filename, {selectedIds=null}={}) {
     if(ticket!==openSequence||state.doc!==active)return false;
     if(!rendered)throw new Error('불러온 MusicXML 악보를 렌더링할 수 없습니다.');
     v2.invalidateUndo();
-    $('workspace').scrollIntoView({behavior:'smooth',block:'start'});
+    // The viewport is the app; only its score canvas should scroll.
+    $('preview-shell').scrollTop=0;$('preview-shell').scrollLeft=0;
     v4?.onLoaded?.();
     return true;
   }catch(error){
