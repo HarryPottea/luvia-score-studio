@@ -92,14 +92,15 @@ export function matchScoreEvents(events,graphics) {
   }
   return pairs;
 }
-function sourcePitch(source) {
-  // OSMD Pitch.ts uses octXmlDiff=3; serialized MusicXML octaves are 3 higher.
-  const short=source?.Pitch?.ToStringShort?.(3);
-  if(typeof short!=='string')return null;
-  const match=/^([A-G])((?:#{1,2}|b{1,2}|x)?)(-?\d+)$/i.exec(short.trim());
-  if(!match)return null;
-  const alter=match[2].toLowerCase()==='x'?2:(match[2].match(/#/g)||[]).length-(match[2].match(/b/gi)||[]).length;
-  return {step:match[1].toUpperCase(),alter,octave:Number(match[3])};
+// OSMD 1.9.9 uses numeric natural-note identities and accidental semitones.
+// Do not parse VexFlow glyph strings (e.g. explicit natural is "n").
+export function sourcePitch(source) {
+  const pitch=source?.Pitch;
+  if(!pitch)return null;
+  const step=({0:'C',2:'D',4:'E',5:'F',7:'G',9:'A',11:'B'})[pitch.FundamentalNote];
+  const alter=pitch.AccidentalHalfTones,octave=pitch.Octave+3;
+  return step&&Number.isInteger(alter)&&Number.isInteger(pitch.Octave)
+    ?{step,alter,octave}:null;
 }
 function noteHead(gn,host) {
   const group=gn?.getSVGGElement?.();

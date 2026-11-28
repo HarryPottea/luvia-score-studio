@@ -36,7 +36,7 @@ import {prepareScoreAndPartExport} from './studio-v4-pdf-export-plan.js';
 import {setKeyAtMeasure,setMeterForEmptyTail} from './studio-v4-meter.js';
 import {readSymbolOffset,readSymbolHidden,setSymbolOffset,setSymbolHidden,applySymbolOffsets,symbolAtElement,symbolOffsetLimit} from './studio-v4-symbol-position.js';
 import {extendVoiceAcrossBarline,toggleSlurAcrossBarline,moveVoiceIntoNextMeasure} from './studio-v4-crossbar.js';
-import {applyLayoutCadence,planLayoutCadence,readLayoutCadence,clearLayoutCadence} from './studio-v4-layout-cadence.js';
+import {applyLayoutCadence,planLayoutCadence,readLayoutCadence,clearLayoutCadence,renderedLineRanges,planRenderedLineEdit} from './studio-v4-layout-cadence.js';
 import {planDensityLayout,applyDensityLayout,planIndependentPartLayout,applyIndependentPartLayout} from './studio-v4-auto-layout.js';
 import {changeSingleEmptyMeasureMeter} from './studio-v4-meter-single.js';
 import './studio-v4.css';
@@ -484,21 +484,27 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
       select.disabled=true;button.disabled=true;return;
     }
     const prior=Number(select.dataset.selectedLine||1);
-    const plan=planLayoutCadence(state.doc,{...cadence,replaceExisting:true});
-    for(const range of plan.lineRanges){
-      select.add(new Option(range.line+'줄 · '+(range.startMeasureIndex+1)+'–'+
-        (range.endMeasureIndex+1)+'마디',String(range.line)));
+    const ranges=!state.showBaseline&&renderedLineRanges(state.osmd,currentMeasureCount());
+    if(!ranges){
+      select.add(new Option('실제 줄 범위를 확인할 수 없습니다',''));
+      select.disabled=true;button.disabled=true;return;
     }
-    select.value=String(Math.min(prior,plan.lineRanges.length));
+    for(const range of ranges){
+      select.add(new Option(range.line+'줄 · '+(range.startMeasureIndex+1)+'–'+
+        (range.endMeasureIndex+1)+'마디 ('+range.bars+'마디)',String(range.line)));
+    }
+    select.value=String(Math.min(prior,ranges.length));
     select.dataset.selectedLine=select.value;
     $('v4-cadence-bars').value=String(cadence.barsPerSystem);
-    $('v4-line-bars').value=String(cadence.lineOverrides[select.value]??cadence.barsPerSystem);
+    const actual=ranges[Number(select.value)-1]?.bars;
+    $('v4-line-bars').value=String([2,3,4,5,6,8].includes(actual)?actual:cadence.barsPerSystem);
     select.disabled=false;button.disabled=false;
   }
   $('v4-line-select').addEventListener('change',()=>{
     const select=$('v4-line-select');select.dataset.selectedLine=select.value;
-    const cadence=readLayoutCadence(state.doc);
-    if(cadence)$('v4-line-bars').value=String(cadence.lineOverrides[select.value]??cadence.barsPerSystem);
+    const cadence=readLayoutCadence(state.doc),ranges=renderedLineRanges(state.osmd,currentMeasureCount());
+    const actual=ranges?.[Number(select.value)-1]?.bars;
+    if(cadence)$('v4-line-bars').value=String([2,3,4,5,6,8].includes(actual)?actual:cadence.barsPerSystem);
   });
   function syncMeasureDelete(){
     const current=currentMeasureCount(),button=$('v4-delete-measure'),status=$('v4-delete-measure-status');
@@ -1303,20 +1309,23 @@ export function mountStudioV4({state,v3,openScore,setMessage,renderScore}){
     const status=$('v4-line-status'),cadence=readLayoutCadence(state.doc);
     if(!cadence){status.textContent='먼저 전체 기본 줄당 마디 수를 적용해 주세요.';return;}
     const line=Number($('v4-line-select').value),bars=Number($('v4-line-bars').value);
-    const lineOverrides={...cadence.lineOverrides};
-    if(bars===cadence.barsPerSystem)delete lineOverrides[line];
-    else lineOverrides[line]=bars;
-    const options={barsPerSystem:cadence.barsPerSystem,lineOverrides,replaceExisting:true};
-    let plan;
-    try{plan=planLayoutCadence(state.doc,options);
-      if(!plan.lineRanges.some(range=>range.line===line))throw new Error('선택한 줄을 찾지 못했습니다.');
+    let edit;
+    try{
+      if(state.showBaseline||$('preview-shell').getAttribute('aria-busy')==='true')
+        throw new Error('현재 악보의 렌더링이 끝난 후 다시 적용해 주세요.');
+      const ranges=renderedLineRanges(state.osmd,currentMeasureCount());
+      edit=planRenderedLineEdit(state.doc,cadence,ranges,line,bars);
     }catch(error){status.textContent='선택 줄 적용 불가: '+(error.message||'설정을 확인해 주세요.');setMessage(status.textContent,true);return;}
     const before=state.doc;
-    await commit(doc=>applyLayoutCadence(doc,options),'선택 줄 마디 수 변경');
-    status.textContent=state.doc!==before?
-      line+'줄 '+bars+'마디 적용 · 이후 줄은 기본 '+cadence.barsPerSystem+
-      '마디 · 총 '+plan.total+'마디 유지 · 실행 취소 가능':
-      '변경되지 않았습니다. 편집 상태를 확인해 주세요.';
+    await commit(doc=>applyLayoutCadence(doc,edit.options),'선택 줄 마디 수 변경');
+    if(state.doc===before){status.textContent='변경되지 않았습니다. 편집 상태를 확인해 주세요.';return;}
+    const actual=renderedLineRanges(state.osmd,currentMeasureCount())?.find(r=>r.startMeasureIndex===edit.start);
+    if(actual?.bars===bars){
+      status.textContent=actual.line+'줄 '+bars+'마디 적용 · 총 '+currentMeasureCount()+'마디 유지 · 실행 취소 가능';
+    }else{
+      status.textContent='요청한 '+bars+'마디 배치를 화면에 구현하지 못했습니다. A4 폭·음표 및 가사 밀도에 따라 실제 줄이 나뉩니다. 더 적은 마디 수를 선택하거나 가로 방향을 사용하세요.';
+      setMessage(status.textContent,true);
+    }
   });
   $('v4-auto-layout').addEventListener('click',async()=>{
     if(!state.doc)return;

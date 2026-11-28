@@ -15,7 +15,7 @@ import { assertMusicXmlRoundTrip } from './studio-v4-xml-roundtrip.js';
 import { stripExternalMusicXmlDoctype } from './studio-v4-safe-xml-prolog.js';
 import { mountStickyPreview } from './sticky-preview.js';
 import { normalizeRedundantClefs,normalizeRedundantTimeSignatures } from './studio-v4-clef-normalize.js';
-import { applyLayoutCadence, readLayoutCadence } from './studio-v4-layout-cadence.js';
+import { applyLayoutCadence, readLayoutCadence, renderWithCadenceRepair } from './studio-v4-layout-cadence.js';
 import { mountSettingsAccordions } from './settings-accordions.js';
 import { mountScoreToolstrip } from './score-toolstrip.js';
 import { mountWorkspaceShell } from './workspace-shell.js';
@@ -353,7 +353,7 @@ async function renderScore() {
     if(token!==state.renderToken)return false;
     applyFixedA4Profile(osmd,renderedDoc,format);
     applyLayoutPreset(osmd,$('v2-layout')?.value||'standard',renderedDoc);
-    osmd.render();
+    renderWithCadenceRepair(osmd,renderedDoc);
     if(token!==state.renderToken)return false;
     stampSoftwareCopyright([...stage.querySelectorAll('svg')],format);
     const container=$('score-container'),scroll=$('preview-shell');
